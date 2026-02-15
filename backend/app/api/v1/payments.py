@@ -297,7 +297,32 @@ async def stripe_webhook(
             logger.warning("❌ Payment failed for order %s: %s", order_id, failure_message)
 
     elif event_type in ("charge.refunded", "charge.refund.updated"):
-        logger.info("Refund event received: %s", event_type)
-        # Phase 11+ — refund handling
+        from app.models.order import Order, Payment, PaymentStatus, OrderStatus
+        from sqlalchemy import select
+
+        payment_intent_id = data.get("payment_intent")
+        if payment_intent_id:
+            pay_result = await db.execute(
+                select(Payment).where(Payment.stripe_payment_intent_id == payment_intent_id)
+            )
+            payment = pay_result.scalar_one_or_none()
+            if payment:
+                refund_total = data.get("amount_refunded", 0) / 100  # cents to dollars
+                payment.refund_amount = Decimal(str(refund_total))
+                if refund_total >= float(payment.amount):
+                    payment.status = PaymentStatus.REFUNDED
+                    order = await db.execute(
+                        select(Order).where(Order.id == payment.order_id)
+                    )
+                    o = order.scalar_one_or_none()
+                    if o:
+                        o.status = OrderStatus.REFUNDED
+                else:
+                    payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+                await db.flush()
+                logger.info("Refund processed via webhook for payment_intent %s", payment_intent_id)
+            else:
+                logger.warning("No payment found for refund webhook: %s", payment_intent_id)
 
     return MessageResponse(message="Webhook received")
