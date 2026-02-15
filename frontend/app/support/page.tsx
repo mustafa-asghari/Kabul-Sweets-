@@ -18,7 +18,7 @@ export default function SupportPage() {
                 Support
               </span>
             </div>
-            <div className="mt-6 mx-auto max-w-[920px] rounded-2xl border-2 border-[#3b82f6] px-6 py-8 text-center">
+            <div className="mt-6 mx-auto max-w-[920px] rounded-2xl px-6 py-8 text-center">
               <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-black leading-[1.08]">
                 Help your customers.
               </h1>

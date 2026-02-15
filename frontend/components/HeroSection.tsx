@@ -16,45 +16,8 @@ const fadeUp = {
 export default function HeroSection() {
   return (
     <section className="max-w-[1200px] mx-auto px-6 pt-6 pb-16">
-      <div
-        className="relative rounded-[2rem] overflow-hidden min-h-[520px] md:min-h-[560px] flex items-center p-8 md:p-16"
-        style={{
-          background:
-            "linear-gradient(135deg, #FDF6EC 0%, #f0d9a8 20%, #c9922e 50%, #d4a84b 70%, #e8c882 90%, #FDF6EC 100%)",
-        }}
-      >
-        {/* Decorative wave SVG overlay */}
-        <svg
-          className="absolute inset-0 w-full h-full opacity-30 pointer-events-none"
-          viewBox="0 0 1200 600"
-          preserveAspectRatio="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop
-                offset="0%"
-                style={{ stopColor: "#ad751c", stopOpacity: 0.4 }}
-              />
-              <stop
-                offset="50%"
-                style={{ stopColor: "#d4a84b", stopOpacity: 0.6 }}
-              />
-              <stop
-                offset="100%"
-                style={{ stopColor: "#ffffff", stopOpacity: 0.2 }}
-              />
-            </linearGradient>
-          </defs>
-          <path
-            d="M0,200 C200,100 400,350 600,200 C800,50 1000,300 1200,150 L1200,600 L0,600 Z"
-            fill="url(#wg)"
-          />
-          <path
-            d="M0,350 C150,250 350,450 550,300 C750,150 950,400 1200,280 L1200,600 L0,600 Z"
-            fill="rgba(255,255,255,.15)"
-          />
-        </svg>
+      <div className="relative rounded-[2rem] overflow-hidden min-h-[520px] md:min-h-[560px] flex items-center bg-cream-dark p-8 md:p-16">
+        <div className="absolute inset-y-0 left-0 hidden md:block w-[46%] bg-[radial-gradient(circle_at_28%_16%,#fff3cc_0%,#f2d59d_28%,#e4be76_56%,#f5ebda_86%)]" />
 
         <div className="relative z-10 max-w-lg">
           <motion.h1
