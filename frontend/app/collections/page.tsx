@@ -25,6 +25,7 @@ export default function CollectionsPage() {
               <CollectionCard
                 key={collection.title}
                 title={collection.title}
+                description={collection.description}
                 imageSrc={collection.imageSrc}
                 imageAlt={collection.imageAlt}
                 href={`/shop?category=${encodeURIComponent(collection.title)}`}

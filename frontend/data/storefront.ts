@@ -63,12 +63,12 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "traditional-cookies",
     title: "Traditional Cookies",
-    category: "Cookies",
+    category: "Pastries",
     price: 12,
     compareAtPrice: 16,
-    shortDescription: "Fresh baked cookies packed for tea-time and gifting.",
+    shortDescription: "Fresh baked pastries and cookies packed for tea-time and gifting.",
     description:
-      "A family recipe collection baked daily for rich flavor and crisp texture. Ideal for events, office boxes, and everyday treats.",
+      "A daily pastry selection with rich flavor and crisp texture. Ideal for everyday treats, gifting, and smaller orders.",
     colors: ["Assorted", "Pistachio", "Date"],
     imageSrc: cookiesImage,
     thumbnails: [cookiesImage, cakeImage, customDessertImage],
@@ -76,10 +76,10 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "custom-dessert-tray",
     title: "Custom Dessert Tray",
-    category: "Custom",
+    category: "Pastries",
     price: 60,
     compareAtPrice: 70,
-    shortDescription: "A mixed tray crafted for events with custom flavor requests.",
+    shortDescription: "A mixed pastry tray crafted for events with custom flavor requests.",
     description:
       "Choose your preferred mix of pastries and sweets. Our team builds each tray to match your event size, style, and flavor profile.",
     colors: ["Mixed", "Nutty", "No Nuts"],
@@ -89,7 +89,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "premium-baklava-box",
     title: "Premium Baklava Box",
-    category: "Baklava",
+    category: "Pastries",
     price: 28,
     compareAtPrice: 35,
     shortDescription: "Buttery, flaky baklava in an elegant gift-ready box.",
@@ -114,7 +114,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "saffron-cookie-mix",
     title: "Saffron Cookie Mix",
-    category: "Cookies",
+    category: "Pastries",
     price: 18,
     shortDescription: "Signature saffron and cardamom cookie assortment.",
     description:
@@ -126,9 +126,9 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "wedding-dessert-table",
     title: "Wedding Dessert Table",
-    category: "Custom",
+    category: "Cakes",
     price: 120,
-    shortDescription: "Curated sweets table setup for wedding receptions.",
+    shortDescription: "Large custom cake and dessert setup for wedding receptions.",
     description:
       "Complete dessert styling package with trays, color matching, and portion planning to create a memorable wedding display.",
     colors: ["Gold", "Cream", "Rose"],
@@ -138,7 +138,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "baklava-festival-pack",
     title: "Baklava Festival Pack",
-    category: "Baklava",
+    category: "Pastries",
     price: 42,
     shortDescription: "Large family-size pack for gatherings and festivals.",
     description:
@@ -150,7 +150,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "corporate-gift-box",
     title: "Corporate Gift Box",
-    category: "Gift Boxes",
+    category: "Pastries",
     price: 34,
     shortDescription: "Premium branded sweet box for corporate gifting.",
     description:
@@ -164,21 +164,15 @@ export const storeProducts: StoreProduct[] = [
 export const collections: Collection[] = [
   {
     title: "Cakes",
-    description: "Custom celebration cakes for every milestone.",
+    description: "Large custom cake orders for birthdays, weddings, and big events.",
     imageSrc: cakeImage,
     imageAlt: "Cakes collection",
   },
   {
-    title: "Sweets",
-    description: "Traditional Afghan sweets made fresh each day.",
+    title: "Pastries",
+    description: "Small pastries, cookies, and baklava made fresh each day.",
     imageSrc: cookiesImage,
-    imageAlt: "Sweets collection",
-  },
-  {
-    title: "Baklava",
-    description: "Signature flaky baklava in gift and family packs.",
-    imageSrc: baklavaImage,
-    imageAlt: "Baklava collection",
+    imageAlt: "Pastries collection",
   },
 ];
 

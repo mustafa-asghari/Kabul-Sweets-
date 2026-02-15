@@ -232,12 +232,13 @@ async def run_tests():
                     test_variant_id = r.json().get("id")
 
                 # Stock adjustment
-                r = await client.post(f"{API}/products/{test_product_id}/stock", headers=admin_headers, json={
-                    "variant_id": test_variant_id,
-                    "adjustment": 10,
-                    "reason": "Test restock",
-                })
-                log_result("/products/{id}/stock", "POST", r.status_code, r.status_code in (200, 201))
+                if test_variant_id:
+                    r = await client.post(f"{API}/products/{test_product_id}/stock", headers=admin_headers, json={
+                        "variant_id": test_variant_id,
+                        "quantity_change": 10,
+                        "reason": "Test restock",
+                    })
+                    log_result("/products/{id}/stock", "POST", r.status_code, r.status_code in (200, 201))
 
                 # Clean up — delete test product
                 r = await client.delete(f"{API}/products/{test_product_id}", headers=admin_headers)
@@ -248,17 +249,21 @@ async def run_tests():
         # ─────────────────────────────────────────────────────────────────
         print("\n📦 6. Orders")
 
-        if customer_token and variant_id:
+        if customer_token and variant_id and product_id:
             # Create order
             r = await client.post(f"{API}/orders/", headers=customer_headers, json={
                 "items": [
                     {
+                        "product_id": product_id,
                         "variant_id": variant_id,
                         "quantity": 1,
                     }
                 ],
-                "pickup_date": (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d"),
-                "pickup_time": "14:00",
+                "customer_name": "Demo Customer",
+                "customer_email": "customer@example.com",
+                "customer_phone": "+61411111111",
+                "pickup_date": (datetime.now() + timedelta(days=2)).isoformat(),
+                "pickup_time_slot": "14:00-15:00",
             })
             log_result("/orders/ (create)", "POST", r.status_code, r.status_code in (200, 201))
             if r.status_code in (200, 201):
