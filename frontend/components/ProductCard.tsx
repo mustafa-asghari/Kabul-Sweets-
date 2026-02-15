@@ -1,8 +1,4 @@
-"use client";
-
-import { motion } from "framer-motion";
 import Image from "next/image";
-import { revealChild } from "./ScrollReveal";
 import Link from "next/link";
 
 interface ProductCardProps {
@@ -25,12 +21,8 @@ export default function ProductCard({
   const href = slug ? `/products/${slug}` : "/shop";
 
   return (
-    <motion.div variants={revealChild} className="group">
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="relative bg-white rounded-[1.5rem] p-6 aspect-square flex items-center justify-center overflow-hidden hover:shadow-lg transition-shadow duration-300"
-      >
+    <div className="group">
+      <div className="relative bg-white rounded-[1.5rem] p-6 aspect-square flex items-center justify-center overflow-hidden hover:shadow-lg transition-shadow duration-300">
         <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
         <Image
           src={imageSrc}
@@ -49,7 +41,7 @@ export default function ProductCard({
             north_east
           </span>
         </Link>
-      </motion.div>
+      </div>
       <div className="mt-4 px-1">
         <h3 className="font-bold text-[15px] text-black">{title}</h3>
         <p className="text-xs text-gray-400 mt-0.5">{category}</p>
@@ -64,6 +56,6 @@ export default function ProductCard({
           )}
         </p>
       </div>
-    </motion.div>
+    </div>
   );
 }
