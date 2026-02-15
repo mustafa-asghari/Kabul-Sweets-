@@ -71,7 +71,7 @@ export default function SupportPage() {
                 </label>
                 <button
                   type="submit"
-                  className="w-full rounded-full bg-accent py-3 text-sm font-semibold text-white hover:bg-accent-light transition"
+                  className="w-full rounded-md bg-accent py-3 text-sm font-semibold text-white hover:bg-accent-light transition"
                 >
                   Submit
                 </button>
