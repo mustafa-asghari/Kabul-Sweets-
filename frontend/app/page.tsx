@@ -8,16 +8,29 @@ import ActionBanner from "@/components/ActionBanner";
 import FeatureCard from "@/components/FeatureCard";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
-import {
-  collections,
-  formatPrice,
-  storeProducts,
-  supportBenefits,
-} from "@/data/storefront";
+import { collections, formatPrice, storeProducts } from "@/data/storefront";
 
 const featuredProducts = storeProducts.slice(0, 3);
 const featuredCollections = collections;
-const homeFeatures = supportBenefits.slice(0, 3);
+const businessHighlights = [
+  {
+    icon: "location_on",
+    title: "Store Location",
+    description: "1102 Beaudesert Rd, Acacia Ridge QLD 4110.",
+  },
+  {
+    icon: "star",
+    title: "Google Rating 4.5",
+    description:
+      "Google users rate Kabul Sweets Bakery 4.5 out of 5.",
+  },
+  {
+    icon: "storefront",
+    title: "Pickup & Takeaway",
+    description:
+      "No delivery service. Orders are for in-store pickup and takeaway.",
+  },
+];
 
 export default function Home() {
   return (
@@ -68,6 +81,17 @@ export default function Home() {
         </section>
 
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
+          <ScrollReveal
+            staggerChildren={0.1}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {businessHighlights.map((item) => (
+              <FeatureCard key={item.title} {...item} />
+            ))}
+          </ScrollReveal>
+        </section>
+
+        <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 gap-2">
               <div>
@@ -108,25 +132,6 @@ export default function Home() {
         </section>
 
         <ActionBanner />
-
-        <section className="max-w-[1200px] mx-auto px-6 pb-20">
-          <ScrollReveal className="text-center mb-12">
-            <h2 className="text-2xl font-extrabold tracking-tight text-black mb-2">
-              Highlight what makes you stand out
-            </h2>
-            <p className="text-sm text-gray-500">
-              Build trust quickly with clear service promises.
-            </p>
-          </ScrollReveal>
-          <ScrollReveal
-            staggerChildren={0.1}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          >
-            {homeFeatures.map((feature) => (
-              <FeatureCard key={feature.title} {...feature} />
-            ))}
-          </ScrollReveal>
-        </section>
 
         <TestimonialSection />
       </main>

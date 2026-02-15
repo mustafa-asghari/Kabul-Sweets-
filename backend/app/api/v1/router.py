@@ -8,6 +8,7 @@ from app.api.v1.ai import router as ai_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.business import router as business_router
+from app.api.v1.carts import router as carts_router
 from app.api.v1.health import router as health_router
 from app.api.v1.images import router as images_router
 from app.api.v1.ml import router as ml_router
@@ -29,3 +30,4 @@ api_v1_router.include_router(ai_router)
 api_v1_router.include_router(business_router)
 api_v1_router.include_router(ml_router)
 api_v1_router.include_router(images_router)
+api_v1_router.include_router(carts_router)
