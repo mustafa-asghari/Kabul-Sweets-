@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
 import ProductCard from "@/components/ProductCard";
@@ -7,75 +8,18 @@ import ActionBanner from "@/components/ActionBanner";
 import FeatureCard from "@/components/FeatureCard";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
+import {
+  blogPosts,
+  collections,
+  formatPrice,
+  storeProducts,
+  supportBenefits,
+} from "@/data/storefront";
 
-const products = [
-  {
-    title: "Celebration Cakes",
-    category: "Cakes",
-    price: "From $45",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDq89SDCLSN76kunOlhOstWiLYy_EeKgfBrsy6JZz0jpshRTC5CihmDbiihKD5znmF1qTa8n9HUjyYRQUtb3CC56I5AgfAWbENpaxpv1KCiW_H8R9o4YhRNGErDGMrNhP8iYQ0iawo7QghrlZvf8kpWnMlHIu-Gzgre5OAYuR3DZYP_N8DnY6bkbpZd3TKkzKZx6XhoL2hWzO0FWacx2PSfE-Uw_6QfzhhRXSpffNHqrVnQSyIPwq6ha430fe3jmJL4Xv45KFNk83g",
-    imageAlt: "Cakes",
-  },
-  {
-    title: "Traditional Cookies",
-    category: "Cookies",
-    price: "From $12",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAmNszbrm5j1meuumPGKDE44YrXMEXbDqMCtVelbJ3rqmX2HTN1soWGITmlVS5_igaZorkr-J750uVaLXsDIzUIJ-P9XHIbFow4tCrjTkG0MLacpug5Gvbt3l4w2RQx4Y1lhUb_l5DDrxiYjnDT6hxu4SHja7QVSLwqdk2CJwqNvOUFDGS_-_AENosF3_itewm-6_hxFqhZf3Hwutqt9WoQwAt6gF5YamYYW85QRRmn_uMjtGtqKJmw8wTF4X46bqXr2wU1cAwwq-0",
-    imageAlt: "Cookies",
-  },
-  {
-    title: "Custom Desserts",
-    category: "Custom",
-    price: "Get a Quote",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuCRwMWm2SS6iyVE6wOWLPYDtztsggz0K3W3udSsDaxpmV8Wt1pP5Tih-0ZmOOvdCJY0a6Us9whZg6EjdfYQQS_OttCQi2itTCd3PGQJGYOEhFPvSThq3v8eSREXXLkmZP4pu2Ek96v3wq6DvK8w1rzT4cVtsakLB7u02N2rN8quIf9QmPNt6DO_RBqBtpcJnmYSt9zqAlyHZ0d6OwAwJjLDxYRzTjmEaUJf4BX6s9BKjfi5jAF00hEUM-v12G5FMjH8KT_eCWa3P-Q",
-    imageAlt: "Custom",
-  },
-];
-
-const collections = [
-  {
-    title: "Cakes",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuCES2iOrCShE2dEwcyQDRg8ucodp66z8YYUrcjcCCUlmC_sfkQ-sXaRzKGFSg2sSz2ysGvsP5502plUf9n_ubXb1LhlnKES14MsXQ8yQBZW2fpRZEv5gV6M1pboGxGY_CQ0rk3nTNdR2NdwzQEHpFcDeVBNz0XvhMDDeiNjBcEoGceGCMRqzTztTuz9soQ-ts9f_pEf5FwdVXoG2NuSVdumVY4N2GjLBwqtbasRvJEbYKf2phSVJpYPaMLlz3P_19A-odFA4W3DUFk",
-    imageAlt: "Cakes collection",
-  },
-  {
-    title: "Sweets",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAmNszbrm5j1meuumPGKDE44YrXMEXbDqMCtVelbJ3rqmX2HTN1soWGITmlVS5_igaZorkr-J750uVaLXsDIzUIJ-P9XHIbFow4tCrjTkG0MLacpug5Gvbt3l4w2RQx4Y1lhUb_l5DDrxiYjnDT6hxu4SHja7QVSLwqdk2CJwqNvOUFDGS_-_AENosF3_itewm-6_hxFqhZf3Hwutqt9WoQwAt6gF5YamYYW85QRRmn_uMjtGtqKJmw8wTF4X46bqXr2wU1cAwwq-0",
-    imageAlt: "Sweets collection",
-  },
-  {
-    title: "Baklava",
-    imageSrc:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuB6tLZJ1uVLF31wVgDU2cOO-RvXdoqiX4F8mHhoDsArffu9w20bplOd6O0ag8LfJ1RCKfE2wZaNtMaty8Fja0ymXQtQhiPzbX4KeMjbBUzeS7FT1rvxLBciQo_PFLaSZOox2IItWRcR_bRw2Llcl6oFCBvyf3acMyyF_pXCe1xf8mz5MHuWeAQ0KT4QsbCvFWYS4lsZitsJbYJgdd5Za6JBivEWfyQubhKbZ4VI5Dt7EQMAgvjGFEFDHjWwpgRR5Rafp9j8x3cVsiQ",
-    imageAlt: "Baklava collection",
-  },
-];
-
-const features = [
-  {
-    icon: "verified",
-    title: "Halal Certified",
-    description:
-      "All our products are 100% Halal certified, ensuring the highest standards.",
-  },
-  {
-    icon: "local_shipping",
-    title: "QLD Delivery",
-    description:
-      "Fast and reliable delivery across Queensland for all your events.",
-  },
-  {
-    icon: "oven_gen",
-    title: "Baked Fresh Daily",
-    description:
-      "Our ovens run every morning to bring you the freshest taste.",
-  },
-];
+const featuredProducts = storeProducts.slice(0, 3);
+const featuredCollections = collections.slice(0, 3);
+const homeFeatures = supportBenefits.slice(0, 3);
+const [featuredPost, ...secondaryPosts] = blogPosts;
 
 export default function Home() {
   return (
@@ -84,7 +28,6 @@ export default function Home() {
       <main className="flex-1">
         <HeroSection />
 
-        {/* Most Popular */}
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 gap-2">
@@ -93,31 +36,41 @@ export default function Home() {
                   Most Popular
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Showcase our most popular products, front and center.
+                  Fresh picks your customers usually add first.
                 </p>
               </div>
-              <a
-                href="#"
-                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
+              <Link
+                href="/shop"
+                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
               >
-                View All{" "}
+                View All
                 <span className="material-symbols-outlined text-[16px]">
                   arrow_forward
                 </span>
-              </a>
+              </Link>
             </div>
           </ScrollReveal>
           <hr className="border-gray-200 mb-10" />
-          <ScrollReveal staggerChildren={0.1} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {products.map((product) => (
-              <ProductCard key={product.title} {...product} />
+          <ScrollReveal
+            staggerChildren={0.1}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {featuredProducts.map((product) => (
+              <ProductCard
+                key={product.slug}
+                slug={product.slug}
+                title={product.title}
+                category={product.category}
+                price={formatPrice(product.price)}
+                imageSrc={product.imageSrc}
+                imageAlt={product.title}
+              />
             ))}
           </ScrollReveal>
         </section>
 
         <TestimonialSection />
 
-        {/* Our Collections */}
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 gap-2">
@@ -126,43 +79,119 @@ export default function Home() {
                   Our Collections
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Showcase all the different collections you have to offer.
+                  Browse grouped products for faster shopping.
                 </p>
               </div>
-              <a
-                href="#"
-                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
+              <Link
+                href="/collections"
+                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
               >
-                View All{" "}
+                View All
                 <span className="material-symbols-outlined text-[16px]">
                   arrow_forward
                 </span>
-              </a>
+              </Link>
             </div>
           </ScrollReveal>
           <hr className="border-gray-200 mb-10" />
-          <ScrollReveal staggerChildren={0.1} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {collections.map((collection) => (
-              <CollectionCard key={collection.title} {...collection} />
+          <ScrollReveal
+            staggerChildren={0.1}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {featuredCollections.map((collection) => (
+              <CollectionCard
+                key={collection.title}
+                title={collection.title}
+                imageSrc={collection.imageSrc}
+                imageAlt={collection.imageAlt}
+                href={`/shop?category=${encodeURIComponent(collection.title)}`}
+              />
             ))}
           </ScrollReveal>
         </section>
 
         <ActionBanner />
 
-        {/* Features */}
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal className="text-center mb-12">
             <h2 className="text-2xl font-extrabold tracking-tight text-black mb-2">
               Highlight what makes you stand out
             </h2>
             <p className="text-sm text-gray-500">
-              Use this section to show off the key features like these.
+              Build trust quickly with clear service promises.
             </p>
           </ScrollReveal>
-          <ScrollReveal staggerChildren={0.1} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {features.map((feature) => (
+          <ScrollReveal
+            staggerChildren={0.1}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {homeFeatures.map((feature) => (
               <FeatureCard key={feature.title} {...feature} />
+            ))}
+          </ScrollReveal>
+        </section>
+
+        <section className="max-w-[1200px] mx-auto px-6 pb-20">
+          <ScrollReveal>
+            <div className="flex items-end justify-between mb-8">
+              <div>
+                <h2 className="text-2xl font-extrabold tracking-tight text-black">
+                  Explore the blog
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Share stories, product ideas, and catering tips.
+                </p>
+              </div>
+              <Link
+                href="/blog"
+                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
+              >
+                View Posts
+                <span className="material-symbols-outlined text-[16px]">
+                  arrow_forward
+                </span>
+              </Link>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal className="rounded-[2rem] overflow-hidden bg-cream-dark grid grid-cols-1 md:grid-cols-2 mb-6">
+            <div className="relative min-h-[280px] md:min-h-full bg-[radial-gradient(circle_at_20%_20%,#fff2c8_0%,#f2d59d_26%,#e4be76_52%,#f5ebda_82%)]" />
+            <div className="p-8 md:p-10 flex flex-col justify-between">
+              <div>
+                <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600">
+                  {featuredPost.tag}
+                </span>
+                <h3 className="mt-4 text-3xl font-extrabold tracking-tight leading-tight text-black">
+                  {featuredPost.title}
+                </h3>
+                <p className="mt-4 text-sm text-gray-600 leading-relaxed">
+                  {featuredPost.excerpt}
+                </p>
+              </div>
+              <p className="mt-6 text-xs text-gray-500">
+                Written by {featuredPost.author}
+                <span className="block">{featuredPost.role}</span>
+              </p>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal
+            staggerChildren={0.08}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {secondaryPosts.map((post) => (
+              <article
+                key={post.slug}
+                className="rounded-[1.5rem] overflow-hidden bg-white hover:shadow-md transition-shadow"
+              >
+                <div className="h-44 bg-cream-dark" />
+                <div className="p-5">
+                  <span className="inline-flex rounded-full bg-cream-dark px-3 py-1 text-xs font-semibold text-gray-600">
+                    {post.tag}
+                  </span>
+                  <h3 className="mt-3 font-bold text-lg leading-snug text-black">{post.title}</h3>
+                </div>
+              </article>
             ))}
           </ScrollReveal>
         </section>

@@ -1,0 +1,1 @@
+"""Kabul Sweets Backend Application."""

@@ -28,7 +28,7 @@ export default function FaqAccordion({ items }: FaqAccordionProps) {
           >
             <button
               type="button"
-              className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left"
+              className="w-full flex items-center justify-between gap-4 rounded-2xl border border-transparent px-5 py-4 text-left transition-all hover:border-black/10 hover:bg-white/70"
               onClick={() => setActiveIndex(isOpen ? -1 : index)}
             >
               <span className="font-semibold text-sm text-black">{item.question}</span>

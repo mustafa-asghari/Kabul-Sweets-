@@ -71,7 +71,7 @@ export default function Navbar() {
             <span className="material-symbols-outlined text-[22px]">
               shopping_bag
             </span>
-            <span className="absolute -top-1.5 -right-2 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
+            <span className="absolute -top-1.5 -right-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
               0
             </span>
           </Link>
