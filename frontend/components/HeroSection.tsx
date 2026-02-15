@@ -89,7 +89,7 @@ export default function HeroSection() {
             className="text-[15px] text-gray-700 leading-relaxed mb-8 max-w-md"
           >
             Handmade Afghan sweets and custom cakes crafted with tradition.
-            Fresh baked daily and delivered across Queensland.
+            Fresh baked daily for pickup and takeaway in Acacia Ridge.
           </motion.p>
 
           <motion.div

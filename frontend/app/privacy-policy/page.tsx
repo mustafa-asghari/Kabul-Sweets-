@@ -5,10 +5,10 @@ import ScrollReveal from "@/components/ScrollReveal";
 
 const privacyParagraphs = [
   "Kabul Sweets values your privacy. This policy explains how we collect, use, and protect your personal information when you browse or place an order.",
-  "We collect only the details needed to complete your order and provide support, including contact information, delivery address, and order preferences.",
+  "We collect only the details needed to complete your order and provide support, including contact information, pickup details, and order preferences.",
   "Payment details are processed through secure third-party payment providers. Kabul Sweets does not store full card information on its own servers.",
   "We may use analytics and cookies to understand how visitors use the site and to improve performance, content, and checkout flow.",
-  "Your information is never sold. We only share necessary data with delivery partners, payment processors, or service providers needed to fulfill your order.",
+  "Your information is never sold. We only share necessary data with payment processors or service providers needed to fulfill pickup and takeaway orders.",
   "You may request access, updates, or deletion of your personal information by contacting our support team.",
 ];
 

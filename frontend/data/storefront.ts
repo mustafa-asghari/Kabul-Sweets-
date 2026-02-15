@@ -189,9 +189,9 @@ export const supportFaqs = [
       "Choose any custom product in the shop, share your preferred size and message, and our team will confirm details before baking.",
   },
   {
-    question: "Do you offer same-day delivery?",
+    question: "Do you offer delivery?",
     answer:
-      "For selected products in Brisbane and nearby suburbs, same-day delivery is available when you place your order before 11 AM.",
+      "No. Orders are currently prepared for in-store pickup and takeaway only from our Acacia Ridge location.",
   },
   {
     question: "Are all products Halal certified?",
@@ -212,24 +212,24 @@ export const supportFaqs = [
 
 export const supportBenefits: SupportBenefit[] = [
   {
-    icon: "autorenew",
-    title: "30 Day Support",
-    description: "Need changes to a custom order? Our support team helps after checkout.",
+    icon: "location_on",
+    title: "Store Location",
+    description: "1102 Beaudesert Rd, Acacia Ridge QLD 4110.",
   },
   {
-    icon: "bolt",
-    title: "Fast Delivery",
-    description: "Priority dispatch for metro orders with real-time delivery updates.",
+    icon: "star",
+    title: "Google Rating 4.5",
+    description: "Google users rate Kabul Sweets Bakery 4.5 out of 5.",
   },
   {
-    icon: "public",
-    title: "Wide Coverage",
-    description: "Reliable shipping and delivery support across Queensland locations.",
+    icon: "storefront",
+    title: "Pickup & Takeaway",
+    description: "No delivery service. Orders are for in-store pickup and takeaway.",
   },
   {
-    icon: "credit_card",
-    title: "Flexible Payment",
-    description: "Secure checkout with flexible payment options for larger event orders.",
+    icon: "call",
+    title: "Call Before You Visit",
+    description: "For current opening hours, call (07) 3162 7444 before visiting.",
   },
 ];
 

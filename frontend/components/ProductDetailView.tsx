@@ -22,8 +22,8 @@ const accordionItems = [
     body: "Every order is backed by our freshness promise. If your product arrives with any issue, our team will arrange a quick replacement.",
   },
   {
-    title: "Shipping Information",
-    body: "Metro deliveries usually arrive within 1-2 business days. Regional delivery windows are confirmed during checkout.",
+    title: "Pickup Information",
+    body: "Orders are prepared for in-store pickup and takeaway only. You can choose a pickup time at checkout.",
   },
   {
     title: "Support",

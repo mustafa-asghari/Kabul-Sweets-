@@ -10,7 +10,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Kabul Sweets | Premium Afghan Sweets & Cakes",
   description:
-    "Handmade Afghan sweets and custom cakes crafted with tradition. Fresh baked daily and delivered across Queensland.",
+    "Handmade Afghan sweets and custom cakes crafted with tradition. Fresh baked daily for pickup and takeaway in Acacia Ridge.",
 };
 
 export default function RootLayout({
