@@ -1,12 +1,15 @@
 "use client";
 
-import { AnimatePresence, motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { collections, productCategories } from "@/data/storefront";
 import { getCartCount, readCart } from "@/lib/cart";
-import CartDrawer from "@/components/CartDrawer";
+
+const CartDrawer = dynamic(() => import("@/components/CartDrawer"), {
+  ssr: false,
+});
 
 const navLinks = [
   { href: "/shop", label: "Shop" },
@@ -21,13 +24,20 @@ export default function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { scrollY } = useScroll();
   const pathname = usePathname();
   const router = useRouter();
 
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    setShrink(latest > 50);
-  });
+  useEffect(() => {
+    const onScroll = () => {
+      setShrink(window.scrollY > 50);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   useEffect(() => {
     const syncCartCount = () => {
@@ -143,12 +153,7 @@ export default function Navbar() {
 
   return (
     <>
-      <motion.nav
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="sticky top-0 z-50 bg-cream/80 backdrop-blur-lg"
-      >
+      <nav className="sticky top-0 z-50 bg-cream/80 backdrop-blur-lg">
         <div
           className={`max-w-[1200px] mx-auto px-6 flex items-center justify-between transition-all duration-300 ${
             shrink ? "py-2.5" : "py-4"
@@ -198,45 +203,36 @@ export default function Navbar() {
             </button>
           </div>
         </div>
-      </motion.nav>
+      </nav>
 
-      <AnimatePresence>
-        {searchOpen ? (
-          <motion.div
-            className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm px-4 py-20"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeSearch}
+      {searchOpen ? (
+        <div
+          className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm px-4 py-20"
+          onClick={closeSearch}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            className="mx-auto w-full max-w-[720px] rounded-[1.5rem] border border-white/60 bg-[#f5f2eb]/95 shadow-[0_28px_90px_rgba(0,0,0,0.28)]"
           >
-            <motion.div
-              initial={{ opacity: 0, y: -20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.98 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-              onClick={(event) => event.stopPropagation()}
-              className="mx-auto w-full max-w-[720px] rounded-[1.5rem] border border-white/60 bg-[#f5f2eb]/95 shadow-[0_28px_90px_rgba(0,0,0,0.28)]"
-            >
-              <div className="px-4 py-3.5">
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      runSpotlightSearch();
-                    }
-                  }}
-                  placeholder="Search cakes, sweets, cookies, pastries, collections..."
-                  className="w-full bg-transparent text-[15px] text-black placeholder:text-gray-400 focus:outline-none"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+            <div className="px-4 py-3.5">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    runSpotlightSearch();
+                  }
+                }}
+                placeholder="Search cakes, sweets, cookies, pastries, collections..."
+                className="w-full bg-transparent text-[15px] text-black placeholder:text-gray-400 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
       <CartDrawer open={cartOpen} onClose={closeCart} />
     </>
   );

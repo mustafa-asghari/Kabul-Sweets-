@@ -20,6 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://lh3.googleusercontent.com" />
+      </head>
       <body className={`${inter.className} min-h-screen flex flex-col bg-cream text-[#111]`}>
         {children}
       </body>

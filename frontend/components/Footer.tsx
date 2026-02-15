@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import Link from "next/link";
 
 export default function Footer() {
@@ -22,14 +19,12 @@ export default function Footer() {
                 placeholder="Your Email Address"
                 className="flex-1 px-5 py-3 rounded-full bg-white border-none text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-accent/30 shadow-sm"
               />
-              <motion.button
+              <button
                 type="submit"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-full shadow-sm transition-all hover:shadow-md"
+                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-full shadow-sm transition-all hover:shadow-md hover:brightness-105 active:scale-[0.98]"
               >
                 Join
-              </motion.button>
+              </button>
             </form>
           </div>
           {/* Links */}

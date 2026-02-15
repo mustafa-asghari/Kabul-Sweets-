@@ -44,10 +44,13 @@ export default function TestimonialSection() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     const loadReviews = async () => {
       try {
-        const response = await fetch("/api/google-reviews", { cache: "no-store" });
+        const response = await fetch("/api/google-reviews", {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error("Failed to load reviews.");
         }
@@ -82,6 +85,7 @@ export default function TestimonialSection() {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
   }, []);
 

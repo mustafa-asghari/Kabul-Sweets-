@@ -103,6 +103,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                               alt={item.title}
                               width={72}
                               height={72}
+                              sizes="72px"
                               className="h-[72px] w-[72px] rounded-xl object-cover"
                             />
                           </Link>
