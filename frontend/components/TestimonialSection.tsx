@@ -23,12 +23,12 @@ export default function TestimonialSection() {
       >
         {/* Nav arrows */}
         <div className="absolute top-8 right-8 flex gap-2">
-          <button className="flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-gray-500 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/40 hover:text-black">
+          <button className="flex h-10 w-10 items-center justify-center text-gray-500 transition hover:text-black">
             <span className="material-symbols-outlined text-[18px]">
               arrow_back
             </span>
           </button>
-          <button className="flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-gray-500 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/40 hover:text-black">
+          <button className="flex h-10 w-10 items-center justify-center text-gray-500 transition hover:text-black">
             <span className="material-symbols-outlined text-[18px]">
               arrow_forward
             </span>

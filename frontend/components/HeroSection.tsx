@@ -102,7 +102,7 @@ export default function HeroSection() {
           >
             <Link
               href="/shop"
-              className="inline-flex items-center gap-2 rounded-md border border-black/10 bg-white px-6 py-3 text-sm font-semibold text-black shadow-md transition-all hover:-translate-y-0.5 hover:border-black/30 hover:shadow-lg"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-black hover:text-accent transition"
             >
               Shop Products
               <span className="material-symbols-outlined text-[18px]">

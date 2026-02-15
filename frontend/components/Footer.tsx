@@ -42,7 +42,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Home
                   </Link>
@@ -50,7 +50,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/shop"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Shop
                   </Link>
@@ -58,7 +58,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/collections"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Collections
                   </Link>
@@ -66,7 +66,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/blog"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Blog
                   </Link>
@@ -81,7 +81,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/terms-and-conditions"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Terms & Conditions
                   </Link>
@@ -89,7 +89,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/terms-and-conditions"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Privacy policy
                   </Link>
@@ -97,7 +97,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/support"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     Support
                   </Link>
@@ -105,7 +105,7 @@ export default function Footer() {
                 <li>
                   <Link
                     href="/missing-page"
-                    className="inline-flex items-center rounded-md border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                    className="hover:text-black transition"
                   >
                     404
                   </Link>

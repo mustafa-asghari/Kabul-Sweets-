@@ -42,7 +42,7 @@ export default function ProductCard({
         <Link
           href={href}
           aria-label={`Open ${title}`}
-          className="absolute bottom-5 right-5 z-20 flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-gray-600 shadow-md transition-all opacity-0 translate-y-2 group-hover:translate-y-0 group-hover:opacity-100 hover:border-black hover:bg-black hover:text-white"
+          className="absolute bottom-5 right-5 z-20 flex h-10 w-10 items-center justify-center text-gray-600 transition-all opacity-0 translate-y-2 group-hover:translate-y-0 group-hover:opacity-100 hover:text-black"
         >
           <span className="material-symbols-outlined text-[18px]">
             north_east
