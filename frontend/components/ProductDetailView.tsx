@@ -1,0 +1,232 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useState } from "react";
+import ProductCard from "@/components/ProductCard";
+import ScrollReveal from "@/components/ScrollReveal";
+import {
+  formatPrice,
+  type StoreProduct,
+  supportBenefits,
+} from "@/data/storefront";
+
+interface ProductDetailViewProps {
+  product: StoreProduct;
+  relatedProducts: StoreProduct[];
+}
+
+const accordionItems = [
+  {
+    title: "Warranty",
+    body: "Every order is backed by our freshness promise. If your product arrives with any issue, our team will arrange a quick replacement.",
+  },
+  {
+    title: "Shipping Information",
+    body: "Metro deliveries usually arrive within 1-2 business days. Regional delivery windows are confirmed during checkout.",
+  },
+  {
+    title: "Support",
+    body: "Need help with custom notes, event timing, or allergen details? Our support team is available seven days a week.",
+  },
+];
+
+export default function ProductDetailView({
+  product,
+  relatedProducts,
+}: ProductDetailViewProps) {
+  const [activeImage, setActiveImage] = useState(0);
+  const [activeColor, setActiveColor] = useState(product.colors[0] ?? "");
+  const [activeAccordion, setActiveAccordion] = useState(0);
+
+  return (
+    <>
+      <section className="max-w-[1200px] mx-auto px-6 pt-8 pb-14">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-10 lg:gap-12">
+          <ScrollReveal className="grid grid-cols-[68px_1fr] gap-4 md:gap-6 items-start">
+            <div className="space-y-3">
+              {product.thumbnails.map((thumbnail, index) => {
+                const isActive = index === activeImage;
+
+                return (
+                  <button
+                    key={`${thumbnail}-${index}`}
+                    type="button"
+                    aria-label={`Thumbnail ${index + 1}`}
+                    onClick={() => setActiveImage(index)}
+                    className={`relative h-[68px] w-[68px] rounded-xl overflow-hidden border-2 transition ${
+                      isActive ? "border-accent" : "border-transparent"
+                    }`}
+                  >
+                    <Image
+                      src={thumbnail}
+                      alt={product.title}
+                      fill
+                      sizes="68px"
+                      className="object-cover"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="relative rounded-[2rem] bg-cream-dark p-8 min-h-[560px] flex items-center justify-center overflow-hidden">
+              <Image
+                src={product.thumbnails[activeImage] ?? product.imageSrc}
+                alt={product.title}
+                width={600}
+                height={600}
+                className="w-[80%] h-auto object-contain"
+                priority
+              />
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal className="lg:sticky lg:top-24 lg:h-fit">
+            <p className="text-sm text-gray-400">
+              <Link href="/shop" className="hover:text-black transition">
+                Shop
+              </Link>
+              <span className="mx-1">•</span>
+              {product.category}
+            </p>
+
+            <h1 className="mt-2 text-5xl font-extrabold tracking-tight text-black leading-[1.04]">
+              {product.title}
+            </h1>
+
+            <p className="mt-4 text-4xl font-extrabold tracking-tight text-black">
+              {formatPrice(product.price)}
+              {product.compareAtPrice ? (
+                <span className="ml-3 text-3xl font-semibold text-gray-400 line-through">
+                  {formatPrice(product.compareAtPrice)}
+                </span>
+              ) : null}
+            </p>
+
+            <p className="mt-7 text-xl text-gray-600 leading-relaxed">{product.description}</p>
+
+            <div className="mt-8">
+              <h2 className="text-2xl font-bold tracking-tight text-black">Color</h2>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {product.colors.map((color) => {
+                  const isActive = color === activeColor;
+
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setActiveColor(color)}
+                      className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
+                        isActive
+                          ? "bg-black text-white"
+                          : "bg-cream-dark text-black hover:bg-[#eadbc4]"
+                      }`}
+                    >
+                      {color}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              <button
+                type="button"
+                className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
+              >
+                Add to Cart
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
+              >
+                Buy Now
+              </button>
+            </div>
+
+            <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200">
+              {accordionItems.map((item, index) => {
+                const isOpen = index === activeAccordion;
+
+                return (
+                  <div key={item.title}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveAccordion(isOpen ? -1 : index)}
+                      className="w-full flex items-center justify-between gap-4 py-5 text-left"
+                    >
+                      <span className="text-3xl font-bold tracking-tight text-black">
+                        {item.title}
+                      </span>
+                      <span className="material-symbols-outlined text-2xl text-gray-500">
+                        {isOpen ? "expand_less" : "expand_more"}
+                      </span>
+                    </button>
+                    {isOpen ? (
+                      <p className="pb-5 text-lg text-gray-500 leading-relaxed">{item.body}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      <section className="max-w-[1200px] mx-auto px-6 pb-16">
+        <ScrollReveal
+          staggerChildren={0.08}
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"
+        >
+          {supportBenefits.map((benefit) => (
+            <article key={benefit.title} className="bg-cream-dark rounded-[1.5rem] p-6">
+              <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center mb-5">
+                <span className="material-symbols-outlined text-accent text-[21px]">
+                  {benefit.icon}
+                </span>
+              </div>
+              <h2 className="text-3xl font-extrabold tracking-tight text-black">{benefit.title}</h2>
+              <p className="mt-2 text-base text-gray-500 leading-relaxed">{benefit.description}</p>
+            </article>
+          ))}
+        </ScrollReveal>
+      </section>
+
+      <section className="max-w-[1200px] mx-auto px-6 pb-20">
+        <ScrollReveal>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-2 gap-2">
+            <div>
+              <h2 className="text-4xl font-extrabold tracking-tight text-black">You may also like</h2>
+              <p className="text-base text-gray-500 mt-1">Suggested picks from the same collection.</p>
+            </div>
+            <Link
+              href="/shop"
+              className="text-base font-semibold text-black hover:text-accent transition flex items-center gap-1"
+            >
+              View all
+              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+            </Link>
+          </div>
+        </ScrollReveal>
+        <hr className="border-gray-200 mb-10" />
+        <ScrollReveal
+          staggerChildren={0.08}
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+        >
+          {relatedProducts.map((related) => (
+            <ProductCard
+              key={related.slug}
+              slug={related.slug}
+              title={related.title}
+              category={related.category}
+              price={formatPrice(related.price)}
+              imageSrc={related.imageSrc}
+              imageAlt={related.title}
+            />
+          ))}
+        </ScrollReveal>
+      </section>
+    </>
+  );
+}

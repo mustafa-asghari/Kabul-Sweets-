@@ -21,6 +21,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
+from app.api.deps import get_current_user
 from app.schemas.user import (
     LoginRequest,
     MessageResponse,
@@ -202,9 +203,7 @@ async def refresh_token(
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
     request: Request,
-    current_user: User = Depends(
-        __import__("app.api.deps", fromlist=["get_current_user"]).get_current_user
-    ),
+    current_user: User = Depends(get_current_user),
 ):
     """Logout by revoking the refresh token."""
     try:
