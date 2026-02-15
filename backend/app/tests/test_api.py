@@ -51,6 +51,7 @@ async def run_tests():
 
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
         admin_token = None
+        admin_refresh = None
         customer_token = None
         product_id = None
         variant_id = None
