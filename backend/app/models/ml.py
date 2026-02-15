@@ -197,33 +197,50 @@ class CustomCake(Base):
 
 # ── Image Processing ────────────────────────────────────────────────────────
 class ProcessedImage(Base):
-    """Tracks image processing results (background removal, optimization)."""
+    """Tracks image uploads and Gemini AI processing results."""
 
     __tablename__ = "processed_images"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    custom_cake_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    custom_cake_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    original_url: Mapped[str] = mapped_column(String(500), nullable=False)
-    processed_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # File info
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Image data (base64 encoded, stored in DB)
+    original_url: Mapped[str] = mapped_column(Text, nullable=False)
+    processed_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Processing info
     processing_type: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # "background_removal", "optimization", "resize"
+        String(50), nullable=False, default="enhancement"
+    )
     processing_status: Mapped[str] = mapped_column(
-        String(20), default="pending", nullable=False
-    )  # pending, processing, completed, failed
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+        String(20), default="uploaded", nullable=False
+    )  # uploaded, processing, completed, failed, reprocessing
+    processing_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    original_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    processed_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Category and prompt tracking
+    category_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Admin review
     admin_chosen: Mapped[str | None] = mapped_column(
         String(20), nullable=True
     )  # "original" or "processed"
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Size tracking
+    original_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    processed_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Errors
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False

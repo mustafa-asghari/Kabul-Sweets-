@@ -9,7 +9,6 @@ import FeatureCard from "@/components/FeatureCard";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
 import {
-  blogPosts,
   collections,
   formatPrice,
   storeProducts,
@@ -19,7 +18,6 @@ import {
 const featuredProducts = storeProducts.slice(0, 3);
 const featuredCollections = collections.slice(0, 3);
 const homeFeatures = supportBenefits.slice(0, 3);
-const [featuredPost, ...secondaryPosts] = blogPosts;
 
 export default function Home() {
   return (
@@ -68,8 +66,6 @@ export default function Home() {
             ))}
           </ScrollReveal>
         </section>
-
-        <TestimonialSection />
 
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal>
@@ -131,70 +127,7 @@ export default function Home() {
           </ScrollReveal>
         </section>
 
-        <section className="max-w-[1200px] mx-auto px-6 pb-20">
-          <ScrollReveal>
-            <div className="flex items-end justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-extrabold tracking-tight text-black">
-                  Explore the blog
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  Share stories, product ideas, and catering tips.
-                </p>
-              </div>
-              <Link
-                href="/blog"
-                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
-              >
-                View Posts
-                <span className="material-symbols-outlined text-[16px]">
-                  arrow_forward
-                </span>
-              </Link>
-            </div>
-          </ScrollReveal>
-
-          <ScrollReveal className="rounded-[2rem] overflow-hidden bg-cream-dark grid grid-cols-1 md:grid-cols-2 mb-6">
-            <div className="relative min-h-[280px] md:min-h-full bg-[radial-gradient(circle_at_20%_20%,#fff2c8_0%,#f2d59d_26%,#e4be76_52%,#f5ebda_82%)]" />
-            <div className="p-8 md:p-10 flex flex-col justify-between">
-              <div>
-                <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600">
-                  {featuredPost.tag}
-                </span>
-                <h3 className="mt-4 text-3xl font-extrabold tracking-tight leading-tight text-black">
-                  {featuredPost.title}
-                </h3>
-                <p className="mt-4 text-sm text-gray-600 leading-relaxed">
-                  {featuredPost.excerpt}
-                </p>
-              </div>
-              <p className="mt-6 text-xs text-gray-500">
-                Written by {featuredPost.author}
-                <span className="block">{featuredPost.role}</span>
-              </p>
-            </div>
-          </ScrollReveal>
-
-          <ScrollReveal
-            staggerChildren={0.08}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          >
-            {secondaryPosts.map((post) => (
-              <article
-                key={post.slug}
-                className="rounded-[1.5rem] overflow-hidden bg-white hover:shadow-md transition-shadow"
-              >
-                <div className="h-44 bg-cream-dark" />
-                <div className="p-5">
-                  <span className="inline-flex rounded-full bg-cream-dark px-3 py-1 text-xs font-semibold text-gray-600">
-                    {post.tag}
-                  </span>
-                  <h3 className="mt-3 font-bold text-lg leading-snug text-black">{post.title}</h3>
-                </div>
-              </article>
-            ))}
-          </ScrollReveal>
-        </section>
+        <TestimonialSection />
       </main>
       <Footer />
     </>
