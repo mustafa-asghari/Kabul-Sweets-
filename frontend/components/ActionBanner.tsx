@@ -7,7 +7,11 @@ import Image from "next/image";
 const cakeBannerImage =
   "/products/cake-alt.png";
 
-export default function ActionBanner() {
+interface ActionBannerProps {
+  zoomOut?: boolean;
+}
+
+export default function ActionBanner({ zoomOut = false }: ActionBannerProps) {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -28,7 +32,11 @@ export default function ActionBanner() {
             alt="Cake collection showcase"
             fill
             sizes="(max-width: 768px) 100vw, 1200px"
-            className="object-cover"
+            className={
+              zoomOut
+                ? "object-contain scale-[0.9] md:scale-[0.86]"
+                : "object-cover"
+            }
           />
         </motion.div>
         <div className="absolute inset-0 bg-black/50" />
