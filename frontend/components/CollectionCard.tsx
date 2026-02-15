@@ -39,7 +39,7 @@ export default function CollectionCard({
       <Link
         href={href}
         aria-label={`Open ${title}`}
-        className="absolute bottom-5 right-5 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-black/10 bg-white text-gray-600 shadow-md transition-all hover:border-black hover:bg-black hover:text-white"
+        className="absolute bottom-5 right-5 z-20 flex h-10 w-10 items-center justify-center rounded-md border border-black/10 bg-white text-gray-600 shadow-md transition-all hover:border-black hover:bg-black hover:text-white"
       >
         <span className="material-symbols-outlined text-[18px]">
           north_east
