@@ -41,7 +41,7 @@ export default function Home() {
               </div>
               <Link
                 href="/shop"
-                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
+                className="inline-flex items-center gap-1.5 rounded-md border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
               >
                 View All
                 <span className="material-symbols-outlined text-[16px]">
@@ -84,7 +84,7 @@ export default function Home() {
               </div>
               <Link
                 href="/collections"
-                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
+                className="inline-flex items-center gap-1.5 rounded-md border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
               >
                 View All
                 <span className="material-symbols-outlined text-[16px]">
@@ -144,7 +144,7 @@ export default function Home() {
               </div>
               <Link
                 href="/blog"
-                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
+                className="inline-flex items-center gap-1.5 rounded-md border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
               >
                 View Posts
                 <span className="material-symbols-outlined text-[16px]">

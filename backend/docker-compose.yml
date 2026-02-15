@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: kabul_user
-      POSTGRES_PASSWORD: kabul_pass
+      POSTGRES_PASSWORD: kabul_pass98112
       POSTGRES_DB: kabul_sweets
     ports:
       - "5432:5432"
@@ -43,7 +43,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://kabul_user:kabul_pass@db:5432/kabul_sweets
+      DATABASE_URL: postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets
       REDIS_URL: redis://redis:6379/0
       APP_ENV: development
       DEBUG: "true"
