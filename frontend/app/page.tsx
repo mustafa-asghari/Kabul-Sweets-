@@ -16,7 +16,7 @@ import {
 } from "@/data/storefront";
 
 const featuredProducts = storeProducts.slice(0, 3);
-const featuredCollections = collections.slice(0, 3);
+const featuredCollections = collections;
 const homeFeatures = supportBenefits.slice(0, 3);
 
 export default function Home() {
@@ -92,7 +92,7 @@ export default function Home() {
           <hr className="border-gray-200 mb-10" />
           <ScrollReveal
             staggerChildren={0.1}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"
           >
             {featuredCollections.map((collection) => (
               <CollectionCard

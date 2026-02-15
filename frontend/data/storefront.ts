@@ -63,12 +63,12 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "traditional-cookies",
     title: "Traditional Cookies",
-    category: "Pastries",
+    category: "Cookies",
     price: 12,
     compareAtPrice: 16,
-    shortDescription: "Fresh baked pastries and cookies packed for tea-time and gifting.",
+    shortDescription: "Fresh baked cookies packed for tea-time and gifting.",
     description:
-      "A daily pastry selection with rich flavor and crisp texture. Ideal for everyday treats, gifting, and smaller orders.",
+      "A daily cookie selection with rich flavor and crisp texture. Ideal for everyday treats and smaller orders.",
     colors: ["Assorted", "Pistachio", "Date"],
     imageSrc: cookiesImage,
     thumbnails: [cookiesImage, cakeImage, customDessertImage],
@@ -89,7 +89,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "premium-baklava-box",
     title: "Premium Baklava Box",
-    category: "Pastries",
+    category: "Sweets",
     price: 28,
     compareAtPrice: 35,
     shortDescription: "Buttery, flaky baklava in an elegant gift-ready box.",
@@ -114,7 +114,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "saffron-cookie-mix",
     title: "Saffron Cookie Mix",
-    category: "Pastries",
+    category: "Cookies",
     price: 18,
     shortDescription: "Signature saffron and cardamom cookie assortment.",
     description:
@@ -138,7 +138,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "baklava-festival-pack",
     title: "Baklava Festival Pack",
-    category: "Pastries",
+    category: "Sweets",
     price: 42,
     shortDescription: "Large family-size pack for gatherings and festivals.",
     description:
@@ -150,7 +150,7 @@ export const storeProducts: StoreProduct[] = [
   {
     slug: "corporate-gift-box",
     title: "Corporate Gift Box",
-    category: "Pastries",
+    category: "Sweets",
     price: 34,
     shortDescription: "Premium branded sweet box for corporate gifting.",
     description:
@@ -170,9 +170,21 @@ export const collections: Collection[] = [
   },
   {
     title: "Pastries",
-    description: "Small pastries, cookies, and baklava made fresh each day.",
-    imageSrc: cookiesImage,
+    description: "Small cakes and pastry bites for everyday pickup.",
+    imageSrc: customDessertImage,
     imageAlt: "Pastries collection",
+  },
+  {
+    title: "Sweets",
+    description: "Traditional Afghan sweets and baklava made fresh each day.",
+    imageSrc: baklavaImage,
+    imageAlt: "Sweets collection",
+  },
+  {
+    title: "Cookies",
+    description: "Fresh cookie assortments for tea-time, gifting, and events.",
+    imageSrc: cookiesImage,
+    imageAlt: "Cookies collection",
   },
 ];
 

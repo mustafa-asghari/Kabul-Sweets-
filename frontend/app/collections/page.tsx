@@ -19,7 +19,7 @@ export default function CollectionsPage() {
         <section className="max-w-[1200px] mx-auto px-6">
           <ScrollReveal
             staggerChildren={0.1}
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"
           >
             {collections.map((collection) => (
               <CollectionCard
