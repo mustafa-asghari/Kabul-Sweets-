@@ -264,7 +264,7 @@ export default function Navbar() {
                   className="w-full bg-transparent text-[15px] text-black placeholder:text-gray-400 focus:outline-none"
                 />
                 <kbd className="hidden sm:inline-flex h-7 items-center rounded-md border border-[#ddd0bb] px-2 text-[11px] font-medium text-gray-500">
-                  {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}
+                  Cmd/Ctrl+K
                 </kbd>
               </div>
 
