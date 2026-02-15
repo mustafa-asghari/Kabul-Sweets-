@@ -79,6 +79,55 @@ class StripeService:
         }
 
     @staticmethod
+    async def create_payment_link(
+        custom_cake_id: str,
+        description: str,
+        amount: Decimal,
+        currency: str = "aud",
+        customer_email: str | None = None,
+    ) -> dict:
+        """
+        Create a Stripe Checkout Session for a custom cake payment.
+        Returns checkout URL so the customer can pay.
+        """
+        if not STRIPE_AVAILABLE:
+            logger.warning("Stripe not configured — returning test payment link")
+            return {
+                "checkout_url": f"http://localhost:3000/order/success?session_id=test_cake_{custom_cake_id}",
+                "session_id": f"test_cake_{custom_cake_id}",
+            }
+
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="payment",
+            customer_email=customer_email,
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "product_data": {
+                            "name": "Custom Cake",
+                            "description": description,
+                        },
+                        "unit_amount": int(amount * 100),
+                    },
+                    "quantity": 1,
+                },
+            ],
+            metadata={
+                "custom_cake_id": custom_cake_id,
+                "type": "custom_cake",
+            },
+            success_url="http://localhost:3000/order/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="http://localhost:3000/order/cancel",
+        )
+
+        return {
+            "checkout_url": session.url,
+            "session_id": session.id,
+        }
+
+    @staticmethod
     def verify_webhook_signature(payload: bytes, sig_header: str) -> dict | None:
         """
         Verify a Stripe webhook signature and return the event.
