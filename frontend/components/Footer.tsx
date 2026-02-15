@@ -8,7 +8,7 @@ export default function Footer() {
     <footer className="bg-cream">
       <div className="max-w-[1200px] mx-auto px-6 pt-12 pb-8">
         <span className="text-lg font-extrabold tracking-tight text-black mb-6 block">
-          Kabul Sweets_
+          Kabul <span className="text-accent">Sweets</span>_
         </span>
         <div className="bg-cream-dark rounded-[1.5rem] p-8 md:p-12 flex flex-col md:flex-row justify-between gap-10">
           {/* Newsletter */}
@@ -116,7 +116,9 @@ export default function Footer() {
         </div>
         <p className="text-xs text-gray-400 mt-6">
           Created by{" "}
-          <span className="font-semibold text-gray-500">Kabul Sweets</span>{" "}
+          <span className="font-semibold text-gray-500">
+            Kabul <span className="text-accent">Sweets</span>
+          </span>{" "}
           &copy; 2025
         </p>
       </div>

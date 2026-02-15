@@ -34,7 +34,7 @@ export default function Navbar() {
         }`}
       >
         <Link href="/" className="text-lg font-extrabold tracking-tight text-black">
-          Kabul Sweets_
+          Kabul <span className="text-accent">Sweets</span>_
         </Link>
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
           {navLinks.map((link) => {

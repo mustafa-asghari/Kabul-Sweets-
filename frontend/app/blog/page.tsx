@@ -14,7 +14,11 @@ export default function BlogPage() {
       <main className="flex-1 pb-20">
         <PageHero
           badge="Blog"
-          title="Stories, tips, and ideas from Kabul Sweets."
+          title={
+            <>
+              Stories, tips, and ideas from Kabul <span className="text-accent">Sweets</span>.
+            </>
+          }
           description="Share product inspiration, event planning guides, and behind-the-scenes bakery updates."
         />
 
