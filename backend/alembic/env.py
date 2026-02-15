@@ -17,6 +17,7 @@ from app.models.user import User  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.product import Product, ProductVariant, StockAdjustment  # noqa: F401
 from app.models.order import Order, OrderItem, Payment  # noqa: F401
+from app.models.analytics import AnalyticsEvent, DailyRevenue  # noqa: F401
 
 # Alembic Config object
 config = context.config
