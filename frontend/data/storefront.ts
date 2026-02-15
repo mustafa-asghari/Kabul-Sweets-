@@ -34,17 +34,13 @@ export interface BlogPost {
   imageSrc: string;
 }
 
-const cakeImage =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuDq89SDCLSN76kunOlhOstWiLYy_EeKgfBrsy6JZz0jpshRTC5CihmDbiihKD5znmF1qTa8n9HUjyYRQUtb3CC56I5AgfAWbENpaxpv1KCiW_H8R9o4YhRNGErDGMrNhP8iYQ0iawo7QghrlZvf8kpWnMlHIu-Gzgre5OAYuR3DZYP_N8DnY6bkbpZd3TKkzKZx6XhoL2hWzO0FWacx2PSfE-Uw_6QfzhhRXSpffNHqrVnQSyIPwq6ha430fe3jmJL4Xv45KFNk83g";
+const cakeImage = "/products/cake-main.png";
 
-const cookiesImage =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuAmNszbrm5j1meuumPGKDE44YrXMEXbDqMCtVelbJ3rqmX2HTN1soWGITmlVS5_igaZorkr-J750uVaLXsDIzUIJ-P9XHIbFow4tCrjTkG0MLacpug5Gvbt3l4w2RQx4Y1lhUb_l5DDrxiYjnDT6hxu4SHja7QVSLwqdk2CJwqNvOUFDGS_-_AENosF3_itewm-6_hxFqhZf3Hwutqt9WoQwAt6gF5YamYYW85QRRmn_uMjtGtqKJmw8wTF4X46bqXr2wU1cAwwq-0";
+const cookiesImage = "/products/cookies-main.png";
 
-const customDessertImage =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuCRwMWm2SS6iyVE6wOWLPYDtztsggz0K3W3udSsDaxpmV8Wt1pP5Tih-0ZmOOvdCJY0a6Us9whZg6EjdfYQQS_OttCQi2itTCd3PGQJGYOEhFPvSThq3v8eSREXXLkmZP4pu2Ek96v3wq6DvK8w1rzT4cVtsakLB7u02N2rN8quIf9QmPNt6DO_RBqBtpcJnmYSt9zqAlyHZ0d6OwAwJjLDxYRzTjmEaUJf4BX6s9BKjfi5jAF00hEUM-v12G5FMjH8KT_eCWa3P-Q";
+const customDessertImage = "/products/pastry-main.png";
 
-const baklavaImage =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuB6tLZJ1uVLF31wVgDU2cOO-RvXdoqiX4F8mHhoDsArffu9w20bplOd6O0ag8LfJ1RCKfE2wZaNtMaty8Fja0ymXQtQhiPzbX4KeMjbBUzeS7FT1rvxLBciQo_PFLaSZOox2IItWRcR_bRw2Llcl6oFCBvyf3acMyyF_pXCe1xf8mz5MHuWeAQ0KT4QsbCvFWYS4lsZitsJbYJgdd5Za6JBivEWfyQubhKbZ4VI5Dt7EQMAgvjGFEFDHjWwpgRR5Rafp9j8x3cVsiQ";
+const baklavaImage = "/products/sweets-main.png";
 
 export const storeProducts: StoreProduct[] = [
   {

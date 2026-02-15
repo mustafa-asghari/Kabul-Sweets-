@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { collections, productCategories } from "@/data/storefront";
 import { getCartCount, readCart } from "@/lib/cart";
+import CartDrawer from "@/components/CartDrawer";
 
 const navLinks = [
   { href: "/shop", label: "Shop" },
@@ -16,6 +17,7 @@ const navLinks = [
 export default function Navbar() {
   const [shrink, setShrink] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +53,7 @@ export default function Navbar() {
 
       if (event.key === "Escape") {
         setSearchOpen(false);
+        setCartOpen(false);
       }
     };
 
@@ -61,21 +64,24 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (!searchOpen) {
+    if (!searchOpen && !cartOpen) {
       return;
     }
-
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const timeoutId = window.setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 20);
+    const timeoutId = searchOpen
+      ? window.setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 20)
+      : null;
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.clearTimeout(timeoutId);
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     };
-  }, [searchOpen]);
+  }, [searchOpen, cartOpen]);
 
   const closeSearch = () => {
     setSearchOpen(false);
@@ -83,7 +89,17 @@ export default function Navbar() {
   };
 
   const openSearch = () => {
+    setCartOpen(false);
     setSearchOpen(true);
+  };
+
+  const openCart = () => {
+    closeSearch();
+    setCartOpen(true);
+  };
+
+  const closeCart = () => {
+    setCartOpen(false);
   };
 
   const navigateFromSearch = (href: string) => {
@@ -167,8 +183,9 @@ export default function Navbar() {
             >
               <span className="material-symbols-outlined text-[22px]">search</span>
             </button>
-            <Link
-              href="/cart"
+            <button
+              type="button"
+              onClick={openCart}
               className="relative text-gray-500 hover:text-black transition"
               aria-label="Open cart"
             >
@@ -178,7 +195,7 @@ export default function Navbar() {
               <span className="absolute -top-1.5 -right-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
                 {cartCount}
               </span>
-            </Link>
+            </button>
           </div>
         </div>
       </motion.nav>
@@ -220,6 +237,7 @@ export default function Navbar() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+      <CartDrawer open={cartOpen} onClose={closeCart} />
     </>
   );
 }
