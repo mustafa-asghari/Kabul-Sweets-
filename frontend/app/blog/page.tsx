@@ -1,28 +1,79 @@
 import Image from "next/image";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
-import PageHero from "@/components/PageHero";
+import ActionBanner from "@/components/ActionBanner";
+import FeatureCard from "@/components/FeatureCard";
 import ScrollReveal from "@/components/ScrollReveal";
 import { blogPosts } from "@/data/storefront";
 
 const [featuredPost, ...morePosts] = blogPosts;
+const blogHighlights = [
+  {
+    icon: "bolt",
+    title: "Instant Digital Downloads",
+    description: "Access your design assets immediately after checkout.",
+  },
+  {
+    icon: "diamond",
+    title: "Premium Quality Materials",
+    description: "Carefully produced content and resources built for long-term use.",
+  },
+  {
+    icon: "local_shipping",
+    title: "Fast & Secure Shipping",
+    description: "Reliable fulfillment with full tracking on every physical product.",
+  },
+];
 
 export default function BlogPage() {
   return (
     <>
       <Navbar />
       <main className="flex-1 pb-20">
-        <PageHero
-          badge="Blog"
-          title={
-            <>
-              Stories, tips, and ideas from Kabul <span className="text-accent">Sweets</span>.
-            </>
-          }
-          description="Share product inspiration, event planning guides, and behind-the-scenes bakery updates."
-        />
+        <ActionBanner />
+
+        <section className="max-w-[1200px] mx-auto px-6 pb-20">
+          <ScrollReveal className="text-center mb-12">
+            <h2 className="text-2xl font-extrabold tracking-tight text-black mb-2">
+              Highlight what makes you stand out
+            </h2>
+            <p className="text-sm text-gray-500">
+              Use this section to show off key benefits for your customers.
+            </p>
+          </ScrollReveal>
+          <ScrollReveal
+            staggerChildren={0.1}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+          >
+            {blogHighlights.map((item) => (
+              <FeatureCard key={item.title} {...item} />
+            ))}
+          </ScrollReveal>
+        </section>
 
         <section className="max-w-[1200px] mx-auto px-6 pb-14">
+          <ScrollReveal>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-2">
+              <div>
+                <h2 className="text-2xl font-extrabold tracking-tight text-black">
+                  Explore the blog
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Share insights, boost SEO, and build trust with your audience.
+                </p>
+              </div>
+              <a
+                href="#more-posts"
+                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
+              >
+                View Posts
+                <span className="material-symbols-outlined text-[16px]">
+                  arrow_forward
+                </span>
+              </a>
+            </div>
+          </ScrollReveal>
+
           <ScrollReveal className="rounded-[2rem] overflow-hidden bg-cream-dark grid grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
             <div className="relative min-h-[320px] lg:min-h-[420px]">
               <Image
@@ -52,7 +103,7 @@ export default function BlogPage() {
           </ScrollReveal>
         </section>
 
-        <section className="max-w-[1200px] mx-auto px-6">
+        <section id="more-posts" className="max-w-[1200px] mx-auto px-6">
           <ScrollReveal
             staggerChildren={0.08}
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"

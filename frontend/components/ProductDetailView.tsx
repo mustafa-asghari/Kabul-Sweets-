@@ -71,6 +71,9 @@ export default function ProductDetailView({
             </div>
 
             <div className="relative rounded-[2rem] bg-cream-dark p-8 min-h-[560px] flex items-center justify-center overflow-hidden">
+              <div className="absolute top-4 right-4 rounded-2xl bg-white px-3 py-2 text-xs font-semibold text-gray-600 shadow-sm">
+                Hover to zoom
+              </div>
               <Image
                 src={product.thumbnails[activeImage] ?? product.imageSrc}
                 alt={product.title}
@@ -133,13 +136,13 @@ export default function ProductDetailView({
             <div className="mt-8 space-y-3">
               <button
                 type="button"
-                className="w-full rounded-md bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
+                className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
               >
                 Add to Cart
               </button>
               <button
                 type="button"
-                className="w-full rounded-md bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
+                className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
               >
                 Buy Now
               </button>

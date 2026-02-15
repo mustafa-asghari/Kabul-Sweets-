@@ -26,7 +26,7 @@ export default function Footer() {
                 type="submit"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-md shadow-sm transition-all hover:shadow-md"
+                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-full shadow-sm transition-all hover:shadow-md"
               >
                 Join
               </motion.button>
@@ -88,7 +88,7 @@ export default function Footer() {
                 </li>
                 <li>
                   <Link
-                    href="/terms-and-conditions"
+                    href="/privacy-policy"
                     className="hover:text-black transition"
                   >
                     Privacy policy

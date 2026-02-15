@@ -2,7 +2,6 @@
 
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
-import PageHero from "@/components/PageHero";
 import FaqAccordion from "@/components/FaqAccordion";
 import ScrollReveal from "@/components/ScrollReveal";
 import { supportBenefits, supportFaqs } from "@/data/storefront";
@@ -12,11 +11,24 @@ export default function SupportPage() {
     <>
       <Navbar />
       <main className="flex-1 pb-20">
-        <PageHero
-          badge="Support"
-          title="Help your customers quickly and clearly."
-          description="Use this page to answer common questions, guide customers, and keep support requests organized."
-        />
+        <section className="max-w-[1200px] mx-auto px-6 pt-6 pb-12">
+          <div className="rounded-[2rem] bg-cream-dark px-6 py-14 md:px-12 md:py-20">
+            <div className="text-center">
+              <span className="inline-flex items-center rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                Support
+              </span>
+            </div>
+            <div className="mt-6 mx-auto max-w-[920px] rounded-2xl border-2 border-[#3b82f6] px-6 py-8 text-center">
+              <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-black leading-[1.08]">
+                Help your customers.
+              </h1>
+              <p className="mt-4 text-sm md:text-base text-gray-500 max-w-2xl mx-auto leading-relaxed">
+                Use this page to answer common questions, offer help, and guide
+                customers to the right solution quickly.
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section className="max-w-[860px] mx-auto px-6 pb-16">
           <ScrollReveal className="text-center mb-8">
@@ -71,7 +83,7 @@ export default function SupportPage() {
                 </label>
                 <button
                   type="submit"
-                  className="w-full rounded-md bg-accent py-3 text-sm font-semibold text-white hover:bg-accent-light transition"
+                  className="w-full rounded-full bg-accent py-3 text-sm font-semibold text-white hover:bg-accent-light transition"
                 >
                   Submit
                 </button>
