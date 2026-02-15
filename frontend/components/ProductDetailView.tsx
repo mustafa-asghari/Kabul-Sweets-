@@ -93,6 +93,7 @@ export default function ProductDetailView({
                 alt={product.title}
                 width={600}
                 height={600}
+                sizes="(max-width: 1024px) 86vw, 700px"
                 className="w-[80%] h-auto object-contain"
                 priority
               />

@@ -175,6 +175,7 @@ export default function TestimonialSection() {
                     alt={currentReview.authorName}
                     width={64}
                     height={64}
+                    sizes="64px"
                     className="w-full h-full object-cover"
                   />
                 ) : (

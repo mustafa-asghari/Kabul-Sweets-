@@ -80,6 +80,7 @@ export default function BlogPage() {
                 src={featuredPost.imageSrc}
                 alt={featuredPost.title}
                 fill
+                sizes="(max-width: 1024px) 100vw, 55vw"
                 className="object-cover"
               />
             </div>
@@ -111,7 +112,13 @@ export default function BlogPage() {
             {morePosts.map((post) => (
               <article key={post.slug} className="rounded-[1.5rem] overflow-hidden bg-white shadow-sm">
                 <div className="relative h-56">
-                  <Image src={post.imageSrc} alt={post.title} fill className="object-cover" />
+                  <Image
+                    src={post.imageSrc}
+                    alt={post.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    className="object-cover"
+                  />
                 </div>
                 <div className="p-6">
                   <span className="inline-flex rounded-full bg-cream-dark px-3 py-1 text-xs font-semibold text-gray-600">

@@ -78,6 +78,7 @@ export default function CartContent() {
                   alt={item.title}
                   width={90}
                   height={90}
+                  sizes="90px"
                   className="h-[90px] w-[90px] rounded-xl object-cover"
                 />
               </Link>
