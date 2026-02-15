@@ -134,7 +134,7 @@ class CustomCakeService:
         final_price: Decimal,
         admin_notes: str | None = None,
     ) -> dict:
-        """Admin approves a custom cake and sets final price."""
+        """Admin approves a custom cake, sets final price, generates Stripe payment link, and emails customer."""
         cake = await self._get_cake(cake_id)
         if not cake:
             return {"error": "Custom cake not found"}
@@ -150,7 +150,6 @@ class CustomCakeService:
 
         # Record final price for model feedback
         pricing_service = CakePricingService(self.db)
-        # Find the prediction for this cake
         from app.models.ml import CakePricePrediction
         pred_result = await self.db.execute(
             select(CakePricePrediction).where(
@@ -163,13 +162,48 @@ class CustomCakeService:
 
         await self.db.flush()
 
-        logger.info("Custom cake %s approved at $%s", cake_id, final_price)
+        # Generate Stripe payment link
+        from app.services.stripe_service import StripeService
+        from app.models.user import User
+
+        customer = await self.db.execute(
+            select(User).where(User.id == cake.customer_id)
+        )
+        customer_user = customer.scalar_one_or_none()
+        customer_email = customer_user.email if customer_user else None
+
+        description = (
+            f'{cake.flavor} cake, {cake.diameter_inches}" {cake.shape}, '
+            f'{cake.layers} layer(s), {cake.decoration_complexity.value} decoration'
+        )
+
+        payment_result = await StripeService.create_payment_link(
+            custom_cake_id=str(cake_id),
+            description=description,
+            amount=final_price,
+            customer_email=customer_email,
+        )
+
+        # Send payment link email to customer
+        if customer_email:
+            from app.workers.email_tasks import send_custom_cake_payment_email
+            send_custom_cake_payment_email.delay({
+                "customer_email": customer_email,
+                "customer_name": customer_user.full_name if customer_user else "Valued Customer",
+                "cake_description": description,
+                "final_price": str(final_price),
+                "payment_url": payment_result["checkout_url"],
+                "custom_cake_id": str(cake_id),
+            })
+
+        logger.info("Custom cake %s approved at $%s — payment link sent", cake_id, final_price)
 
         return {
             "custom_cake_id": str(cake_id),
             "status": cake.status.value,
             "final_price": cake.final_price,
             "predicted_price": cake.predicted_price,
+            "payment_url": payment_result["checkout_url"],
         }
 
     async def admin_reject(
