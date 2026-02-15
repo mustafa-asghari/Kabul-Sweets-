@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import require_admin
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.analytics import (
@@ -31,7 +31,6 @@ async def track_event(
     data: AnalyticsEventCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User | None = None,
 ):
     """
     Record an analytics event.
