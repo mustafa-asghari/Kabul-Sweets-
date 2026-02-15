@@ -13,7 +13,7 @@ export default function Footer() {
             <h3 className="text-xl md:text-2xl font-extrabold tracking-tight text-black leading-snug mb-6">
               Join our newsletter and get 20% off your first purchase with us.
             </h3>
-            <form className="flex gap-2" onSubmit={(e) => e.preventDefault()}>
+            <form action="#" className="flex gap-2">
               <input
                 type="email"
                 placeholder="Your Email Address"
