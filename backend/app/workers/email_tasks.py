@@ -6,6 +6,7 @@ Handles order confirmations, receipts, and notifications via SMTP.
 import logging
 import os
 import smtplib
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -23,19 +24,41 @@ SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Kabul Sweets")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 
-def _send_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Send an email via SMTP. Returns True on success."""
+def _send_email(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachments: list[tuple[str, bytes]] | None = None,
+) -> bool:
+    """Send an email via SMTP. Returns True on success.
+
+    Args:
+        attachments: Optional list of (filename, file_bytes) tuples.
+    """
     if not SMTP_USER or not SMTP_PASSWORD:
         logger.warning("SMTP not configured — email to %s skipped (subject: %s)", to_email, subject)
         logger.info("Email content preview:\n%s", html_body[:500])
+        if attachments:
+            logger.info("Would attach %d file(s): %s", len(attachments), [a[0] for a in attachments])
         return False
 
     try:
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed")
         msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
         msg["To"] = to_email
         msg["Subject"] = subject
-        msg.attach(MIMEText(html_body, "html"))
+
+        # HTML body
+        html_part = MIMEMultipart("alternative")
+        html_part.attach(MIMEText(html_body, "html"))
+        msg.attach(html_part)
+
+        # Attachments
+        if attachments:
+            for filename, file_bytes in attachments:
+                part = MIMEApplication(file_bytes, Name=filename)
+                part["Content-Disposition"] = f'attachment; filename="{filename}"'
+                msg.attach(part)
 
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
@@ -146,10 +169,24 @@ def send_payment_receipt(self, order_data: dict):
         </div>
         """
 
+        # Generate PDF receipt
+        pdf_bytes = None
+        try:
+            from app.services.receipt_service import generate_receipt_pdf
+            pdf_bytes = generate_receipt_pdf(order_data)
+        except Exception as pdf_err:
+            logger.warning("PDF receipt generation failed (sending HTML only): %s", str(pdf_err))
+
+        attachments = []
+        if pdf_bytes:
+            filename = f"Receipt_{order_data.get('order_number', 'order')}.pdf"
+            attachments.append((filename, pdf_bytes))
+
         _send_email(
             to_email=order_data.get("customer_email", ""),
             subject=f"Receipt — {order_data.get('order_number', '')} | Kabul Sweets",
             html_body=html,
+            attachments=attachments if attachments else None,
         )
     except Exception as exc:
         logger.error("Payment receipt email failed: %s", str(exc))
