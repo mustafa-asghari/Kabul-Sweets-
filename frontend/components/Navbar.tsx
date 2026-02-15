@@ -1,57 +1,16 @@
 "use client";
 
 import { AnimatePresence, motion, useScroll, useMotionValueEvent } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { collections, productCategories, storeProducts } from "@/data/storefront";
+import { collections, productCategories } from "@/data/storefront";
 import { getCartCount, readCart } from "@/lib/cart";
 
 const navLinks = [
   { href: "/shop", label: "Shop" },
   { href: "/collections", label: "Collections" },
   { href: "/support", label: "Support" },
-];
-
-interface SpotlightItem {
-  id: string;
-  title: string;
-  subtitle: string;
-  href: string;
-  keywords: string;
-}
-
-const spotlightCatalog: SpotlightItem[] = [
-  {
-    id: "all-products",
-    title: "All Products",
-    subtitle: "Browse the full product catalog",
-    href: "/shop",
-    keywords: "all products catalog shop",
-  },
-  ...productCategories
-    .filter((category) => category !== "All")
-    .map((category) => ({
-      id: `category-${category.toLowerCase()}`,
-      title: category,
-      subtitle: "Category",
-      href: `/shop?category=${encodeURIComponent(category)}`,
-      keywords: `${category} category`,
-    })),
-  ...collections.map((collection) => ({
-    id: `collection-${collection.title.toLowerCase()}`,
-    title: collection.title,
-    subtitle: "Collection",
-    href: `/shop?category=${encodeURIComponent(collection.title)}`,
-    keywords: `${collection.title} collection`,
-  })),
-  ...storeProducts.map((product) => ({
-    id: `product-${product.slug}`,
-    title: product.title,
-    subtitle: product.category,
-    href: `/products/${product.slug}`,
-    keywords: `${product.title} ${product.category} ${product.shortDescription}`,
-  })),
 ];
 
 export default function Navbar() {
@@ -118,38 +77,6 @@ export default function Navbar() {
     };
   }, [searchOpen]);
 
-  const spotlightItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    if (!query) {
-      return spotlightCatalog
-        .filter((item) => !item.id.startsWith("product-"))
-        .slice(0, 8);
-    }
-
-    const combined = [
-      {
-        id: `query-${query}`,
-        title: `Search “${searchQuery.trim()}”`,
-        subtitle: "Find matching products and descriptions",
-        href: `/shop?q=${encodeURIComponent(searchQuery.trim())}`,
-        keywords: query,
-      },
-      ...spotlightCatalog.filter((item) => item.keywords.toLowerCase().includes(query)),
-    ];
-
-    const seen = new Set<string>();
-    return combined
-      .filter((item) => {
-        if (seen.has(item.id)) {
-          return false;
-        }
-        seen.add(item.id);
-        return true;
-      })
-      .slice(0, 10);
-  }, [searchQuery]);
-
   const closeSearch = () => {
     setSearchOpen(false);
     setSearchQuery("");
@@ -162,6 +89,40 @@ export default function Navbar() {
   const navigateFromSearch = (href: string) => {
     closeSearch();
     router.push(href);
+  };
+
+  const runSpotlightSearch = () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      navigateFromSearch("/shop");
+      return;
+    }
+
+    const normalizedQuery = query.toLowerCase();
+    if (normalizedQuery.includes("collection")) {
+      navigateFromSearch("/collections");
+      return;
+    }
+
+    const matchedCategory = productCategories
+      .filter((category) => category !== "All")
+      .find((category) => category.toLowerCase() === normalizedQuery);
+
+    if (matchedCategory) {
+      navigateFromSearch(`/shop?category=${encodeURIComponent(matchedCategory)}`);
+      return;
+    }
+
+    const matchedCollection = collections.find(
+      (collection) => collection.title.toLowerCase() === normalizedQuery
+    );
+
+    if (matchedCollection) {
+      navigateFromSearch(`/shop?category=${encodeURIComponent(matchedCollection.title)}`);
+      return;
+    }
+
+    navigateFromSearch(`/shop?q=${encodeURIComponent(query)}`);
   };
 
   return (
@@ -237,55 +198,23 @@ export default function Navbar() {
               exit={{ opacity: 0, y: -20, scale: 0.98 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
               onClick={(event) => event.stopPropagation()}
-              className="mx-auto w-full max-w-[720px] rounded-[1.5rem] border border-white/60 bg-[#f5f2eb]/95 shadow-[0_28px_90px_rgba(0,0,0,0.28)] overflow-hidden"
+              className="mx-auto w-full max-w-[720px] rounded-[1.5rem] border border-white/60 bg-[#f5f2eb]/95 shadow-[0_28px_90px_rgba(0,0,0,0.28)]"
             >
-              <div className="flex items-center gap-3 border-b border-[#e7dcc7] px-4 py-3.5">
+              <div className="px-4 py-3.5">
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && spotlightItems.length > 0) {
+                    if (event.key === "Enter") {
                       event.preventDefault();
-                      navigateFromSearch(spotlightItems[0].href);
+                      runSpotlightSearch();
                     }
                   }}
                   placeholder="Search cakes, sweets, cookies, pastries, collections..."
                   className="w-full bg-transparent text-[15px] text-black placeholder:text-gray-400 focus:outline-none"
                 />
-                <kbd className="hidden sm:inline-flex h-7 items-center rounded-md border border-[#ddd0bb] px-2 text-[11px] font-medium text-gray-500">
-                  Cmd/Ctrl+K
-                </kbd>
-              </div>
-
-              <div className="max-h-[430px] overflow-y-auto p-2">
-                {spotlightItems.length > 0 ? (
-                  spotlightItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => navigateFromSearch(item.href)}
-                      className="w-full rounded-xl px-3 py-3 text-left hover:bg-white/80 transition"
-                    >
-                      <span className="min-w-0 block">
-                        <span className="block text-sm font-semibold text-black truncate">
-                          {item.title}
-                        </span>
-                        <span className="block text-xs text-gray-500 truncate">
-                          {item.subtitle}
-                        </span>
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-xl px-4 py-8 text-center">
-                    <p className="text-sm font-semibold text-black">No matches found</p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Try searching for cakes, sweets, pastries, cookies, or a product name.
-                    </p>
-                  </div>
-                )}
               </div>
             </motion.div>
           </motion.div>
