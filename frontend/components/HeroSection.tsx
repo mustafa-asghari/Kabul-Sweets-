@@ -57,21 +57,8 @@ export default function HeroSection() {
         </svg>
 
         <div className="relative z-10 max-w-lg">
-          <motion.div
-            custom={0}
-            initial="hidden"
-            animate="visible"
-            variants={fadeUp}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 backdrop-blur-sm mb-6 text-xs font-semibold text-gray-700 shadow-sm"
-          >
-            <span className="material-symbols-outlined text-[14px]">
-              storefront
-            </span>
-            Powered by Tradition
-          </motion.div>
-
           <motion.h1
-            custom={1}
+            custom={0}
             initial="hidden"
             animate="visible"
             variants={fadeUp}
@@ -82,7 +69,7 @@ export default function HeroSection() {
           </motion.h1>
 
           <motion.p
-            custom={2}
+            custom={1}
             initial="hidden"
             animate="visible"
             variants={fadeUp}
@@ -93,7 +80,7 @@ export default function HeroSection() {
           </motion.p>
 
           <motion.div
-            custom={3}
+            custom={2}
             initial="hidden"
             animate="visible"
             variants={fadeUp}
