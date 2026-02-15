@@ -47,6 +47,7 @@ export default function CollectionCard({
           alt={imageAlt}
           width={500}
           height={360}
+          sizes="(max-width: 768px) 88vw, (max-width: 1280px) 42vw, 360px"
           className="w-full h-48 md:h-52 object-cover rounded-xl group-hover:scale-[1.02] transition-transform duration-500"
         />
       </div>

@@ -27,6 +27,7 @@ export default function ActionBanner() {
             src={cakeBannerImage}
             alt="Cake collection showcase"
             fill
+            sizes="(max-width: 768px) 100vw, 1200px"
             className="object-cover"
           />
         </motion.div>

@@ -37,6 +37,7 @@ export default function ProductCard({
           alt={imageAlt}
           width={400}
           height={400}
+          sizes="(max-width: 640px) 88vw, (max-width: 1280px) 42vw, 320px"
           className="w-[80%] h-auto object-contain group-hover:scale-105 transition-transform duration-500"
         />
         <Link
