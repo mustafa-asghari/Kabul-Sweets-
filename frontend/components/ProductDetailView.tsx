@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import ScrollReveal from "@/components/ScrollReveal";
+import { addToCart } from "@/lib/cart";
 import {
   formatPrice,
   type StoreProduct,
@@ -38,6 +39,19 @@ export default function ProductDetailView({
   const [activeImage, setActiveImage] = useState(0);
   const [activeColor, setActiveColor] = useState(product.colors[0] ?? "");
   const [activeAccordion, setActiveAccordion] = useState(0);
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  const handleAddToCart = () => {
+    addToCart({
+      slug: product.slug,
+      title: product.title,
+      price: product.price,
+      imageSrc: product.thumbnails[activeImage] ?? product.imageSrc,
+      selectedColor: activeColor,
+    });
+    setAddedToCart(true);
+    window.setTimeout(() => setAddedToCart(false), 1500);
+  };
 
   return (
     <>
@@ -136,12 +150,14 @@ export default function ProductDetailView({
             <div className="mt-8 space-y-3">
               <button
                 type="button"
+                onClick={handleAddToCart}
                 className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
               >
-                Add to Cart
+                {addedToCart ? "Added to Cart" : "Add to Cart"}
               </button>
               <button
                 type="button"
+                onClick={handleAddToCart}
                 className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
               >
                 Buy Now

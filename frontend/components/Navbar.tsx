@@ -1,9 +1,10 @@
 "use client";
 
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { getCartCount, readCart } from "@/lib/cart";
 
 const navLinks = [
   { href: "/shop", label: "Shop" },
@@ -13,12 +14,28 @@ const navLinks = [
 
 export default function Navbar() {
   const [shrink, setShrink] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
   const { scrollY } = useScroll();
   const pathname = usePathname();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     setShrink(latest > 50);
   });
+
+  useEffect(() => {
+    const syncCartCount = () => {
+      setCartCount(getCartCount(readCart()));
+    };
+
+    syncCartCount();
+    window.addEventListener("cart-updated", syncCartCount);
+    window.addEventListener("storage", syncCartCount);
+
+    return () => {
+      window.removeEventListener("cart-updated", syncCartCount);
+      window.removeEventListener("storage", syncCartCount);
+    };
+  }, []);
 
   return (
     <motion.nav
@@ -54,22 +71,24 @@ export default function Navbar() {
         </div>
         <div className="flex items-center gap-4">
           <Link
-            href="/shop"
+            href="/shop#catalog-search"
             className="text-gray-500 hover:text-black transition"
+            aria-label="Search products"
           >
             <span className="material-symbols-outlined text-[22px]">
               search
             </span>
           </Link>
           <Link
-            href="/shop"
+            href="/cart"
             className="relative text-gray-500 hover:text-black transition"
+            aria-label="Open cart"
           >
             <span className="material-symbols-outlined text-[22px]">
               shopping_bag
             </span>
             <span className="absolute -top-1.5 -right-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
-              0
+              {cartCount}
             </span>
           </Link>
         </div>
