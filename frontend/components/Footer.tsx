@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 export default function Footer() {
   return (
@@ -25,7 +26,7 @@ export default function Footer() {
                 type="submit"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-full shadow-sm"
+                className="px-6 py-3 bg-accent text-white text-sm font-semibold rounded-full shadow-sm transition-all hover:shadow-md"
               >
                 Join
               </motion.button>
@@ -39,24 +40,36 @@ export default function Footer() {
               </h4>
               <ul className="space-y-2.5 text-sm text-gray-500">
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Home
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/shop"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Shop
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/collections"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Collections
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/blog"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Blog
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -66,24 +79,36 @@ export default function Footer() {
               </h4>
               <ul className="space-y-2.5 text-sm text-gray-500">
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/terms-and-conditions"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Terms & Conditions
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/terms-and-conditions"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Privacy policy
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/support"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     Support
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-black transition">
+                  <Link
+                    href="/missing-page"
+                    className="inline-flex items-center rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-black/30 hover:text-black"
+                  >
                     404
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>

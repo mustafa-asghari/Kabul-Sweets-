@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -91,21 +92,24 @@ export default function HeroSection() {
             Fresh baked daily and delivered across Queensland.
           </motion.p>
 
-          <motion.a
+          <motion.div
             custom={3}
             initial="hidden"
             animate="visible"
             variants={fadeUp}
-            href="#"
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.95 }}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black text-sm font-semibold rounded-full shadow-md hover:shadow-lg transition-shadow"
           >
-            Shop Products
-            <span className="material-symbols-outlined text-[18px]">
-              north_east
-            </span>
-          </motion.a>
+            <Link
+              href="/shop"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black text-sm font-semibold rounded-full shadow-md hover:shadow-lg transition-shadow"
+            >
+              Shop Products
+              <span className="material-symbols-outlined text-[18px]">
+                north_east
+              </span>
+            </Link>
+          </motion.div>
         </div>
 
         {/* Hero image */}

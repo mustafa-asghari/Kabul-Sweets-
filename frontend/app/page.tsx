@@ -98,7 +98,7 @@ export default function Home() {
               </div>
               <a
                 href="#"
-                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
+                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
               >
                 View All{" "}
                 <span className="material-symbols-outlined text-[16px]">
@@ -131,7 +131,7 @@ export default function Home() {
               </div>
               <a
                 href="#"
-                className="text-sm font-semibold text-black hover:text-accent transition flex items-center gap-1"
+                className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-4 py-2 text-xs font-semibold text-black shadow-sm transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent hover:shadow-md"
               >
                 View All{" "}
                 <span className="material-symbols-outlined text-[16px]">

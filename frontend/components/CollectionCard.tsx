@@ -3,17 +3,20 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { revealChild } from "./ScrollReveal";
+import Link from "next/link";
 
 interface CollectionCardProps {
   title: string;
   imageSrc: string;
   imageAlt: string;
+  href?: string;
 }
 
 export default function CollectionCard({
   title,
   imageSrc,
   imageAlt,
+  href = "/collections",
 }: CollectionCardProps) {
   return (
     <motion.div
@@ -22,6 +25,7 @@ export default function CollectionCard({
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
       className="group relative bg-white rounded-[1.5rem] p-8 min-h-[320px] flex flex-col justify-between overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer"
     >
+      <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
       <h3 className="text-[2.5rem] font-extrabold tracking-tight text-black leading-none z-10">
         {title}
       </h3>
@@ -32,11 +36,15 @@ export default function CollectionCard({
         height={300}
         className="absolute bottom-4 right-4 w-[55%] h-auto object-contain opacity-80 group-hover:scale-105 transition-transform duration-500"
       />
-      <button className="absolute bottom-5 right-5 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-all z-10">
+      <Link
+        href={href}
+        aria-label={`Open ${title}`}
+        className="absolute bottom-5 right-5 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-all z-20"
+      >
         <span className="material-symbols-outlined text-[18px]">
           north_east
         </span>
-      </button>
+      </Link>
     </motion.div>
   );
 }

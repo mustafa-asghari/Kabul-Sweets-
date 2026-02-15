@@ -3,8 +3,10 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { revealChild } from "./ScrollReveal";
+import Link from "next/link";
 
 interface ProductCardProps {
+  slug?: string;
   title: string;
   category: string;
   price: string;
@@ -13,12 +15,15 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({
+  slug,
   title,
   category,
   price,
   imageSrc,
   imageAlt,
 }: ProductCardProps) {
+  const href = slug ? `/products/${slug}` : "/shop";
+
   return (
     <motion.div variants={revealChild} className="group">
       <motion.div
@@ -26,6 +31,7 @@ export default function ProductCard({
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className="relative bg-white rounded-[1.5rem] p-6 aspect-square flex items-center justify-center overflow-hidden hover:shadow-lg transition-shadow duration-300"
       >
+        <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
         <Image
           src={imageSrc}
           alt={imageAlt}
@@ -33,11 +39,15 @@ export default function ProductCard({
           height={400}
           className="w-[80%] h-auto object-contain group-hover:scale-105 transition-transform duration-500"
         />
-        <button className="absolute bottom-5 right-5 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0">
+        <Link
+          href={href}
+          aria-label={`Open ${title}`}
+          className="absolute bottom-5 right-5 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 z-20"
+        >
           <span className="material-symbols-outlined text-[18px]">
             north_east
           </span>
-        </button>
+        </Link>
       </motion.div>
       <div className="mt-4 px-1">
         <h3 className="font-bold text-[15px] text-black">{title}</h3>
