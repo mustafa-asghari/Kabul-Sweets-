@@ -269,9 +269,13 @@ class AIService:
                 return "I couldn't find any matching products. Please try rephrasing your question or browse our menu!", None
 
             answer_parts = ["Based on our menu, here's what I found:\n"]
-            for doc in context:
+            for doc in context[:3]:
                 answer_parts.append(f"**{doc['name']}** (${doc['price']})")
                 answer_parts.append(f"  {doc['content'][:200]}\n")
+            # Add a pairing suggestion from remaining context
+            if len(context) > 3:
+                extra = context[3]
+                answer_parts.append(f"\nMany customers also enjoy **{extra['name']}** (${extra['price']}) as a pairing!")
             return "\n".join(answer_parts), None
 
         try:
