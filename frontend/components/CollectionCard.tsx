@@ -1,0 +1,42 @@
+"use client";
+
+import { motion } from "framer-motion";
+import Image from "next/image";
+import { revealChild } from "./ScrollReveal";
+
+interface CollectionCardProps {
+  title: string;
+  imageSrc: string;
+  imageAlt: string;
+}
+
+export default function CollectionCard({
+  title,
+  imageSrc,
+  imageAlt,
+}: CollectionCardProps) {
+  return (
+    <motion.div
+      variants={revealChild}
+      whileHover={{ y: -4 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="group relative bg-white rounded-[1.5rem] p-8 min-h-[320px] flex flex-col justify-between overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer"
+    >
+      <h3 className="text-[2.5rem] font-extrabold tracking-tight text-black leading-none z-10">
+        {title}
+      </h3>
+      <Image
+        src={imageSrc}
+        alt={imageAlt}
+        width={300}
+        height={300}
+        className="absolute bottom-4 right-4 w-[55%] h-auto object-contain opacity-80 group-hover:scale-105 transition-transform duration-500"
+      />
+      <button className="absolute bottom-5 right-5 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-all z-10">
+        <span className="material-symbols-outlined text-[18px]">
+          north_east
+        </span>
+      </button>
+    </motion.div>
+  );
+}
