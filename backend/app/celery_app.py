@@ -68,4 +68,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.analytics_tasks.check_low_stock_alerts",
         "schedule": 3600.0,  # Every hour
     },
+    "abandoned-cart-recovery": {
+        "task": "app.workers.cart_tasks.process_abandoned_carts",
+        "schedule": 3600.0,  # Every hour
+    },
+    "weekly-trend-detection": {
+        "task": "app.workers.trend_tasks.detect_trends",
+        "schedule": 86400.0,  # Every 24 hours (analyzes weekly data)
+    },
 }
