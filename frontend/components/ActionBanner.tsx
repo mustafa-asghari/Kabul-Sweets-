@@ -32,7 +32,7 @@ export default function ActionBanner() {
         </motion.div>
         <div className="absolute inset-0 bg-black/50" />
         <h2 className="relative z-10 text-white text-2xl md:text-4xl font-extrabold tracking-tight text-center leading-snug max-w-xl px-4">
-          Showcase your cake collection and highlight your signature flavors.
+          Cake Collection
         </h2>
       </div>
     </section>
