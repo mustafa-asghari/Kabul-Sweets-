@@ -379,8 +379,7 @@ Backend: generate receipt PDFs (HTML→PDF) and store links in order record.
 Basic A/B testing for product pages — increase conversions.
 Backend: flag assignment logic, event tracking, store variant results in analytics_events.
 
-Promotions & coupon engine — drives sales & offers control.
-Backend: coupon table, validation logic, stacking rules, usage limits.
+
 
 Customer experience & product discovery
 
@@ -414,16 +413,6 @@ Phase: 6 (Background Workers) immediately after Phase 5 (Payments).
 
 Notes: Include GST/tax breakdown fields in orders. Sign PDFs or timestamp for audit. Retain according to legal retention rules.
 
-
-4) Promotions & coupon engine
-
-What: Coupons, promo codes, percentage/amount off, usage limits and expiry.
-
-Backend: coupons table (type, amount, constraints), coupon_redemptions log, validation service at checkout, admin CRUD endpoints. Apply coupon in price calculation and persist on order.
-
-Phase: Phase 3–5 (Products → Orders → Payments) — implement before Payments so coupons can affect Stripe amounts.
-
-Notes: Prevent stacking abuses; validate usage atomically (use DB transaction / optimistic lock). Store coupon audit log.
 
 
 Personalized recommendations
