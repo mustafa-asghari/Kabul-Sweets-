@@ -18,7 +18,6 @@ interface SpotlightItem {
   title: string;
   subtitle: string;
   href: string;
-  icon: string;
   keywords: string;
 }
 
@@ -28,7 +27,6 @@ const spotlightCatalog: SpotlightItem[] = [
     title: "All Products",
     subtitle: "Browse the full product catalog",
     href: "/shop",
-    icon: "storefront",
     keywords: "all products catalog shop",
   },
   ...productCategories
@@ -38,7 +36,6 @@ const spotlightCatalog: SpotlightItem[] = [
       title: category,
       subtitle: "Category",
       href: `/shop?category=${encodeURIComponent(category)}`,
-      icon: "category",
       keywords: `${category} category`,
     })),
   ...collections.map((collection) => ({
@@ -46,7 +43,6 @@ const spotlightCatalog: SpotlightItem[] = [
     title: collection.title,
     subtitle: "Collection",
     href: `/shop?category=${encodeURIComponent(collection.title)}`,
-    icon: "layers",
     keywords: `${collection.title} collection`,
   })),
   ...storeProducts.map((product) => ({
@@ -54,7 +50,6 @@ const spotlightCatalog: SpotlightItem[] = [
     title: product.title,
     subtitle: product.category,
     href: `/products/${product.slug}`,
-    icon: "bakery_dining",
     keywords: `${product.title} ${product.category} ${product.shortDescription}`,
   })),
 ];
@@ -138,7 +133,6 @@ export default function Navbar() {
         title: `Search “${searchQuery.trim()}”`,
         subtitle: "Find matching products and descriptions",
         href: `/shop?q=${encodeURIComponent(searchQuery.trim())}`,
-        icon: "search",
         keywords: query,
       },
       ...spotlightCatalog.filter((item) => item.keywords.toLowerCase().includes(query)),
@@ -246,9 +240,6 @@ export default function Navbar() {
               className="mx-auto w-full max-w-[720px] rounded-[1.5rem] border border-white/60 bg-[#f5f2eb]/95 shadow-[0_28px_90px_rgba(0,0,0,0.28)] overflow-hidden"
             >
               <div className="flex items-center gap-3 border-b border-[#e7dcc7] px-4 py-3.5">
-                <span className="material-symbols-outlined text-[20px] text-gray-400">
-                  search
-                </span>
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -275,23 +266,15 @@ export default function Navbar() {
                       key={item.id}
                       type="button"
                       onClick={() => navigateFromSearch(item.href)}
-                      className="w-full rounded-xl px-3 py-3 text-left hover:bg-white/80 transition flex items-start gap-3"
+                      className="w-full rounded-xl px-3 py-3 text-left hover:bg-white/80 transition"
                     >
-                      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-gray-600">
-                        <span className="material-symbols-outlined text-[18px]">
-                          {item.icon}
-                        </span>
-                      </span>
-                      <span className="min-w-0 flex-1">
+                      <span className="min-w-0 block">
                         <span className="block text-sm font-semibold text-black truncate">
                           {item.title}
                         </span>
                         <span className="block text-xs text-gray-500 truncate">
                           {item.subtitle}
                         </span>
-                      </span>
-                      <span className="material-symbols-outlined text-[16px] text-gray-400">
-                        arrow_outward
                       </span>
                     </button>
                   ))
