@@ -133,13 +133,13 @@ export default function ProductDetailView({
             <div className="mt-8 space-y-3">
               <button
                 type="button"
-                className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
+                className="w-full rounded-md bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
               >
                 Add to Cart
               </button>
               <button
                 type="button"
-                className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
+                className="w-full rounded-md bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
               >
                 Buy Now
               </button>

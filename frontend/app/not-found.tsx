@@ -20,7 +20,7 @@ export default function NotFound() {
               </p>
               <Link
                 href="/"
-                className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-black shadow-sm hover:shadow-md transition"
+                className="mt-8 inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-semibold text-black shadow-sm hover:shadow-md transition"
               >
                 Go Home
                 <span className="material-symbols-outlined text-[18px]">north_east</span>
