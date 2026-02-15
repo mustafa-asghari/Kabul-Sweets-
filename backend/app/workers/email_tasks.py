@@ -1,0 +1,197 @@
+"""
+Email background tasks.
+Handles order confirmations, receipts, and notifications via SMTP.
+"""
+
+import logging
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from app.celery_app import celery_app
+
+logger = logging.getLogger("app.workers.email")
+
+# SMTP config from environment
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@kabulsweets.com.au")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Kabul Sweets")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+
+def _send_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Send an email via SMTP. Returns True on success."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        logger.warning("SMTP not configured — email to %s skipped (subject: %s)", to_email, subject)
+        logger.info("Email content preview:\n%s", html_body[:500])
+        return False
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        logger.info("✅ Email sent to %s: %s", to_email, subject)
+        return True
+    except Exception as e:
+        logger.error("❌ Email send failed to %s: %s", to_email, str(e))
+        raise
+
+
+# ── Celery Tasks ─────────────────────────────────────────────────────────────
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name="app.workers.email_tasks.send_order_confirmation",
+)
+def send_order_confirmation(self, order_data: dict):
+    """Send order confirmation email to customer."""
+    try:
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">🧁 Kabul Sweets</h1>
+                <p style="color: #666; margin-top: 5px;">Order Confirmation</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Thank you, {order_data.get('customer_name', 'Valued Customer')}!</h2>
+                <p style="color: #444;">Your order <strong>{order_data.get('order_number', '')}</strong> has been received.</p>
+
+                <div style="border-top: 1px solid #eee; margin: 20px 0; padding-top: 15px;">
+                    <p style="margin: 5px 0;"><strong>Total:</strong> ${order_data.get('total', '0.00')} AUD</p>
+                    <p style="margin: 5px 0;"><strong>Pickup:</strong> {order_data.get('pickup_date', 'TBD')}</p>
+                    {f'<p style="margin: 5px 0;"><strong>Cake Message:</strong> "{order_data.get("cake_message")}"</p>' if order_data.get('cake_message') else ''}
+                </div>
+
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="{FRONTEND_URL}/orders/{order_data.get('order_id', '')}"
+                       style="background: #7C3AED; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
+                        View Order
+                    </a>
+                </div>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                Kabul Sweets — Authentic Afghan Bakery
+            </p>
+        </div>
+        """
+
+        _send_email(
+            to_email=order_data.get("customer_email", ""),
+            subject=f"Order Confirmed — {order_data.get('order_number', '')} | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Order confirmation email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name="app.workers.email_tasks.send_payment_receipt",
+)
+def send_payment_receipt(self, order_data: dict):
+    """Send payment receipt email after successful payment."""
+    try:
+        items_html = ""
+        for item in order_data.get("items", []):
+            name = item.get("product_name", "")
+            variant = f" ({item.get('variant_name')})" if item.get("variant_name") else ""
+            qty = item.get("quantity", 1)
+            total = item.get("line_total", "0.00")
+            items_html += f'<tr><td style="padding: 8px; border-bottom: 1px solid #eee;">{name}{variant}</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">{qty}</td><td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${total}</td></tr>'
+
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">🧁 Kabul Sweets</h1>
+                <p style="color: #27ae60; font-weight: 600; margin-top: 5px;">✅ Payment Received</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <p style="color: #444;">Order <strong>{order_data.get('order_number', '')}</strong></p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <thead>
+                        <tr style="background: #f8f8f8;">
+                            <th style="padding: 10px 8px; text-align: left;">Item</th>
+                            <th style="padding: 10px 8px; text-align: center;">Qty</th>
+                            <th style="padding: 10px 8px; text-align: right;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>{items_html}</tbody>
+                </table>
+                <div style="border-top: 2px solid #1a1a2e; padding-top: 12px; margin-top: 10px;">
+                    <p style="margin: 4px 0;"><strong>Subtotal:</strong> ${order_data.get('subtotal', '0.00')}</p>
+                    <p style="margin: 4px 0;"><strong>GST (10%):</strong> ${order_data.get('tax_amount', '0.00')}</p>
+                    <p style="margin: 4px 0; font-size: 18px;"><strong>Total Paid:</strong> ${order_data.get('total', '0.00')} AUD</p>
+                </div>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                This is your official receipt. Keep for your records.
+            </p>
+        </div>
+        """
+
+        _send_email(
+            to_email=order_data.get("customer_email", ""),
+            subject=f"Receipt — {order_data.get('order_number', '')} | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Payment receipt email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name="app.workers.email_tasks.send_order_ready_notification",
+)
+def send_order_ready_notification(self, order_data: dict):
+    """Notify customer their order is ready for pickup."""
+    try:
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">🧁 Kabul Sweets</h1>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center;">
+                <h2 style="color: #27ae60; margin-top: 0;">🎉 Your Order is Ready!</h2>
+                <p style="color: #444; font-size: 16px;">
+                    Hi {order_data.get('customer_name', '')}, your order
+                    <strong>{order_data.get('order_number', '')}</strong> is ready for pickup!
+                </p>
+                <p style="color: #666;">Please bring your order number when collecting.</p>
+                <div style="margin-top: 25px;">
+                    <a href="{FRONTEND_URL}/orders/{order_data.get('order_id', '')}"
+                       style="background: #27ae60; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
+                        View Order Details
+                    </a>
+                </div>
+            </div>
+        </div>
+        """
+
+        _send_email(
+            to_email=order_data.get("customer_email", ""),
+            subject=f"Your Order is Ready! — {order_data.get('order_number', '')} | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Order ready notification failed: %s", str(exc))
+        self.retry(exc=exc)
