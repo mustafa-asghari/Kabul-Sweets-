@@ -37,6 +37,8 @@ celery_app.conf.update(
         "app.workers.email_tasks.*": {"queue": "email"},
         "app.workers.sms_tasks.*": {"queue": "sms"},
         "app.workers.analytics_tasks.*": {"queue": "analytics"},
+        "app.workers.cart_tasks.*": {"queue": "default"},
+        "app.workers.trend_tasks.*": {"queue": "analytics"},
     },
 
     # Worker settings
@@ -51,6 +53,8 @@ celery_app.conf.update(
         "app.workers.email_tasks",
         "app.workers.sms_tasks",
         "app.workers.analytics_tasks",
+        "app.workers.cart_tasks",
+        "app.workers.trend_tasks",
     ],
 )
 
