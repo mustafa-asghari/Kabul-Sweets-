@@ -18,7 +18,7 @@ export default function HeroSection() {
       <div className="relative rounded-[2rem] overflow-hidden min-h-[520px] md:min-h-[560px] bg-cream-dark">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_20%,#fff3cc_0%,#f0d8a2_30%,#e1be75_54%,rgba(245,235,218,0.86)_72%,rgba(245,235,218,0)_100%)]" />
 
-        <div className="relative z-10 min-h-[520px] md:min-h-[560px] flex items-center justify-end px-8 md:px-16 py-12 md:py-16">
+        <div className="relative z-10 min-h-[520px] md:min-h-[560px] flex items-center justify-start px-8 md:px-16 py-12 md:py-16">
           <div className="max-w-xl w-full">
             <motion.h1
               custom={0}
