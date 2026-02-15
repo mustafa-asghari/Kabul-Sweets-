@@ -131,7 +131,7 @@ export default function Home() {
           </ScrollReveal>
         </section>
 
-        <ActionBanner />
+        <ActionBanner zoomOut />
 
         <TestimonialSection />
       </main>
