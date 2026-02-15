@@ -4,6 +4,9 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import Image from "next/image";
 
+const cakeBannerImage =
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuDq89SDCLSN76kunOlhOstWiLYy_EeKgfBrsy6JZz0jpshRTC5CihmDbiihKD5znmF1qTa8n9HUjyYRQUtb3CC56I5AgfAWbENpaxpv1KCiW_H8R9o4YhRNGErDGMrNhP8iYQ0iawo7QghrlZvf8kpWnMlHIu-Gzgre5OAYuR3DZYP_N8DnY6bkbpZd3TKkzKZx6XhoL2hWzO0FWacx2PSfE-Uw_6QfzhhRXSpffNHqrVnQSyIPwq6ha430fe3jmJL4Xv45KFNk83g";
+
 export default function ActionBanner() {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({
@@ -21,15 +24,15 @@ export default function ActionBanner() {
       >
         <motion.div className="absolute inset-0" style={{ y: imageY }}>
           <Image
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3sPImiQPkuGjSGPZxYDuO9EIzchNoS_7P5PauNwuH4Wut-wzcnw6otL03T9xZTHMQjA13sjflbr02ARE_AML8jjg7lUPCazioX6R_gIQVxJtdFPeF3sIBg57ykE18cyIkOgkcPxmi2cT84L9iH51pypSvQZGY8m86Pn8uDQH87e5UBYRw5G-jeS8LafPOFTkQkZmywcfXhubvZiE9fy74dZNCTS2E_DZHR1uGTcKxTwCLh2lbXm4-tY4JokMke7JPVooBg_SSPd0"
-            alt="Bakery in action"
+            src={cakeBannerImage}
+            alt="Cake collection showcase"
             fill
             className="object-cover"
           />
         </motion.div>
         <div className="absolute inset-0 bg-black/50" />
         <h2 className="relative z-10 text-white text-2xl md:text-4xl font-extrabold tracking-tight text-center leading-snug max-w-xl px-4">
-          Showcase your products in action and outline their benefits.
+          Showcase your cake collection and highlight your signature flavors.
         </h2>
       </div>
     </section>

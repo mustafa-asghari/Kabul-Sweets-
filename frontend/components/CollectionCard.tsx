@@ -7,6 +7,7 @@ import Link from "next/link";
 
 interface CollectionCardProps {
   title: string;
+  description?: string;
   imageSrc: string;
   imageAlt: string;
   href?: string;
@@ -14,6 +15,7 @@ interface CollectionCardProps {
 
 export default function CollectionCard({
   title,
+  description,
   imageSrc,
   imageAlt,
   href = "/collections",
@@ -23,28 +25,31 @@ export default function CollectionCard({
       variants={revealChild}
       whileHover={{ y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="group relative bg-white rounded-[1.5rem] p-8 min-h-[320px] flex flex-col justify-between overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer"
+      className="group relative bg-white rounded-[1.5rem] p-6 md:p-7 min-h-[320px] flex flex-col overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer"
     >
       <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
-      <h3 className="text-[2.5rem] font-extrabold tracking-tight text-black leading-none z-10">
-        {title}
-      </h3>
-      <Image
-        src={imageSrc}
-        alt={imageAlt}
-        width={300}
-        height={300}
-        className="absolute bottom-4 right-4 w-[55%] h-auto object-contain opacity-80 group-hover:scale-105 transition-transform duration-500"
-      />
-      <Link
-        href={href}
-        aria-label={`Open ${title}`}
-        className="absolute bottom-5 right-5 z-20 flex h-10 w-10 items-center justify-center text-gray-600 transition-all hover:text-black"
-      >
-        <span className="material-symbols-outlined text-[18px]">
+      <div className="relative z-20 flex items-start justify-between gap-4 mb-4">
+        <div>
+          <h3 className="text-3xl md:text-4xl font-extrabold tracking-tight text-black leading-none">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-2 text-sm text-gray-600">{description}</p>
+          ) : null}
+        </div>
+        <span className="material-symbols-outlined text-[18px] text-gray-600 transition-all group-hover:text-black group-hover:-translate-y-0.5">
           north_east
         </span>
-      </Link>
+      </div>
+      <div className="relative mt-auto rounded-2xl bg-cream-dark/70 p-3">
+        <Image
+          src={imageSrc}
+          alt={imageAlt}
+          width={500}
+          height={360}
+          className="w-full h-48 md:h-52 object-cover rounded-xl group-hover:scale-[1.02] transition-transform duration-500"
+        />
+      </div>
     </motion.div>
   );
 }

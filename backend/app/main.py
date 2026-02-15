@@ -26,6 +26,42 @@ async def lifespan(app: FastAPI):
     logger.info("🧁 Starting %s (env=%s)", settings.APP_NAME, settings.APP_ENV)
     logger.info("API prefix: %s", settings.API_PREFIX)
 
+    # Auto-create tables and seed if database is empty
+    try:
+        from app.core.database import engine, Base, async_session_factory
+        from sqlalchemy import text
+
+        # Import ALL models so Base.metadata knows about them
+        from app.models.user import User  # noqa: F401
+        from app.models.audit_log import AuditLog  # noqa: F401
+        from app.models.product import Product, ProductVariant, StockAdjustment  # noqa: F401
+        from app.models.order import Order, OrderItem, Payment  # noqa: F401
+        from app.models.analytics import AnalyticsEvent, DailyRevenue  # noqa: F401
+        from app.services.ai_service import ProductEmbedding, AIQueryLog  # noqa: F401
+        from app.models.business import ScheduleCapacity, CakeDeposit  # noqa: F401
+        from app.models.ml import (  # noqa: F401
+            CakePricePrediction, ServingEstimate, CustomCake, ProcessedImage, MLModelVersion,
+        )
+
+        # Create tables if they don't exist
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ Database tables verified")
+
+        # Check if database needs seeding (no users = empty DB)
+        async with async_session_factory() as session:
+            result = await session.execute(text("SELECT COUNT(*) FROM users"))
+            user_count = result.scalar()
+            if user_count == 0:
+                logger.info("🌱 Empty database detected — auto-seeding...")
+                from app.seed import seed_database
+                await seed_database()
+            else:
+                logger.info("📦 Database has %d users — skipping seed", user_count)
+    except Exception as e:
+        logger.error("Database setup error: %s", str(e))
+        logger.info("💡 Make sure PostgreSQL is running: docker compose up -d")
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────
