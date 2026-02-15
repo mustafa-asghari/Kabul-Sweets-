@@ -18,35 +18,37 @@ function normalizeCart(value: unknown): CartItem[] {
     return [];
   }
 
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
+  const normalized: CartItem[] = [];
 
-      const typedItem = item as Partial<CartItem>;
-      if (
-        !typedItem.slug ||
-        !typedItem.title ||
-        typeof typedItem.price !== "number" ||
-        !typedItem.imageSrc
-      ) {
-        return null;
-      }
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
 
-      return {
-        slug: typedItem.slug,
-        title: typedItem.title,
-        price: typedItem.price,
-        imageSrc: typedItem.imageSrc,
-        quantity:
-          typeof typedItem.quantity === "number" && typedItem.quantity > 0
-            ? Math.floor(typedItem.quantity)
-            : 1,
-        selectedColor: typedItem.selectedColor,
-      } satisfies CartItem;
-    })
-    .filter((item): item is CartItem => item !== null);
+    const typedItem = item as Partial<CartItem>;
+    if (
+      !typedItem.slug ||
+      !typedItem.title ||
+      typeof typedItem.price !== "number" ||
+      !typedItem.imageSrc
+    ) {
+      return;
+    }
+
+    normalized.push({
+      slug: typedItem.slug,
+      title: typedItem.title,
+      price: typedItem.price,
+      imageSrc: typedItem.imageSrc,
+      quantity:
+        typeof typedItem.quantity === "number" && typedItem.quantity > 0
+          ? Math.floor(typedItem.quantity)
+          : 1,
+      selectedColor: typedItem.selectedColor,
+    });
+  });
+
+  return normalized;
 }
 
 function emitCartUpdated() {

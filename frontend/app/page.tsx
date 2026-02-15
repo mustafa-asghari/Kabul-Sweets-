@@ -6,11 +6,13 @@ import TestimonialSection from "@/components/TestimonialSection";
 import CollectionCard from "@/components/CollectionCard";
 import ActionBanner from "@/components/ActionBanner";
 import FeatureCard from "@/components/FeatureCard";
+import HomeSpotlightSearch from "@/components/HomeSpotlightSearch";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
 import {
   collections,
   formatPrice,
+  productCategories,
   storeProducts,
   supportBenefits,
 } from "@/data/storefront";
@@ -18,6 +20,12 @@ import {
 const featuredProducts = storeProducts.slice(0, 3);
 const featuredCollections = collections;
 const homeFeatures = supportBenefits.slice(0, 3);
+const spotlightCategories = productCategories.filter((category) => category !== "All");
+const spotlightCollections = collections.map((collection) => collection.title);
+const spotlightProducts = storeProducts.map((product) => ({
+  slug: product.slug,
+  title: product.title,
+}));
 
 export default function Home() {
   return (
@@ -25,6 +33,11 @@ export default function Home() {
       <Navbar />
       <main className="flex-1">
         <HeroSection />
+        <HomeSpotlightSearch
+          categories={spotlightCategories}
+          collections={spotlightCollections}
+          products={spotlightProducts}
+        />
 
         <section className="max-w-[1200px] mx-auto px-6 pb-20">
           <ScrollReveal>

@@ -71,7 +71,7 @@ export default function Navbar() {
         </div>
         <div className="flex items-center gap-4">
           <Link
-            href="/shop#catalog-search"
+            href="/#spotlight-search"
             className="text-gray-500 hover:text-black transition"
             aria-label="Search products"
           >
