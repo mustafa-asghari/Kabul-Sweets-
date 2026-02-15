@@ -21,6 +21,7 @@ from app.schemas.analytics import (
     RevenueSummary,
 )
 from app.services.analytics_service import AnalyticsService
+from app.services.trend_service import TrendService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -160,3 +161,25 @@ async def get_inventory_turnover(
     """[Admin] Get inventory turnover rates and days-of-stock-remaining."""
     service = AnalyticsService(db)
     return await service.get_inventory_turnover(days=days)
+
+
+# ── Trend Detection ─────────────────────────────────────────────────────────
+@router.get("/trends/products")
+async def get_product_trends(
+    days: int = Query(7, ge=1, le=90),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get product sales trends (week-over-week comparison)."""
+    service = TrendService(db)
+    return await service.detect_product_trends(days=days)
+
+
+@router.get("/trends/revenue")
+async def get_revenue_trends(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get revenue trends (this week vs. last week)."""
+    service = TrendService(db)
+    return await service.detect_revenue_trends()
