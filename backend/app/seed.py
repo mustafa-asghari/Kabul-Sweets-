@@ -1,6 +1,6 @@
 """
 Database seed script.
-Creates tables, admin user, and sample products.
+Creates tables, admin user, demo customer, sample products, and test data.
 Run with: python -m app.seed
 """
 
@@ -16,6 +16,12 @@ from app.models.user import User, UserRole
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.product import Product, ProductCategory, ProductVariant, StockAdjustment  # noqa: F401
 from app.models.order import Order, OrderItem, Payment  # noqa: F401
+from app.models.analytics import AnalyticsEvent, DailyRevenue  # noqa: F401
+from app.services.ai_service import ProductEmbedding, AIQueryLog  # noqa: F401
+from app.models.business import ScheduleCapacity, CakeDeposit  # noqa: F401
+from app.models.ml import (  # noqa: F401
+    CakePricePrediction, ServingEstimate, CustomCake, ProcessedImage, MLModelVersion,
+)
 
 
 SAMPLE_PRODUCTS = [
@@ -66,6 +72,22 @@ SAMPLE_PRODUCTS = [
         ],
     },
     {
+        "name": "Saffron Milk Cake",
+        "slug": "saffron-milk-cake",
+        "description": "Luxurious tres leches-style cake infused with saffron and cardamom. Garnished with edible rose petals and gold leaf.",
+        "short_description": "Saffron-infused milk cake with rose petals",
+        "category": ProductCategory.CAKE,
+        "base_price": Decimal("65.00"),
+        "is_cake": True,
+        "is_featured": True,
+        "tags": ["premium", "saffron", "luxury", "wedding"],
+        "variants": [
+            {"name": "6 inch (serves 6-8)", "price": Decimal("65.00"), "stock_quantity": 6, "serves": 8},
+            {"name": "8 inch (serves 10-14)", "price": Decimal("90.00"), "stock_quantity": 4, "serves": 14},
+            {"name": "10 inch (serves 16-20)", "price": Decimal("120.00"), "stock_quantity": 3, "serves": 20},
+        ],
+    },
+    {
         "name": "Gosh-e-Fil (Elephant Ears)",
         "slug": "gosh-e-fil",
         "description": "Crispy fried pastry dusted with powdered sugar and ground cardamom. A beloved Afghan treat for celebrations.",
@@ -92,6 +114,22 @@ SAMPLE_PRODUCTS = [
             {"name": "250g Box", "price": Decimal("15.00"), "stock_quantity": 30},
             {"name": "500g Box", "price": Decimal("28.00"), "stock_quantity": 20},
             {"name": "1kg Gift Box", "price": Decimal("50.00"), "stock_quantity": 10},
+        ],
+    },
+    {
+        "name": "Baklava Assortment",
+        "slug": "baklava-assortment",
+        "description": "Hand-layered phyllo pastry filled with walnuts and pistachios, soaked in saffron-infused honey syrup. Afghan-style baklava at its finest.",
+        "short_description": "Afghan-style baklava with saffron honey",
+        "category": ProductCategory.SWEET,
+        "base_price": Decimal("25.00"),
+        "is_featured": True,
+        "tags": ["premium", "baklava", "pistachio", "gift"],
+        "variants": [
+            {"name": "Small Box (6 pcs)", "price": Decimal("15.00"), "stock_quantity": 20},
+            {"name": "Medium Box (12 pcs)", "price": Decimal("25.00"), "stock_quantity": 15},
+            {"name": "Large Box (24 pcs)", "price": Decimal("45.00"), "stock_quantity": 10},
+            {"name": "Premium Gift Box (36 pcs)", "price": Decimal("65.00"), "stock_quantity": 5},
         ],
     },
     {
@@ -123,6 +161,19 @@ SAMPLE_PRODUCTS = [
         ],
     },
     {
+        "name": "Kulcha-e-Berenji",
+        "slug": "kulcha-berenji",
+        "description": "Rice flour cookies flavored with cardamom and rosewater. Melt-in-your-mouth Afghan cookies, perfect with chai.",
+        "short_description": "Rice flour cookies with cardamom and rosewater",
+        "category": ProductCategory.COOKIE,
+        "base_price": Decimal("16.00"),
+        "tags": ["gluten-free", "traditional", "rosewater"],
+        "variants": [
+            {"name": "Small Box (12 pcs)", "price": Decimal("16.00"), "stock_quantity": 25},
+            {"name": "Large Box (24 pcs)", "price": Decimal("28.00"), "stock_quantity": 15},
+        ],
+    },
+    {
         "name": "Chai Masala Tea",
         "slug": "chai-masala",
         "description": "Authentic Afghan chai spice blend — cardamom, cinnamon, cloves, and black tea. Just add milk and sugar.",
@@ -135,6 +186,19 @@ SAMPLE_PRODUCTS = [
             {"name": "250g Tin", "price": Decimal("25.00"), "stock_quantity": 30},
         ],
     },
+    {
+        "name": "Firni (Milk Pudding)",
+        "slug": "firni-milk-pudding",
+        "description": "Traditional Afghan milk pudding made with cornstarch, rosewater, and cardamom. Topped with crushed pistachios. Served chilled in beautiful clay bowls.",
+        "short_description": "Afghan milk pudding with rosewater",
+        "category": ProductCategory.SWEET,
+        "base_price": Decimal("10.00"),
+        "tags": ["traditional", "dessert", "rosewater"],
+        "variants": [
+            {"name": "Single Serve", "price": Decimal("10.00"), "stock_quantity": 20},
+            {"name": "Family Size (4 serves)", "price": Decimal("35.00"), "stock_quantity": 10},
+        ],
+    },
 ]
 
 
@@ -145,7 +209,7 @@ async def seed_database():
 
     logger.info("🌱 Starting database seed...")
 
-    # Create tables
+    # Create ALL tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✅ Database tables created/verified")
@@ -153,7 +217,7 @@ async def seed_database():
     async with async_session_factory() as session:
         # ── Admin User ───────────────────────────────────────────────────
         result = await session.execute(
-            select(User).where(User.role == UserRole.ADMIN)
+            select(User).where(User.email == "admin@kabulsweets.com.au")
         )
         if not result.scalar_one_or_none():
             admin = User(
@@ -167,34 +231,50 @@ async def seed_database():
             )
             session.add(admin)
             await session.commit()
-            logger.info("✅ Admin user created: admin@kabulsweets.com.au")
+            logger.info("✅ Admin user created: admin@kabulsweets.com.au / Admin@2024!")
         else:
-            logger.info("Admin user already exists")
+            logger.info("⏭️  Admin user already exists")
 
-        # ── Demo Customer ────────────────────────────────────────────────
-        result = await session.execute(
-            select(User).where(User.role == UserRole.CUSTOMER)
-        )
-        if not result.scalar_one_or_none():
-            customer = User(
-                email="customer@example.com",
-                hashed_password=hash_password("Customer@2024!"),
-                full_name="Demo Customer",
-                phone="+61411111111",
-                role=UserRole.CUSTOMER,
-                is_active=True,
-                is_verified=True,
+        # ── Demo Customers ───────────────────────────────────────────────
+        demo_customers = [
+            {
+                "email": "customer@example.com",
+                "password": "Customer@2024!",
+                "full_name": "Demo Customer",
+                "phone": "+61411111111",
+            },
+            {
+                "email": "sarah@example.com",
+                "password": "Sarah@2024!",
+                "full_name": "Sarah Ahmed",
+                "phone": "+61422222222",
+            },
+        ]
+
+        for cust in demo_customers:
+            result = await session.execute(
+                select(User).where(User.email == cust["email"])
             )
-            session.add(customer)
-            await session.commit()
-            logger.info("✅ Demo customer created: customer@example.com")
-        else:
-            logger.info("Demo customer already exists")
+            if not result.scalar_one_or_none():
+                user = User(
+                    email=cust["email"],
+                    hashed_password=hash_password(cust["password"]),
+                    full_name=cust["full_name"],
+                    phone=cust["phone"],
+                    role=UserRole.CUSTOMER,
+                    is_active=True,
+                    is_verified=True,
+                )
+                session.add(user)
+                await session.commit()
+                logger.info("✅ Customer created: %s / %s", cust["email"], cust["password"])
+            else:
+                logger.info("⏭️  Customer %s already exists", cust["email"])
 
         # ── Sample Products ──────────────────────────────────────────────
         result = await session.execute(select(Product).limit(1))
         if result.scalar_one_or_none():
-            logger.info("Products already exist — skipping product seed")
+            logger.info("⏭️  Products already exist — skipping product seed")
         else:
             for prod_data in SAMPLE_PRODUCTS:
                 variants_data = prod_data.pop("variants", [])
@@ -214,9 +294,24 @@ async def seed_database():
                     session.add(variant)
 
             await session.commit()
-            logger.info("✅ %d sample products created", len(SAMPLE_PRODUCTS))
+            logger.info("✅ %d sample products created with variants", len(SAMPLE_PRODUCTS))
 
-    logger.info("🌱 Database seed complete!")
+    # ── Summary ──────────────────────────────────────────────────────────
+    async with async_session_factory() as session:
+        user_count = (await session.execute(select(User))).scalars().all()
+        product_count = (await session.execute(select(Product))).scalars().all()
+        variant_count = (await session.execute(select(ProductVariant))).scalars().all()
+
+        logger.info("═" * 50)
+        logger.info("🌱 Database seed complete!")
+        logger.info("  Users:    %d", len(user_count))
+        logger.info("  Products: %d", len(product_count))
+        logger.info("  Variants: %d", len(variant_count))
+        logger.info("═" * 50)
+        logger.info("")
+        logger.info("  Admin login: admin@kabulsweets.com.au / Admin@2024!")
+        logger.info("  Demo user:   customer@example.com / Customer@2024!")
+        logger.info("")
 
 
 if __name__ == "__main__":
