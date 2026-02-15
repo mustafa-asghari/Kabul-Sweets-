@@ -160,6 +160,116 @@ def send_payment_receipt(self, order_data: dict):
     bind=True,
     max_retries=3,
     default_retry_delay=120,
+    name="app.workers.email_tasks.send_custom_cake_payment_email",
+)
+def send_custom_cake_payment_email(self, data: dict):
+    """Send payment link email to customer after custom cake approval."""
+    try:
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">Kabul Sweets</h1>
+                <p style="color: #7C3AED; font-weight: 600; margin-top: 5px;">Custom Cake Approved!</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Great news, {data.get('customer_name', 'Valued Customer')}!</h2>
+                <p style="color: #444;">Your custom cake has been approved and is ready for payment.</p>
+
+                <div style="border-top: 1px solid #eee; margin: 20px 0; padding-top: 15px;">
+                    <p style="margin: 5px 0;"><strong>Cake:</strong> {data.get('cake_description', '')}</p>
+                    <p style="margin: 5px 0; font-size: 20px;"><strong>Price:</strong> ${data.get('final_price', '0.00')} AUD</p>
+                </div>
+
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="{data.get('payment_url', '#')}"
+                       style="background: #7C3AED; color: white; padding: 14px 35px; border-radius: 25px; text-decoration: none; font-weight: 600; font-size: 16px;">
+                        Pay Now
+                    </a>
+                </div>
+
+                <p style="color: #999; font-size: 13px; text-align: center; margin-top: 20px;">
+                    This link will take you to our secure payment page.
+                </p>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                Kabul Sweets — Authentic Afghan Bakery
+            </p>
+        </div>
+        """
+
+        _send_email(
+            to_email=data.get("customer_email", ""),
+            subject="Your Custom Cake is Approved — Pay Now | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Custom cake payment email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name="app.workers.email_tasks.send_abandoned_cart_email",
+)
+def send_abandoned_cart_email(self, data: dict):
+    """Send abandoned cart recovery email."""
+    try:
+        template = data.get("template", "gentle_reminder")
+
+        if template == "gentle_reminder":
+            subject = "You left something behind! | Kabul Sweets"
+            heading = "Forgot something?"
+            message = "Your cart is waiting for you. Complete your order before your items are gone!"
+            button_text = "Return to Cart"
+        elif template == "urgency":
+            subject = "Your cart is about to expire! | Kabul Sweets"
+            heading = "Don't miss out!"
+            message = "Items in your cart are selling fast. Complete your order now to secure them!"
+            button_text = "Complete Order"
+        else:
+            subject = "Last chance — your cart expires soon | Kabul Sweets"
+            heading = "Last chance!"
+            message = "This is your final reminder. Your cart will be cleared soon."
+            button_text = "Shop Now"
+
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">Kabul Sweets</h1>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: center;">
+                <h2 style="color: #1a1a2e; margin-top: 0;">{heading}</h2>
+                <p style="color: #444; font-size: 16px;">{message}</p>
+                <p style="color: #666;">You have <strong>{data.get('item_count', 0)} item(s)</strong> in your cart.</p>
+                <div style="margin-top: 25px;">
+                    <a href="{FRONTEND_URL}/cart"
+                       style="background: #7C3AED; color: white; padding: 14px 35px; border-radius: 25px; text-decoration: none; font-weight: 600;">
+                        {button_text}
+                    </a>
+                </div>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                Kabul Sweets — Authentic Afghan Bakery
+            </p>
+        </div>
+        """
+
+        _send_email(
+            to_email=data.get("customer_email", ""),
+            subject=subject,
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Abandoned cart email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
     name="app.workers.email_tasks.send_order_ready_notification",
 )
 def send_order_ready_notification(self, order_data: dict):
