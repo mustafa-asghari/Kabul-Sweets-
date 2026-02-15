@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #ad751c;
+  --color-accent-light: #c99a3f;
+  --color-cream: #FDF6EC;
+  --color-cream-dark: #F5EBDA;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}
