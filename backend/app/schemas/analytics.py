@@ -78,6 +78,7 @@ class PopularVariantResponse(BaseModel):
 class InventoryTurnoverResponse(BaseModel):
     """Inventory turnover metric."""
     product_id: uuid.UUID
+    variant_id: uuid.UUID
     product_name: str
     variant_name: str
     current_stock: int

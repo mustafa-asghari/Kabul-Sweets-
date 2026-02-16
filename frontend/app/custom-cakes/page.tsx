@@ -956,11 +956,11 @@ export default function CustomCakesPage() {
                         className="mt-2"
                         value={form.time_slot}
                         onChange={(next) => updateForm("time_slot", next)}
-                        options={TIME_SLOT_OPTIONS.map((slot) => ({
-                          value: slot,
-                          label: slot,
-                        }))}
+                        options={timeSlotOptions}
                       />
+                      <span className="mt-1 block text-xs text-gray-500">
+                        Pickup hours for selected day: {businessHoursText}
+                      </span>
                     </label>
                     <label className="text-sm font-semibold text-black md:col-span-2">
                       Preferred time
@@ -968,7 +968,7 @@ export default function CustomCakesPage() {
                         className="mt-2"
                         value={form.preferred_time}
                         onChange={(next) => updateForm("preferred_time", next)}
-                        options={PREFERRED_TIME_OPTIONS}
+                        options={preferredTimeOptions}
                         placeholder="Select preferred time"
                       />
                     </label>

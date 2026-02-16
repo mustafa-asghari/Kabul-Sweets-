@@ -296,6 +296,7 @@ class AnalyticsService:
 
             results.append({
                 "product_id": variant.product_id,
+                "variant_id": variant.id,
                 "product_name": product_name,
                 "variant_name": variant.name,
                 "current_stock": current_stock,
