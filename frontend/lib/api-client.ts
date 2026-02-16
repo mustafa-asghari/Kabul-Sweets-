@@ -1,5 +1,8 @@
-export const API_BASE_URL =
-  (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(/\/+$/, "");
+const configuredDirectApiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/+$/, "");
+const useDirectApi = process.env.NEXT_PUBLIC_USE_DIRECT_API === "true";
+
+// Default to same-origin API proxy (/api/v1/*) to avoid browser CORS/localhost issues.
+export const API_BASE_URL = useDirectApi ? configuredDirectApiBaseUrl : "";
 
 export class ApiError extends Error {
   status: number;
@@ -25,6 +28,23 @@ function getErrorDetail(payload: unknown, fallback: string) {
     if (typeof typed.detail === "string") {
       return typed.detail;
     }
+    if (Array.isArray(typed.detail)) {
+      const flattened = typed.detail
+        .map((item) => {
+          if (typeof item === "string") {
+            return item;
+          }
+          if (item && typeof item === "object" && "msg" in item) {
+            const message = (item as { msg?: unknown }).msg;
+            return typeof message === "string" ? message : "";
+          }
+          return "";
+        })
+        .filter(Boolean);
+      if (flattened.length > 0) {
+        return flattened.join(", ");
+      }
+    }
     if (typeof typed.message === "string") {
       return typed.message;
     }
@@ -37,16 +57,26 @@ export async function apiRequest<T>(
   { method = "GET", token = null, body, headers }: ApiRequestOptions = {}
 ): Promise<T> {
   const endpoint = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
-  const response = await fetch(endpoint, {
-    method,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers || {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(headers || {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Network request failed";
+    const target = API_BASE_URL || "same-origin API proxy";
+    throw new ApiError(
+      0,
+      `Unable to reach the server (${target}). ${message}`
+    );
+  }
 
   const text = await response.text();
   let payload: unknown = null;

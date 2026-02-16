@@ -115,6 +115,19 @@ function rgbToHex(r: number, g: number, b: number) {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return null;
+  }
+
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
 function validateReferenceFile(file: File) {
   if (!ALLOWED_REFERENCE_TYPES.includes(file.type)) {
     return "Only JPG, PNG, or WEBP images are allowed.";
@@ -534,48 +547,72 @@ export default function CustomCakesPage() {
                       </label>
                     </div>
                     <div className="rounded-2xl border border-[#eadcc8] bg-[#f8f2e8] p-4">
-                      <p className="text-sm font-semibold text-black">Pick colour with RGB</p>
-                      <div className="mt-3 space-y-3">
+                      <div className="flex items-center gap-4">
+                        <div className="h-20 w-20 rounded-full bg-white p-1 ring-1 ring-black/10">
+                          <span
+                            className="block h-full w-full rounded-full"
+                            style={{ backgroundColor: colorHex }}
+                          />
+                        </div>
+                        <div className="text-sm">
+                          <p className="font-semibold text-black">Pick colour with RGB</p>
+                          <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                            Choose a base shade with Quick pick, then fine-tune it using the RGB sliders.
+                            The HEX code updates automatically for your final color choice.
+                          </p>
+                          <p className="mt-1 font-extrabold tracking-wide text-black">{colorHex.toUpperCase()}</p>
+                        </div>
+                      </div>
+
+                      <label className="mt-4 flex items-center justify-between rounded-xl border border-[#eadcc8] bg-white px-3 py-2 text-xs text-gray-600">
+                        Quick pick
+                        <input
+                          type="color"
+                          value={colorHex}
+                          onChange={(event) => {
+                            const parsed = hexToRgb(event.target.value);
+                            if (parsed) {
+                              setRgb(parsed);
+                            }
+                          }}
+                          className="h-9 w-9 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                        />
+                      </label>
+
+                      <div className="mt-4 space-y-3">
                         <label className="text-xs text-gray-600 block">
-                          Red: {rgb.r}
+                          Red channel
                           <input
                             type="range"
                             min={0}
                             max={255}
                             value={rgb.r}
                             onChange={(event) => setRgb((current) => ({ ...current, r: Number(event.target.value) }))}
-                            className="mt-1 w-full"
+                            className="mt-1 w-full accent-red-500"
                           />
                         </label>
                         <label className="text-xs text-gray-600 block">
-                          Green: {rgb.g}
+                          Green channel
                           <input
                             type="range"
                             min={0}
                             max={255}
                             value={rgb.g}
                             onChange={(event) => setRgb((current) => ({ ...current, g: Number(event.target.value) }))}
-                            className="mt-1 w-full"
+                            className="mt-1 w-full accent-green-500"
                           />
                         </label>
                         <label className="text-xs text-gray-600 block">
-                          Blue: {rgb.b}
+                          Blue channel
                           <input
                             type="range"
                             min={0}
                             max={255}
                             value={rgb.b}
                             onChange={(event) => setRgb((current) => ({ ...current, b: Number(event.target.value) }))}
-                            className="mt-1 w-full"
+                            className="mt-1 w-full accent-blue-500"
                           />
                         </label>
-                      </div>
-                      <div className="mt-4 flex items-center gap-3">
-                        <span
-                          className="inline-block h-10 w-10 rounded-xl border border-black/10"
-                          style={{ backgroundColor: colorHex }}
-                        />
-                        <p className="text-sm font-semibold text-black">{colorHex.toUpperCase()}</p>
                       </div>
                     </div>
                   </div>

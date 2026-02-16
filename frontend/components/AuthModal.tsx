@@ -32,24 +32,22 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
     setError(null);
 
     try {
+      const cleanEmail = email.trim();
       if (mode === "login") {
-        await login(email, password);
+        await login(cleanEmail, password);
       } else {
         await register({
-          email,
+          email: cleanEmail,
           password,
-          fullName,
-          phone,
+          fullName: fullName.trim(),
+          phone: phone.trim(),
         });
       }
       onClose();
       setPassword("");
     } catch (submitError) {
-      if (submitError instanceof ApiError) {
-        setError(submitError.detail);
-      } else {
-        setError("Unable to complete authentication.");
-      }
+      const normalizedMessage = normalizeAuthError(submitError);
+      setError(normalizedMessage);
     } finally {
       setSubmitting(false);
     }
@@ -162,4 +160,23 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       </div>
     </div>
   );
+}
+
+function normalizeAuthError(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.detail;
+  }
+  if (error && typeof error === "object") {
+    const typed = error as { detail?: unknown; message?: unknown };
+    if (typeof typed.detail === "string" && typed.detail.trim()) {
+      return typed.detail;
+    }
+    if (typeof typed.message === "string" && typed.message.trim()) {
+      return typed.message;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "Unable to complete authentication.";
 }
