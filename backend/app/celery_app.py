@@ -99,6 +99,7 @@ if Celery is not None:
         task_routes={
             "app.workers.email_tasks.*": {"queue": "email"},
             "app.workers.sms_tasks.*": {"queue": "sms"},
+            "app.workers.telegram_tasks.*": {"queue": "alerts"},
             "app.workers.analytics_tasks.*": {"queue": "analytics"},
             "app.workers.cart_tasks.*": {"queue": "default"},
             "app.workers.trend_tasks.*": {"queue": "analytics"},
@@ -115,6 +116,7 @@ if Celery is not None:
         imports=[
             "app.workers.email_tasks",
             "app.workers.sms_tasks",
+            "app.workers.telegram_tasks",
             "app.workers.analytics_tasks",
             "app.workers.cart_tasks",
             "app.workers.trend_tasks",
