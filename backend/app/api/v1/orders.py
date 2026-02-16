@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, log_admin_action, require_admin
 from app.core.database import get_db
 from app.models.user import User
+from app.models.order import OrderStatus
 from app.schemas.order import (
     OrderCreate,
     OrderListResponse,
@@ -184,10 +185,27 @@ async def approve_order(
 ):
     """[Admin] Approve a pending order and capture payment."""
     service = OrderService(db)
-    result = await service.approve_order(order_id)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    order = await service.get_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+        raise HTTPException(status_code=400, detail=f"Cannot approve order in status '{order.status.value}'")
+    if not order.payment:
+        raise HTTPException(status_code=400, detail="No payment record found")
+
+    from app.services.stripe_service import StripeService
+    if order.payment.stripe_payment_intent_id:
+        await StripeService.capture_payment_intent(order.payment.stripe_payment_intent_id)
+
+    updated = await service.mark_order_paid(
+        order_id=order.id,
+        stripe_payment_intent_id=order.payment.stripe_payment_intent_id or f"manual_{order.id}",
+        stripe_checkout_session_id=order.payment.stripe_checkout_session_id,
+        webhook_data={"approved_by_admin_id": str(admin.id)},
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"success": True, "message": "Order approved and payment captured"}
 
 
 @router.post("/{order_id}/reject")
@@ -199,10 +217,37 @@ async def reject_order(
 ):
     """[Admin] Reject a pending order and void payment authorization."""
     service = OrderService(db)
-    result = await service.reject_order(order_id, reason)
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    order = await service.get_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+        raise HTTPException(status_code=400, detail=f"Cannot reject order in status '{order.status.value}'")
+
+    if order.payment and order.payment.stripe_payment_intent_id:
+        from app.services.stripe_service import StripeService
+        await StripeService.cancel_payment_intent(order.payment.stripe_payment_intent_id)
+
+    updated = await service.reject_order_after_authorization(order.id, reason or "Rejected by admin")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    try:
+        from app.workers.email_tasks import send_order_rejection_email
+
+        send_order_rejection_email.delay(
+            {
+                "order_id": str(updated.id),
+                "order_number": updated.order_number,
+                "customer_name": updated.customer_name,
+                "customer_email": updated.customer_email,
+                "total": str(updated.total),
+                "rejection_reason": reason or "Rejected by admin",
+            }
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "message": "Order rejected and customer notified"}
 
 
 @router.get("/{order_id}/risk-analysis")
