@@ -3,6 +3,7 @@ Telegram bot webhook endpoints for admin workflows.
 """
 
 import uuid
+from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -17,6 +18,7 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.ml import CustomCake, CustomCakeStatus
 from app.models.order import Order, OrderStatus
+from app.models.product import Product, ProductCategory
 from app.models.user import User, UserRole
 from app.services.custom_cake_service import CustomCakeService
 from app.services.order_service import OrderService
@@ -30,15 +32,43 @@ logger = get_logger("telegram_webhook")
 ORDER_REJECT_REASON = "Rejected from Telegram by admin."
 CAKE_REJECT_REASON = "Rejected from Telegram by admin."
 APPROVED_FROM_TELEGRAM_NOTE = "Approved via Telegram bot."
+DEFAULT_PENDING_LIMIT = 10
 MAX_TELEGRAM_LIST_LIMIT = 20
-DEFAULT_PENDING_LIMIT = 5
 DEFAULT_DAY_LIMIT = 20
 QUICK_LIMIT_OPTIONS = (5, 10, 20)
 MAX_RANGE_RESULTS = 100
+CALENDAR_MIN_OFFSET = -365
+CALENDAR_MAX_OFFSET = 365
 INCOMING_MAX_DAYS = 30
-DATE_PICKER_MIN_OFFSET = -180
-DATE_PICKER_MAX_OFFSET = 180
+DATE_PICKER_MIN_OFFSET = CALENDAR_MIN_OFFSET
+DATE_PICKER_MAX_OFFSET = CALENDAR_MAX_OFFSET
 DATE_PICKER_PAGE_SIZE = 7
+ORDER_STATUS_FILTERS: dict[str, tuple[str, tuple[OrderStatus, ...]]] = {
+    "p": ("Pending Approval", (OrderStatus.PENDING_APPROVAL,)),
+    "d": (
+        "Paid / To Make",
+        (
+            OrderStatus.PAID,
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY,
+        ),
+    ),
+}
+CAKE_STATUS_FILTERS: dict[str, tuple[str, tuple[CustomCakeStatus, ...]]] = {
+    "p": ("Pending Approval", (CustomCakeStatus.PENDING_REVIEW,)),
+    "d": (
+        "Paid / To Make",
+        (
+            CustomCakeStatus.PAID,
+            CustomCakeStatus.IN_PRODUCTION,
+        ),
+    ),
+}
+DOMAIN_LABELS = {
+    "o": "Orders",
+    "c": "Cake Orders",
+}
 CAKE_STATUS_PARAM_MAP: dict[str, CustomCakeStatus | None] = {
     "all": None,
     "pending_review": CustomCakeStatus.PENDING_REVIEW,
@@ -105,15 +135,11 @@ def _command_keyboard() -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "📥 Incoming 7 Days", "callback_data": "cmd:incoming7"},
-                {"text": "📦🎂 Incoming 30 Days", "callback_data": "cmd:incoming30"},
+                {"text": "🧁 Products", "callback_data": "menu:products"},
+                {"text": "📦 Orders", "callback_data": "menu:orders"},
             ],
             [
-                {"text": "🗓️ Date Tools", "callback_data": "menu:date"},
-                {"text": "✅ Pending Actions", "callback_data": "menu:pending"},
-            ],
-            [
-                {"text": "📘 Help", "callback_data": "cmd:params"},
+                {"text": "🎂 Cake Orders", "callback_data": "menu:cakes"},
             ],
         ]
     }
@@ -154,8 +180,11 @@ def _pending_tools_keyboard() -> dict:
 def _main_menu_message() -> str:
     return (
         "🤖 <b>Kabul Sweets Admin Bot</b>\n"
-        "Clean menu for daily use.\n"
-        "If chat is cleared, type <code>/menu</code> to restore this menu."
+        "Commands:\n"
+        "<code>/menu</code> products by category\n"
+        "<code>/order</code> order queue (pending/paid)\n"
+        "<code>/cake</code> cake queue (pending/paid)\n\n"
+        "If chat is cleared, type <code>/menu</code>."
     )
 
 
@@ -171,6 +200,175 @@ def _pending_menu_message() -> str:
         "✅ <b>Pending Actions</b>\n"
         "Review and approve/reject pending orders and custom cakes."
     )
+
+
+def _order_filter_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🕒 Pending", "callback_data": "flow:o:p"},
+                {"text": "💵 Paid / To Make", "callback_data": "flow:o:d"},
+            ],
+            [
+                {"text": "⬅️ Main", "callback_data": "menu:main"},
+            ],
+        ]
+    }
+
+
+def _cake_filter_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🕒 Pending", "callback_data": "flow:c:p"},
+                {"text": "💵 Paid / To Make", "callback_data": "flow:c:d"},
+            ],
+            [
+                {"text": "⬅️ Main", "callback_data": "menu:main"},
+            ],
+        ]
+    }
+
+
+def _category_keyboard(categories: list[ProductCategory]) -> dict:
+    rows: list[list[dict]] = []
+    buttons = [
+        {
+            "text": cat.value.replace("_", " ").title(),
+            "callback_data": f"pcat:{cat.value}",
+        }
+        for cat in categories
+    ]
+    for index in range(0, len(buttons), 2):
+        rows.append(buttons[index:index + 2])
+    rows.append([{"text": "⬅️ Main", "callback_data": "menu:main"}])
+    return {"inline_keyboard": rows}
+
+
+def _calendar_month_start(target: date) -> date:
+    return target.replace(day=1)
+
+
+def _shift_month(month_start: date, delta: int) -> date:
+    month_index = (month_start.year * 12) + (month_start.month - 1) + delta
+    year = month_index // 12
+    month = (month_index % 12) + 1
+    return date(year, month, 1)
+
+
+def _format_date_token(value: date) -> str:
+    return value.strftime("%Y%m%d")
+
+
+def _parse_date_token(raw: str) -> date | None:
+    try:
+        return datetime.strptime(raw, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def _format_month_token(value: date) -> str:
+    return value.strftime("%Y%m")
+
+
+def _parse_month_token(raw: str) -> date | None:
+    try:
+        parsed = datetime.strptime(raw, "%Y%m").date()
+    except ValueError:
+        return None
+    return parsed.replace(day=1)
+
+
+def _calendar_picker_keyboard(
+    *,
+    domain: str,
+    status_code: str,
+    stage: str,
+    month_start: date,
+    start_date: date | None = None,
+) -> dict:
+    year = month_start.year
+    month = month_start.month
+    first_weekday, days_in_month = monthrange(year, month)  # Monday=0
+    month_label = month_start.strftime("%B %Y")
+
+    header_row = [{"text": month_label, "callback_data": "noop"}]
+    weekday_row = [
+        {"text": day, "callback_data": "noop"}
+        for day in ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+    ]
+
+    rows: list[list[dict]] = [header_row, weekday_row]
+    week: list[dict] = []
+
+    for _ in range(first_weekday):
+        week.append({"text": " ", "callback_data": "noop"})
+
+    for day in range(1, days_in_month + 1):
+        current = date(year, month, day)
+        disabled = stage == "e" and start_date is not None and current < start_date
+        if disabled:
+            button = {"text": "·", "callback_data": "noop"}
+        elif stage == "s":
+            button = {
+                "text": str(day),
+                "callback_data": f"cals:{domain}:{status_code}:{_format_date_token(current)}",
+            }
+        else:
+            button = {
+                "text": str(day),
+                "callback_data": (
+                    f"cale:{domain}:{status_code}:"
+                    f"{_format_date_token(start_date or current)}:{_format_date_token(current)}"
+                ),
+            }
+        week.append(button)
+        if len(week) == 7:
+            rows.append(week)
+            week = []
+
+    if week:
+        while len(week) < 7:
+            week.append({"text": " ", "callback_data": "noop"})
+        rows.append(week)
+
+    month_token = _format_month_token(month_start)
+    if stage == "s":
+        prev_cb = f"caln:{domain}:{status_code}:s:{month_token}:prev"
+        next_cb = f"caln:{domain}:{status_code}:s:{month_token}:next"
+    else:
+        start_token = _format_date_token(start_date or month_start)
+        prev_cb = f"caln:{domain}:{status_code}:e:{month_token}:{start_token}:prev"
+        next_cb = f"caln:{domain}:{status_code}:e:{month_token}:{start_token}:next"
+
+    rows.append(
+        [
+            {"text": "⬅️", "callback_data": prev_cb},
+            {"text": "➡️", "callback_data": next_cb},
+        ]
+    )
+
+    back_callback = "menu:orders" if domain == "o" else "menu:cakes"
+    rows.append([{"text": "⬅️ Back", "callback_data": back_callback}])
+    return {"inline_keyboard": rows}
+
+
+def _date_range_to_utc(start_date: date, end_date: date) -> tuple[datetime, datetime]:
+    tz = _business_timezone()
+    start_local = datetime.combine(start_date, time.min, tzinfo=tz)
+    end_local = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+
+
+def _is_date_in_calendar_window(value: date) -> bool:
+    delta_days = (value - _today_local_date()).days
+    return CALENDAR_MIN_OFFSET <= delta_days <= CALENDAR_MAX_OFFSET
+
+
+def _domain_status_label(domain: str, status_code: str) -> str:
+    if domain == "o":
+        return ORDER_STATUS_FILTERS.get(status_code, ("Orders", tuple()))[0]
+    return CAKE_STATUS_FILTERS.get(status_code, ("Cake Orders", tuple()))[0]
 
 
 def _limit_option_keyboard(action_prefix: str, back_callback: str | None = None) -> dict:
@@ -375,29 +573,21 @@ def _range_end_picker_keyboard(
 def _bot_help_message() -> str:
     return (
         "🤖 <b>Kabul Sweets Admin Bot</b>\n"
-        "Orders and custom cakes are sent automatically.\n"
-        "Use <code>/menu</code> any time to restore the clean menu.\n\n"
-        "<b>Main commands</b>\n"
-        "/menu\n"
-        "/incoming7\n"
-        "/incoming30\n"
-        "/orders_day\n"
-        "/cakes_day\n"
-        "/orders_range\n"
-        "/cakes_range\n"
-        "/pending_orders\n"
-        "/pending_cakes\n"
+        "<b>Use only these commands:</b>\n"
+        "<code>/menu</code> products category -> products list\n"
+        "<code>/order</code> pending/paid -> date picker\n"
+        "<code>/cake</code> pending/paid -> date picker\n"
+        "<code>/help</code> show this message"
     )
 
 
 def _bot_params_message() -> str:
     return (
-        "📘 <b>Quick Guide</b>\n\n"
-        "1. Incoming alerts are automatic.\n"
-        "2. Use menu buttons for date picking.\n"
-        "3. No custom date typing is needed.\n\n"
-        "<b>If chat is cleared:</b> type <code>/menu</code>\n"
-        "<b>Date pickers:</b> choose start date, then end date."
+        "📘 <b>Flow</b>\n\n"
+        "1. Use <code>/order</code> or <code>/cake</code>\n"
+        "2. Choose <b>Pending</b> or <b>Paid</b>\n"
+        "3. Pick start date then end date from calendar\n"
+        "4. Bot shows clean list for that range"
     )
 
 
@@ -614,8 +804,10 @@ async def _handle_orders_in_range_command(
     end_utc: datetime,
     start_date: date,
     end_date: date,
+    statuses: tuple[OrderStatus, ...] | None = None,
+    header_label: str = "Orders",
 ):
-    result = await db.execute(
+    query = (
         select(Order)
         .where(
             Order.pickup_date.is_not(None),
@@ -626,9 +818,16 @@ async def _handle_orders_in_range_command(
         .order_by(Order.pickup_date.asc(), Order.created_at.asc())
         .limit(MAX_RANGE_RESULTS)
     )
+    if statuses:
+        query = query.where(Order.status.in_(statuses))
+
+    result = await db.execute(query)
     orders = list(result.scalars().all())
 
-    title = f"📦 <b>Orders</b> | {start_date.isoformat()} to {end_date.isoformat()} | {len(orders)} total"
+    title = (
+        f"📦 <b>{header_label}</b> | "
+        f"{start_date.isoformat()} to {end_date.isoformat()} | {len(orders)} total"
+    )
     lines = [_order_compact_line(order) for order in orders]
     await _send_compact_list(
         telegram,
@@ -650,8 +849,10 @@ async def _handle_cakes_in_range_command(
     end_utc: datetime,
     start_date: date,
     end_date: date,
+    statuses: tuple[CustomCakeStatus, ...] | None = None,
+    header_label: str = "Cake Orders",
 ):
-    result = await db.execute(
+    query = (
         select(CustomCake)
         .where(
             CustomCake.requested_date.is_not(None),
@@ -661,10 +862,17 @@ async def _handle_cakes_in_range_command(
         .order_by(CustomCake.requested_date.asc(), CustomCake.created_at.asc())
         .limit(MAX_RANGE_RESULTS)
     )
+    if statuses:
+        query = query.where(CustomCake.status.in_(statuses))
+
+    result = await db.execute(query)
     cakes = list(result.scalars().all())
 
     customer_map = await _load_customer_map(db, {cake.customer_id for cake in cakes})
-    title = f"🎂 <b>Custom Cakes</b> | {start_date.isoformat()} to {end_date.isoformat()} | {len(cakes)} total"
+    title = (
+        f"🎂 <b>{header_label}</b> | "
+        f"{start_date.isoformat()} to {end_date.isoformat()} | {len(cakes)} total"
+    )
     lines = [
         _cake_compact_line(
             cake,
@@ -834,6 +1042,202 @@ async def _load_customer_map(
         row.id: (row.full_name, row.email)
         for row in result.all()
     }
+
+
+async def _show_product_categories(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    message_id: int | None = None,
+):
+    result = await db.execute(
+        select(Product.category)
+        .where(Product.is_active.is_(True))
+        .distinct()
+        .order_by(Product.category.asc())
+    )
+    categories = [row[0] for row in result.all() if isinstance(row[0], ProductCategory)]
+
+    if not categories:
+        await _upsert_menu_message(
+            telegram,
+            chat_id,
+            "No active product categories found.",
+            _command_keyboard(),
+            message_id=message_id,
+        )
+        return
+
+    await _upsert_menu_message(
+        telegram,
+        chat_id,
+        "🧁 <b>Product Categories</b>\nChoose a category to view products.",
+        _category_keyboard(categories),
+        message_id=message_id,
+    )
+
+
+async def _show_products_for_category(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    category_value: str,
+):
+    try:
+        category = ProductCategory(category_value)
+    except ValueError:
+        await _send_text(telegram, chat_id, "Invalid category.")
+        return
+
+    result = await db.execute(
+        select(Product)
+        .where(
+            Product.is_active.is_(True),
+            Product.category == category,
+        )
+        .order_by(Product.sort_order.asc(), Product.name.asc())
+        .limit(MAX_RANGE_RESULTS)
+    )
+    products = list(result.scalars().all())
+    lines = [
+        f"- <b>{product.name}</b> | {_as_money(product.base_price)}"
+        for product in products
+    ]
+    await _send_compact_list(
+        telegram,
+        chat_id,
+        title=f"🧁 <b>{category.value.replace('_', ' ').title()}</b> | {len(products)} product(s)",
+        lines=lines,
+        empty_text=f"No active products in {category.value} category.",
+        admin_link=f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/products",
+        admin_link_label="Open products in admin",
+    )
+    await _send_text(
+        telegram,
+        chat_id,
+        "Pick another category:",
+        {"inline_keyboard": [[{"text": "⬅️ Categories", "callback_data": "menu:products"}]]},
+    )
+
+
+async def _show_order_filters(
+    telegram: TelegramService,
+    chat_id: int,
+    *,
+    message_id: int | None = None,
+):
+    await _upsert_menu_message(
+        telegram,
+        chat_id,
+        "📦 <b>Orders</b>\nChoose pending or paid, then pick date range.",
+        _order_filter_keyboard(),
+        message_id=message_id,
+    )
+
+
+async def _show_cake_filters(
+    telegram: TelegramService,
+    chat_id: int,
+    *,
+    message_id: int | None = None,
+):
+    await _upsert_menu_message(
+        telegram,
+        chat_id,
+        "🎂 <b>Cake Orders</b>\nChoose pending or paid, then pick date range.",
+        _cake_filter_keyboard(),
+        message_id=message_id,
+    )
+
+
+async def _show_start_calendar(
+    telegram: TelegramService,
+    chat_id: int,
+    *,
+    domain: str,
+    status_code: str,
+    message_id: int | None = None,
+):
+    if domain == "o":
+        status_label = ORDER_STATUS_FILTERS.get(status_code, ("Orders", tuple()))[0]
+    else:
+        status_label = CAKE_STATUS_FILTERS.get(status_code, ("Cake Orders", tuple()))[0]
+    month_start = _calendar_month_start(_today_local_date())
+    await _upsert_menu_message(
+        telegram,
+        chat_id,
+        f"🗓️ <b>{DOMAIN_LABELS.get(domain, 'Items')} - {status_label}</b>\nSelect <b>start date</b>.",
+        _calendar_picker_keyboard(
+            domain=domain,
+            status_code=status_code,
+            stage="s",
+            month_start=month_start,
+        ),
+        message_id=message_id,
+    )
+
+
+async def _run_status_range(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    domain: str,
+    status_code: str,
+    start_date: date,
+    end_date: date,
+):
+    start_utc, end_utc = _date_range_to_utc(start_date, end_date)
+
+    if domain == "o":
+        status_meta = ORDER_STATUS_FILTERS.get(status_code)
+        if not status_meta:
+            await _send_text(telegram, chat_id, "Invalid order status.")
+            return
+        label, statuses = status_meta
+        await _handle_orders_in_range_command(
+            telegram,
+            chat_id,
+            db,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            start_date=start_date,
+            end_date=end_date,
+            statuses=statuses,
+            header_label=f"Orders - {label}",
+        )
+        await _send_text(
+            telegram,
+            chat_id,
+            "Select another order filter:",
+            _order_filter_keyboard(),
+        )
+        return
+
+    status_meta = CAKE_STATUS_FILTERS.get(status_code)
+    if not status_meta:
+        await _send_text(telegram, chat_id, "Invalid cake status.")
+        return
+    label, statuses = status_meta
+    await _handle_cakes_in_range_command(
+        telegram,
+        chat_id,
+        db,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        start_date=start_date,
+        end_date=end_date,
+        statuses=statuses,
+        header_label=f"Cake Orders - {label}",
+    )
+    await _send_text(
+        telegram,
+        chat_id,
+        "Select another cake filter:",
+        _cake_filter_keyboard(),
+    )
 
 
 async def _handle_pending_orders_command(
@@ -1105,6 +1509,7 @@ async def telegram_webhook(
 
     update = await request.json()
     telegram = TelegramService()
+    await run_in_threadpool(telegram.ensure_default_commands)
 
     callback = update.get("callback_query")
     if callback:
@@ -1123,405 +1528,216 @@ async def telegram_webhook(
             return {"ok": True}
 
         try:
+            if data == "noop":
+                await _answer_callback(telegram, callback_id, "")
+                return {"ok": True}
+
             parts = data.split(":")
-            if len(parts) == 2 and parts[0] == "cmd":
+            editable_message_id = message_id if isinstance(message_id, int) else None
+
+            if len(parts) == 2 and parts[0] == "menu":
                 action = parts[1]
-                if action == "help":
-                    await _send_text(
+                if action == "main":
+                    await _upsert_menu_message(
                         telegram,
                         int(chat_id),
-                        _bot_help_message(),
+                        _main_menu_message(),
                         _command_keyboard(),
+                        message_id=editable_message_id,
                     )
-                elif action == "params":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        _bot_params_message(),
-                        _command_keyboard(),
-                    )
-                elif action == "pending_orders":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select a limit for pending orders:",
-                        _limit_option_keyboard("po", "cmd:help"),
-                    )
-                elif action == "pending_cakes":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select a limit for pending custom cakes:",
-                        _limit_option_keyboard("pc", "cmd:help"),
-                    )
-                elif action == "today":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select a status for today's cakes:",
-                        _day_status_keyboard("td"),
-                    )
-                elif action == "tomorrow":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select a status for tomorrow's cakes:",
-                        _day_status_keyboard("tm"),
-                    )
-                elif action == "incoming7":
-                    await _handle_incoming_window_command(
+                elif action == "products":
+                    await _show_product_categories(
                         telegram,
                         int(chat_id),
                         db,
-                        days=7,
+                        message_id=editable_message_id,
                     )
-                elif action == "incoming30":
-                    await _handle_incoming_window_command(
+                elif action == "orders":
+                    await _show_order_filters(
                         telegram,
                         int(chat_id),
-                        db,
-                        days=30,
+                        message_id=editable_message_id,
                     )
-                elif action == "orders_day":
-                    await _send_text(
+                elif action == "cakes":
+                    await _show_cake_filters(
                         telegram,
                         int(chat_id),
-                        "Select a pickup day for orders:",
-                        _date_picker_keyboard(
-                            select_prefix="od",
-                            page_prefix="odp",
-                            page=_picker_page_for_offset(offset=0),
-                            back_callback="cmd:help",
-                        ),
-                    )
-                elif action == "cakes_day":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select a requested day for custom cakes:",
-                        _date_picker_keyboard(
-                            select_prefix="cd",
-                            page_prefix="cdp",
-                            page=_picker_page_for_offset(offset=0),
-                            back_callback="cmd:help",
-                        ),
-                    )
-                elif action == "orders_range":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select START date for orders range:",
-                        _date_picker_keyboard(
-                            select_prefix="ors",
-                            page_prefix="orsp",
-                            page=_picker_page_for_offset(offset=0),
-                            back_callback="cmd:help",
-                        ),
-                    )
-                elif action == "cakes_range":
-                    await _send_text(
-                        telegram,
-                        int(chat_id),
-                        "Select START date for cakes range:",
-                        _date_picker_keyboard(
-                            select_prefix="crs",
-                            page_prefix="crsp",
-                            page=_picker_page_for_offset(offset=0),
-                            back_callback="cmd:help",
-                        ),
+                        message_id=editable_message_id,
                     )
                 else:
-                    await _answer_callback(telegram, callback_id, "Unsupported command action")
+                    await _answer_callback(telegram, callback_id, "Unsupported menu action")
                     return {"ok": True}
 
                 await _answer_callback(telegram, callback_id, "Done")
                 return {"ok": True}
 
-            if len(parts) == 2 and parts[0] in {"odp", "cdp", "orsp", "crsp"}:
-                page = _parse_picker_value(parts[1], min_value=0, max_value=99)
-                if page is None:
-                    await _answer_callback(telegram, callback_id, "Invalid page")
-                    return {"ok": True}
-
-                if parts[0] == "odp":
-                    text, markup = (
-                        "Select a pickup day for orders:",
-                        _date_picker_keyboard(
-                            select_prefix="od",
-                            page_prefix="odp",
-                            page=page,
-                            back_callback="cmd:help",
-                        ),
-                    )
-                elif parts[0] == "cdp":
-                    text, markup = (
-                        "Select a requested day for custom cakes:",
-                        _date_picker_keyboard(
-                            select_prefix="cd",
-                            page_prefix="cdp",
-                            page=page,
-                            back_callback="cmd:help",
-                        ),
-                    )
-                elif parts[0] == "orsp":
-                    text, markup = (
-                        "Select START date for orders range:",
-                        _date_picker_keyboard(
-                            select_prefix="ors",
-                            page_prefix="orsp",
-                            page=page,
-                            back_callback="cmd:help",
-                        ),
-                    )
-                else:
-                    text, markup = (
-                        "Select START date for cakes range:",
-                        _date_picker_keyboard(
-                            select_prefix="crs",
-                            page_prefix="crsp",
-                            page=page,
-                            back_callback="cmd:help",
-                        ),
-                    )
-
-                await _send_text(telegram, int(chat_id), text, markup)
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 2 and parts[0] in {"od", "cd"}:
-                offset = _parse_picker_value(
-                    parts[1],
-                    min_value=DATE_PICKER_MIN_OFFSET,
-                    max_value=DATE_PICKER_MAX_OFFSET,
-                )
-                if offset is None:
-                    await _answer_callback(telegram, callback_id, "Invalid date")
-                    return {"ok": True}
-
-                start_utc, end_utc, target_date = _offset_to_utc_range(offset)
-                if parts[0] == "od":
-                    await _handle_orders_in_range_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        start_utc=start_utc,
-                        end_utc=end_utc,
-                        start_date=target_date,
-                        end_date=target_date,
-                    )
-                else:
-                    await _handle_cakes_in_range_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        start_utc=start_utc,
-                        end_utc=end_utc,
-                        start_date=target_date,
-                        end_date=target_date,
-                    )
-
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 2 and parts[0] in {"ors", "crs"}:
-                start_offset = _parse_picker_value(
-                    parts[1],
-                    min_value=DATE_PICKER_MIN_OFFSET,
-                    max_value=DATE_PICKER_MAX_OFFSET,
-                )
-                if start_offset is None:
-                    await _answer_callback(telegram, callback_id, "Invalid start date")
-                    return {"ok": True}
-
-                if parts[0] == "ors":
-                    label = f"Select END date for orders (from {_date_for_offset(start_offset).isoformat()}):"
-                    markup = _range_end_picker_keyboard(
-                        select_prefix="ore",
-                        page_prefix="orep",
-                        start_offset=start_offset,
-                        page=0,
-                        back_callback="cmd:orders_range",
-                    )
-                else:
-                    label = f"Select END date for cakes (from {_date_for_offset(start_offset).isoformat()}):"
-                    markup = _range_end_picker_keyboard(
-                        select_prefix="cre",
-                        page_prefix="crep",
-                        start_offset=start_offset,
-                        page=0,
-                        back_callback="cmd:cakes_range",
-                    )
-
-                await _send_text(telegram, int(chat_id), label, markup)
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 3 and parts[0] in {"orep", "crep"}:
-                start_offset = _parse_picker_value(
-                    parts[1],
-                    min_value=DATE_PICKER_MIN_OFFSET,
-                    max_value=DATE_PICKER_MAX_OFFSET,
-                )
-                page = _parse_picker_value(parts[2], min_value=0, max_value=99)
-                if start_offset is None or page is None:
-                    await _answer_callback(telegram, callback_id, "Invalid page")
-                    return {"ok": True}
-
-                if parts[0] == "orep":
-                    label = f"Select END date for orders (from {_date_for_offset(start_offset).isoformat()}):"
-                    markup = _range_end_picker_keyboard(
-                        select_prefix="ore",
-                        page_prefix="orep",
-                        start_offset=start_offset,
-                        page=page,
-                        back_callback="cmd:orders_range",
-                    )
-                else:
-                    label = f"Select END date for cakes (from {_date_for_offset(start_offset).isoformat()}):"
-                    markup = _range_end_picker_keyboard(
-                        select_prefix="cre",
-                        page_prefix="crep",
-                        start_offset=start_offset,
-                        page=page,
-                        back_callback="cmd:cakes_range",
-                    )
-
-                await _send_text(telegram, int(chat_id), label, markup)
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 3 and parts[0] in {"ore", "cre"}:
-                start_offset = _parse_picker_value(
-                    parts[1],
-                    min_value=DATE_PICKER_MIN_OFFSET,
-                    max_value=DATE_PICKER_MAX_OFFSET,
-                )
-                end_offset = _parse_picker_value(
-                    parts[2],
-                    min_value=DATE_PICKER_MIN_OFFSET,
-                    max_value=DATE_PICKER_MAX_OFFSET,
-                )
-                if start_offset is None or end_offset is None or end_offset < start_offset:
-                    await _answer_callback(telegram, callback_id, "Invalid date range")
-                    return {"ok": True}
-
-                start_utc, end_utc, start_date, end_date = _offset_span_to_utc_range(
-                    start_offset,
-                    end_offset,
-                )
-                if parts[0] == "ore":
-                    await _handle_orders_in_range_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        start_utc=start_utc,
-                        end_utc=end_utc,
-                        start_date=start_date,
-                        end_date=end_date,
-                    )
-                else:
-                    await _handle_cakes_in_range_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        start_utc=start_utc,
-                        end_utc=end_utc,
-                        start_date=start_date,
-                        end_date=end_date,
-                    )
-
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 2 and parts[0] in {"po", "pc"}:
-                limit, err = _parse_limit_arg(parts[1], DEFAULT_PENDING_LIMIT)
-                if err:
-                    await _answer_callback(telegram, callback_id, err)
-                    return {"ok": True}
-
-                if parts[0] == "po":
-                    await _handle_pending_orders_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        limit=limit or DEFAULT_PENDING_LIMIT,
-                    )
-                else:
-                    await _handle_pending_cakes_command(
-                        telegram,
-                        int(chat_id),
-                        db,
-                        limit=limit or DEFAULT_PENDING_LIMIT,
-                    )
-
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 2 and parts[0] in {"tds", "tms"}:
-                status_key = parts[1].lower()
-                if status_key not in CAKE_STATUS_PARAM_MAP:
-                    await _answer_callback(telegram, callback_id, "Invalid status")
-                    return {"ok": True}
-
-                day_prefix = "td" if parts[0] == "tds" else "tm"
-                day_label = "today" if day_prefix == "td" else "tomorrow"
-                await _send_text(
-                    telegram,
-                    int(chat_id),
-                    f"Select a limit for {day_label} ({_status_label(status_key)}):",
-                    _day_limit_keyboard(day_prefix, status_key),
-                )
-                await _answer_callback(telegram, callback_id, "Done")
-                return {"ok": True}
-
-            if len(parts) == 3 and parts[0] in {"td", "tm"}:
-                day_prefix = parts[0]
-                status_key = parts[1].lower()
-                if status_key not in CAKE_STATUS_PARAM_MAP:
-                    await _answer_callback(telegram, callback_id, "Invalid status")
-                    return {"ok": True}
-
-                limit, err = _parse_limit_arg(parts[2], DEFAULT_DAY_LIMIT)
-                if err:
-                    await _answer_callback(telegram, callback_id, err)
-                    return {"ok": True}
-
-                await _handle_cakes_by_day_command(
+            if len(parts) == 2 and parts[0] == "pcat":
+                await _show_products_for_category(
                     telegram,
                     int(chat_id),
                     db,
-                    day_offset=0 if day_prefix == "td" else 1,
-                    status_filter=CAKE_STATUS_PARAM_MAP[status_key],
-                    limit=limit or DEFAULT_DAY_LIMIT,
+                    category_value=parts[1],
                 )
                 await _answer_callback(telegram, callback_id, "Done")
                 return {"ok": True}
 
-            if len(parts) != 3:
-                await _answer_callback(telegram, callback_id, "Unsupported action payload")
+            if len(parts) == 3 and parts[0] == "flow":
+                domain = parts[1]
+                status_code = parts[2]
+                if domain == "o" and status_code not in ORDER_STATUS_FILTERS:
+                    await _answer_callback(telegram, callback_id, "Invalid order status")
+                    return {"ok": True}
+                if domain == "c" and status_code not in CAKE_STATUS_FILTERS:
+                    await _answer_callback(telegram, callback_id, "Invalid cake status")
+                    return {"ok": True}
+                if domain not in {"o", "c"}:
+                    await _answer_callback(telegram, callback_id, "Invalid flow")
+                    return {"ok": True}
+
+                await _show_start_calendar(
+                    telegram,
+                    int(chat_id),
+                    domain=domain,
+                    status_code=status_code,
+                    message_id=editable_message_id,
+                )
+                await _answer_callback(telegram, callback_id, "Done")
                 return {"ok": True}
 
-            domain, action, raw_id = parts
-            target_id = uuid.UUID(raw_id)
-            acting_admin = await _resolve_acting_admin(db)
+            if parts and parts[0] == "caln":
+                if len(parts) not in {6, 7}:
+                    await _answer_callback(telegram, callback_id, "Invalid calendar action")
+                    return {"ok": True}
 
-            if domain == "order" and action == "approve":
-                _, result_message = await _approve_order_via_telegram(target_id, acting_admin, db)
-            elif domain == "order" and action == "reject":
-                _, result_message = await _reject_order_via_telegram(target_id, acting_admin, db)
-            elif domain == "cake" and action == "approve":
-                result_message = await _approve_custom_cake_via_telegram(target_id, acting_admin, db)
-            elif domain == "cake" and action == "reject":
-                result_message = await _reject_custom_cake_via_telegram(target_id, acting_admin, db)
-            else:
-                await _answer_callback(telegram, callback_id, "Unsupported action")
+                _, domain, status_code, stage, month_token, *rest = parts
+                month_start = _parse_month_token(month_token)
+                if month_start is None:
+                    await _answer_callback(telegram, callback_id, "Invalid month")
+                    return {"ok": True}
+
+                if stage == "s":
+                    direction = rest[0]
+                    start_date = None
+                elif stage == "e" and len(rest) == 2:
+                    start_date = _parse_date_token(rest[0])
+                    direction = rest[1]
+                    if start_date is None:
+                        await _answer_callback(telegram, callback_id, "Invalid date")
+                        return {"ok": True}
+                else:
+                    await _answer_callback(telegram, callback_id, "Invalid calendar stage")
+                    return {"ok": True}
+
+                if direction not in {"prev", "next"}:
+                    await _answer_callback(telegram, callback_id, "Invalid direction")
+                    return {"ok": True}
+
+                delta = -1 if direction == "prev" else 1
+                next_month = _shift_month(month_start, delta)
+                if not _is_date_in_calendar_window(next_month):
+                    await _answer_callback(telegram, callback_id, "Date out of range")
+                    return {"ok": True}
+
+                status_label = _domain_status_label(domain, status_code)
+                stage_label = "start date" if stage == "s" else "end date"
+                await _upsert_menu_message(
+                    telegram,
+                    int(chat_id),
+                    f"🗓️ <b>{DOMAIN_LABELS.get(domain, 'Items')} - {status_label}</b>\nSelect <b>{stage_label}</b>.",
+                    _calendar_picker_keyboard(
+                        domain=domain,
+                        status_code=status_code,
+                        stage=stage,
+                        month_start=next_month,
+                        start_date=start_date,
+                    ),
+                    message_id=editable_message_id,
+                )
+                await _answer_callback(telegram, callback_id, "Done")
                 return {"ok": True}
 
-            await _answer_callback(telegram, callback_id, "Done")
-            if isinstance(chat_id, int):
-                await _send_text(telegram, chat_id, f"✅ {result_message}")
-                if isinstance(message_id, int):
-                    await _clear_buttons(telegram, chat_id, message_id)
+            if len(parts) == 4 and parts[0] == "cals":
+                _, domain, status_code, start_token = parts
+                start_date = _parse_date_token(start_token)
+                if start_date is None:
+                    await _answer_callback(telegram, callback_id, "Invalid start date")
+                    return {"ok": True}
+                if not _is_date_in_calendar_window(start_date):
+                    await _answer_callback(telegram, callback_id, "Date out of range")
+                    return {"ok": True}
+
+                status_label = _domain_status_label(domain, status_code)
+                await _upsert_menu_message(
+                    telegram,
+                    int(chat_id),
+                    (
+                        f"🗓️ <b>{DOMAIN_LABELS.get(domain, 'Items')} - {status_label}</b>\n"
+                        f"Start: <b>{start_date.isoformat()}</b>\n"
+                        "Select <b>end date</b>."
+                    ),
+                    _calendar_picker_keyboard(
+                        domain=domain,
+                        status_code=status_code,
+                        stage="e",
+                        month_start=_calendar_month_start(start_date),
+                        start_date=start_date,
+                    ),
+                    message_id=editable_message_id,
+                )
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 5 and parts[0] == "cale":
+                _, domain, status_code, start_token, end_token = parts
+                start_date = _parse_date_token(start_token)
+                end_date = _parse_date_token(end_token)
+                if start_date is None or end_date is None:
+                    await _answer_callback(telegram, callback_id, "Invalid date range")
+                    return {"ok": True}
+                if end_date < start_date:
+                    await _answer_callback(telegram, callback_id, "End date must be after start date")
+                    return {"ok": True}
+                if not _is_date_in_calendar_window(start_date) or not _is_date_in_calendar_window(end_date):
+                    await _answer_callback(telegram, callback_id, "Date out of range")
+                    return {"ok": True}
+
+                await _run_status_range(
+                    telegram,
+                    int(chat_id),
+                    db,
+                    domain=domain,
+                    status_code=status_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 3:
+                domain, action, raw_id = parts
+                target_id = uuid.UUID(raw_id)
+                acting_admin = await _resolve_acting_admin(db)
+
+                if domain == "order" and action == "approve":
+                    _, result_message = await _approve_order_via_telegram(target_id, acting_admin, db)
+                elif domain == "order" and action == "reject":
+                    _, result_message = await _reject_order_via_telegram(target_id, acting_admin, db)
+                elif domain == "cake" and action == "approve":
+                    result_message = await _approve_custom_cake_via_telegram(target_id, acting_admin, db)
+                elif domain == "cake" and action == "reject":
+                    result_message = await _reject_custom_cake_via_telegram(target_id, acting_admin, db)
+                else:
+                    await _answer_callback(telegram, callback_id, "Unsupported action")
+                    return {"ok": True}
+
+                await _answer_callback(telegram, callback_id, "Done")
+                if isinstance(chat_id, int):
+                    await _send_text(telegram, chat_id, f"✅ {result_message}")
+                    if isinstance(message_id, int):
+                        await _clear_buttons(telegram, chat_id, message_id)
+                return {"ok": True}
+
+            await _answer_callback(telegram, callback_id, "Unsupported action")
         except ValueError:
             await _answer_callback(telegram, callback_id, "Invalid target identifier")
         except HTTPException as exc:
@@ -1551,170 +1767,21 @@ async def telegram_webhook(
 
     tokens = text.split()
     command = _extract_command(tokens[0]) if tokens else ""
-    args = tokens[1:]
     if command in ("/start", "/help"):
-        await _send_text(
-            telegram,
-            int(chat_id),
-            _bot_help_message(),
-            _command_keyboard(),
-        )
+        await _send_text(telegram, int(chat_id), _main_menu_message(), _command_keyboard())
         return {"ok": True}
 
-    if command == "/params":
-        await _send_text(
-            telegram,
-            int(chat_id),
-            _bot_params_message(),
-            _command_keyboard(),
-        )
+    if command == "/menu":
+        await _show_product_categories(telegram, int(chat_id), db)
         return {"ok": True}
 
-    if command == "/incoming7":
-        await _handle_incoming_window_command(
-            telegram,
-            int(chat_id),
-            db,
-            days=7,
-        )
+    if command == "/order":
+        await _show_order_filters(telegram, int(chat_id))
         return {"ok": True}
 
-    if command == "/incoming30":
-        await _handle_incoming_window_command(
-            telegram,
-            int(chat_id),
-            db,
-            days=30,
-        )
+    if command == "/cake":
+        await _show_cake_filters(telegram, int(chat_id))
         return {"ok": True}
 
-    if command == "/orders_day":
-        await _send_text(
-            telegram,
-            int(chat_id),
-            "Select a pickup day for orders:",
-            _date_picker_keyboard(
-                select_prefix="od",
-                page_prefix="odp",
-                page=_picker_page_for_offset(offset=0),
-                back_callback="cmd:help",
-            ),
-        )
-        return {"ok": True}
-
-    if command == "/cakes_day":
-        await _send_text(
-            telegram,
-            int(chat_id),
-            "Select a requested day for custom cakes:",
-            _date_picker_keyboard(
-                select_prefix="cd",
-                page_prefix="cdp",
-                page=_picker_page_for_offset(offset=0),
-                back_callback="cmd:help",
-            ),
-        )
-        return {"ok": True}
-
-    if command == "/orders_range":
-        await _send_text(
-            telegram,
-            int(chat_id),
-            "Select START date for orders range:",
-            _date_picker_keyboard(
-                select_prefix="ors",
-                page_prefix="orsp",
-                page=_picker_page_for_offset(offset=0),
-                back_callback="cmd:help",
-            ),
-        )
-        return {"ok": True}
-
-    if command == "/cakes_range":
-        await _send_text(
-            telegram,
-            int(chat_id),
-            "Select START date for cakes range:",
-            _date_picker_keyboard(
-                select_prefix="crs",
-                page_prefix="crsp",
-                page=_picker_page_for_offset(offset=0),
-                back_callback="cmd:help",
-            ),
-        )
-        return {"ok": True}
-
-    if command == "/pending_orders":
-        if len(args) > 1:
-            await _send_text(telegram, int(chat_id), "Too many parameters. Use /params.")
-            return {"ok": True}
-
-        limit, err = _parse_limit_arg(args[0] if args else None, DEFAULT_PENDING_LIMIT)
-        if err:
-            await _send_text(telegram, int(chat_id), err)
-            return {"ok": True}
-
-        await _handle_pending_orders_command(
-            telegram,
-            int(chat_id),
-            db,
-            limit=limit or DEFAULT_PENDING_LIMIT,
-        )
-        return {"ok": True}
-
-    if command == "/pending_cakes":
-        if len(args) > 1:
-            await _send_text(telegram, int(chat_id), "Too many parameters. Use /params.")
-            return {"ok": True}
-
-        limit, err = _parse_limit_arg(args[0] if args else None, DEFAULT_PENDING_LIMIT)
-        if err:
-            await _send_text(telegram, int(chat_id), err)
-            return {"ok": True}
-
-        await _handle_pending_cakes_command(
-            telegram,
-            int(chat_id),
-            db,
-            limit=limit or DEFAULT_PENDING_LIMIT,
-        )
-        return {"ok": True}
-
-    if command == "/today":
-        status_filter, limit, err = _parse_day_command_args(args)
-        if err:
-            await _send_text(telegram, int(chat_id), err)
-            return {"ok": True}
-
-        await _handle_cakes_by_day_command(
-            telegram,
-            int(chat_id),
-            db,
-            day_offset=0,
-            status_filter=status_filter,
-            limit=limit,
-        )
-        return {"ok": True}
-
-    if command == "/tomorrow":
-        status_filter, limit, err = _parse_day_command_args(args)
-        if err:
-            await _send_text(telegram, int(chat_id), err)
-            return {"ok": True}
-
-        await _handle_cakes_by_day_command(
-            telegram,
-            int(chat_id),
-            db,
-            day_offset=1,
-            status_filter=status_filter,
-            limit=limit,
-        )
-        return {"ok": True}
-
-    await _send_text(
-        telegram,
-        int(chat_id),
-        "Unknown command. Use /help to see available commands.",
-    )
+    await _send_text(telegram, int(chat_id), "Use /menu, /order, or /cake.")
     return {"ok": True}

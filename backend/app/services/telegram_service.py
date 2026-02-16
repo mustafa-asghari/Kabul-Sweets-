@@ -16,16 +16,10 @@ settings = get_settings()
 logger = get_logger("telegram_service")
 
 DEFAULT_BOT_COMMANDS = [
-    {"command": "menu", "description": "Open admin menu"},
-    {"command": "incoming7", "description": "Incoming orders/cakes (next 7 days)"},
-    {"command": "incoming30", "description": "Incoming orders/cakes (next 30 days)"},
-    {"command": "orders_day", "description": "Orders for a selected day"},
-    {"command": "cakes_day", "description": "Cakes for a selected day"},
-    {"command": "orders_range", "description": "Orders from date to date"},
-    {"command": "cakes_range", "description": "Cakes from date to date"},
-    {"command": "pending_orders", "description": "Pending approval orders"},
-    {"command": "pending_cakes", "description": "Pending review cakes"},
-    {"command": "help", "description": "Show quick help"},
+    {"command": "menu", "description": "Products by category"},
+    {"command": "order", "description": "Orders (pending / paid)"},
+    {"command": "cake", "description": "Cake orders (pending / paid)"},
+    {"command": "help", "description": "Show bot menu"},
 ]
 
 
