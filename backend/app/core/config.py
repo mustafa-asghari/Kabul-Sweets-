@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     @field_validator("TELEGRAM_ADMIN_CHAT_IDS", mode="before")
     @classmethod
     def parse_telegram_admin_chat_ids(cls, v):
+        if v is None:
+            return []
+
+        if isinstance(v, int):
+            return [v]
+
         if isinstance(v, str):
             import json
 
@@ -83,8 +89,10 @@ class Settings(BaseSettings):
                 parsed = json.loads(v)
             except json.JSONDecodeError:
                 parsed = [item.strip() for item in v.split(",") if item.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            parsed = list(v)
         else:
-            parsed = v
+            parsed = [v]
 
         if not parsed:
             return []
