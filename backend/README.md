@@ -23,6 +23,19 @@ Production-ready FastAPI backend for the Kabul Sweets Afghan bakery e-commerce p
 docker compose up -d db redis
 ```
 
+### Optional: Connect Frontends to Docker (Not Started by Default)
+
+Both UI services are wired to the same Docker network and API service, but are
+profile-gated so they do not run unless requested.
+
+```bash
+# Customer frontend (http://localhost:3000)
+docker compose --profile frontend up frontend
+
+# Admin frontend (http://localhost:3001)
+docker compose --profile admin up admin_frontend
+```
+
 ### 2. Install Python Dependencies
 
 ```bash
