@@ -46,18 +46,19 @@ async function proxy(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const { path } = await params;
-  const targetUrl = buildTargetUrl(path, request.nextUrl.search);
-  const method = request.method.toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer();
-
   try {
+    const { path } = await params;
+    const targetUrl = buildTargetUrl(path, request.nextUrl.search);
+    const method = request.method.toUpperCase();
+    const body =
+      method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer();
+
     const upstream = await fetch(targetUrl, {
       method,
       headers: copyRequestHeaders(request.headers),
       body,
-      redirect: "manual",
+      // Follow backend slash-normalization redirects on the server side.
+      redirect: "follow",
       cache: "no-store",
     });
 
