@@ -398,8 +398,8 @@ function ThemedDatePicker({ value, onChange, className }: ThemedDatePickerProps)
           </div>
 
           <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-gray-500">
-            {WEEKDAY_LABELS.map((day) => (
-              <span key={day}>{day}</span>
+            {WEEKDAY_LABELS.map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
             ))}
           </div>
 
