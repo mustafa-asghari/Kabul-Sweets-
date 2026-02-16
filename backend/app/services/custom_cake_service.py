@@ -73,7 +73,7 @@ class CustomCakeService:
     ) -> dict:
         """
         Submit a custom cake request.
-        Auto-predicts price, servings, and generates AI descriptions.
+        Auto-predicts price and servings, then stores template descriptions.
         """
         complexity = DecorationComplexity(decoration_complexity)
 

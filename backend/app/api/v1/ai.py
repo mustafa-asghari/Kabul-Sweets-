@@ -5,7 +5,7 @@ Natural-language product Q&A with RAG.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +50,7 @@ async def ask_question(
     """
     # Rate limit
     ip = request.client.host if request.client else "unknown"
-    allowed, remaining = await RateLimiter.check_ai_endpoint(ip)
+    allowed, _remaining = await RateLimiter.check_ai_endpoint(ip)
     if not allowed:
         raise HTTPException(
             status_code=429,

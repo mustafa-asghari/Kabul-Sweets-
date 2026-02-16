@@ -15,6 +15,7 @@ const CartDrawer = dynamic(() => import("@/components/CartDrawer"), {
 const navLinks = [
   { href: "/shop", label: "Shop" },
   { href: "/collections", label: "Collections" },
+  { href: "/custom-cakes", label: "Custom Cakes" },
   { href: "/support", label: "Support" },
 ];
 

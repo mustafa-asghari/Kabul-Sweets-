@@ -58,6 +58,14 @@ export default function Footer() {
                     Collections
                   </Link>
                 </li>
+                <li>
+                  <Link
+                    href="/custom-cakes"
+                    className="hover:text-black transition"
+                  >
+                    Custom Cakes
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>
