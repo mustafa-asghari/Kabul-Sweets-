@@ -170,9 +170,9 @@ async def update_order(
 ):
     """[Admin] Update order status, pickup time, or notes."""
     service = OrderService(db)
-    await self.db.flush()
-    await self.db.refresh(order)
-    logger.info("Order %s updated: %s", order.order_number, update_fields)
+    order = await service.update_order_admin(order_id, data)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     return order
 
 
