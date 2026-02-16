@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # ── Telegram Bot (Admin Alerts) ─────────────────────────────────────
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_ADMIN_CHAT_IDS: List[int] = []
+    TELEGRAM_ACTING_ADMIN_EMAIL: str | None = None
+    ADMIN_FRONTEND_URL: str = "http://localhost:3001"
+    BUSINESS_TIMEZONE: str = "Australia/Sydney"
+
     # ── CORS ─────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
@@ -64,6 +72,24 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return [origin.strip() for origin in v.split(",")]
         return v
+
+    @field_validator("TELEGRAM_ADMIN_CHAT_IDS", mode="before")
+    @classmethod
+    def parse_telegram_admin_chat_ids(cls, v):
+        if isinstance(v, str):
+            import json
+
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError:
+                parsed = [item.strip() for item in v.split(",") if item.strip()]
+        else:
+            parsed = v
+
+        if not parsed:
+            return []
+
+        return [int(chat_id) for chat_id in parsed]
 
     @property
     def is_production(self) -> bool:
