@@ -15,6 +15,7 @@ from app.api.v1.ml import router as ml_router
 from app.api.v1.orders import router as orders_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.products import router as products_router
+from app.api.v1.telegram import router as telegram_router
 from app.api.v1.users import router as users_router
 
 api_v1_router = APIRouter()
@@ -31,3 +32,4 @@ api_v1_router.include_router(business_router)
 api_v1_router.include_router(ml_router)
 api_v1_router.include_router(images_router)
 api_v1_router.include_router(carts_router)
+api_v1_router.include_router(telegram_router)
