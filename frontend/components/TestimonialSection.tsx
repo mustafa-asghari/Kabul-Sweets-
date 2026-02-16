@@ -13,15 +13,33 @@ interface Review {
   time: number;
 }
 
-interface ReviewsResponse {
-  placeName: string;
-  placeRating: number | null;
-  totalRatings: number | null;
-  source: "google" | "fallback";
-  reviews: Review[];
-}
-
 const ROTATE_MS = 6500;
+const FEATURED_REVIEWS: Review[] = [
+  {
+    authorName: "Sarah A.",
+    avatarUrl: null,
+    rating: 5,
+    text: "The most authentic Afghan sweets I've tasted outside of Kabul. The custom cake was a masterpiece!",
+    relativeTime: "recent",
+    time: 1,
+  },
+  {
+    authorName: "Hamid R.",
+    avatarUrl: null,
+    rating: 5,
+    text: "Excellent service and fresh desserts every time. Our family now orders all birthday cakes from Kabul Sweets.",
+    relativeTime: "recent",
+    time: 2,
+  },
+  {
+    authorName: "Nadia M.",
+    avatarUrl: null,
+    rating: 5,
+    text: "Beautiful presentation, rich flavor, and very friendly staff. Pickup was quick and easy.",
+    relativeTime: "recent",
+    time: 3,
+  },
+];
 
 function getInitials(name: string) {
   return name
@@ -35,59 +53,8 @@ function getInitials(name: string) {
 export default function TestimonialSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "0px 0px -50px 0px" });
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const reviews = FEATURED_REVIEWS;
   const [activeIndex, setActiveIndex] = useState(0);
-  const [placeName, setPlaceName] = useState("Kabul Sweets Bakery");
-  const [placeRating, setPlaceRating] = useState<number | null>(4.5);
-  const [totalRatings, setTotalRatings] = useState<number | null>(null);
-  const [reviewSource, setReviewSource] = useState<"google" | "fallback">("fallback");
-
-  useEffect(() => {
-    let mounted = true;
-    const controller = new AbortController();
-
-    const loadReviews = async () => {
-      try {
-        const response = await fetch("/api/google-reviews", {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load reviews.");
-        }
-
-        const payload = (await response.json()) as ReviewsResponse;
-        if (!mounted) {
-          return;
-        }
-
-        setReviews(payload.reviews);
-        setPlaceName(payload.placeName);
-        setPlaceRating(payload.placeRating);
-        setTotalRatings(payload.totalRatings);
-        setReviewSource(payload.source);
-      } catch {
-        if (mounted) {
-          setReviews([
-            {
-              authorName: "Sarah A.",
-              avatarUrl: null,
-              rating: 5,
-              text: "The most authentic Afghan sweets I've tasted outside of Kabul. The custom cake was a masterpiece!",
-              relativeTime: "recent",
-              time: 0,
-            },
-          ]);
-        }
-      }
-    };
-
-    loadReviews();
-
-    return () => {
-      mounted = false;
-      controller.abort();
-    };
-  }, []);
 
   useEffect(() => {
     if (reviews.length < 2) {
@@ -110,6 +77,13 @@ export default function TestimonialSection() {
   }, [activeIndex, reviews.length]);
 
   const currentReview = useMemo(() => reviews[activeIndex] ?? null, [reviews, activeIndex]);
+  const averageRating = useMemo(() => {
+    if (reviews.length === 0) {
+      return null;
+    }
+    const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+    return total / reviews.length;
+  }, [reviews]);
 
   const onPrev = () => {
     if (reviews.length < 2) {
@@ -226,15 +200,13 @@ export default function TestimonialSection() {
         </AnimatePresence>
 
         <p className="text-xs text-gray-400 mt-8 mb-4">
-          {reviewSource === "google"
-            ? `Top-rated customer reviews from Google Maps for ${placeName}.`
-            : "Showing featured customer reviews while Google Maps sync is unavailable."}
+          Featured customer reviews from Kabul Sweets Bakery.
         </p>
         <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
           <span className="material-symbols-outlined text-[17px] text-black">star</span>
-          <span className="font-semibold">{placeRating?.toFixed(1) ?? "4.5"}</span>
-          <span>Google rating</span>
-          {totalRatings ? <span>({totalRatings}+ ratings)</span> : null}
+          <span className="font-semibold">{averageRating?.toFixed(1) ?? "5.0"}</span>
+          <span>Customer rating</span>
+          <span>({reviews.length} featured reviews)</span>
         </div>
       </motion.div>
     </section>

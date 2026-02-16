@@ -11,6 +11,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+APP_ENV = os.getenv("APP_ENV", "development")
+TASK_ALWAYS_EAGER = (
+    os.getenv(
+        "CELERY_TASK_ALWAYS_EAGER",
+        "true" if APP_ENV.lower() != "production" else "false",
+    ).lower()
+    == "true"
+)
+
 try:
     from celery import Celery
 except ModuleNotFoundError:
@@ -83,6 +92,8 @@ if Celery is not None:
         # Retry defaults
         task_default_retry_delay=60,  # 1 minute
         task_max_retries=3,
+        task_always_eager=TASK_ALWAYS_EAGER,
+        task_eager_propagates=True,
 
         # Task routing
         task_routes={
