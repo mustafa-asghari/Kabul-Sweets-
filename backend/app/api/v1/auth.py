@@ -199,6 +199,15 @@ async def refresh_token(
     return Token(access_token=new_access, refresh_token=new_refresh)
 
 
+# ── Get Current User ────────────────────────────────────────────────────────
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+):
+    """Get the current authenticated user's profile."""
+    return current_user
+
+
 # ── Logout ───────────────────────────────────────────────────────────────────
 @router.post("/logout", response_model=MessageResponse)
 async def logout(

@@ -149,6 +149,12 @@ export const storeProducts: StoreProduct[] = [
 
 export const collections: Collection[] = [
   {
+    title: "Cakes",
+    description: "Custom and celebration cakes prepared fresh for every occasion.",
+    imageSrc: cakeImage,
+    imageAlt: "Cakes collection",
+  },
+  {
     title: "Pastries",
     description: "Small cakes and pastry bites for everyday pickup.",
     imageSrc: customDessertImage,

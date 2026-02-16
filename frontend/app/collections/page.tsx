@@ -2,6 +2,7 @@ import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import PageHero from "@/components/PageHero";
 import CollectionCard from "@/components/CollectionCard";
+import ActionBanner from "@/components/ActionBanner";
 import ScrollReveal from "@/components/ScrollReveal";
 import { collections } from "@/data/storefront";
 
@@ -13,8 +14,10 @@ export default function CollectionsPage() {
         <PageHero
           badge="Collections"
           title="Explore Our Product Collections."
-          description="Browse curated categories to quickly find the sweets, pastries, and cookies you need."
+          description="Browse curated categories to quickly find the sweets, cakes, pastries, and cookies you need."
         />
+
+        <ActionBanner zoomOut />
 
         <section className="max-w-[1200px] mx-auto px-6">
           <ScrollReveal

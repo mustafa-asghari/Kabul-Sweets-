@@ -107,6 +107,18 @@ async def require_admin(
     return current_user
 
 
+async def require_staff_or_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Require the current user to be either staff or admin."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.STAFF):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff or admin access required",
+        )
+    return current_user
+
+
 async def log_admin_action(
     request: Request,
     admin: User = Depends(require_admin),

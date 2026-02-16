@@ -17,6 +17,7 @@ from app.core.database import Base
 class UserRole(str, enum.Enum):
     """User roles for RBAC."""
     ADMIN = "admin"
+    STAFF = "staff"
     CUSTOMER = "customer"
 
 
