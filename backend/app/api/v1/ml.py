@@ -20,7 +20,12 @@ from app.services.ml_service import CakePricingService, ServingEstimationService
 
 router = APIRouter(tags=["ML & Custom Cakes"])
 
-ALLOWED_CUSTOM_CAKE_FLAVORS = {"vanilla", "sponge"}
+ALLOWED_CUSTOM_CAKE_FLAVOR_NORMALIZED = {
+    "spong + vanila",
+    "sponge + vanilla",
+    "sponge and vanilla",
+    "vanilla + sponge",
+}
 ALLOWED_CUSTOM_CAKE_SIZES_INCHES = {10, 12, 14, 16}
 
 
@@ -158,11 +163,11 @@ async def submit_custom_cake(
     """Submit a custom cake request. Auto-predicts price and servings."""
     service = CustomCakeService(db)
 
-    normalized_flavor = data.flavor.strip().lower()
-    if normalized_flavor not in ALLOWED_CUSTOM_CAKE_FLAVORS:
+    normalized_flavor = " ".join(data.flavor.strip().lower().split())
+    if normalized_flavor not in ALLOWED_CUSTOM_CAKE_FLAVOR_NORMALIZED:
         raise HTTPException(
             status_code=400,
-            detail="Only Vanilla and Sponge cakes are available for custom orders.",
+            detail="Only Spong + Vanila flavor is available for custom orders.",
         )
 
     size_inches = int(data.diameter_inches)
@@ -181,7 +186,7 @@ async def submit_custom_cake(
 
     return await service.submit_custom_cake(
         customer_id=current_user.id,
-        flavor=normalized_flavor.title(),
+        flavor="Spong + Vanila",
         diameter_inches=float(size_inches),
         height_inches=4.0,
         layers=1,

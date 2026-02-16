@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
@@ -10,12 +10,23 @@ import { useAuth } from "@/context/AuthContext";
 
 const MAX_REFERENCE_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_REFERENCE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const IMAGE_ON_CAKE_SURCHARGE = 25;
+const AVAILABLE_SIZES_INCHES = [10, 12, 14, 16] as const;
+const AVAILABLE_FLAVORS = ["Spong + Vanila"] as const;
+const DEFAULT_HEIGHT_INCHES = 4;
+const DEFAULT_LAYERS = 1;
+const DEFAULT_SHAPE = "round";
+const TIME_SLOT_OPTIONS = ["Morning", "Afternoon", "Evening"] as const;
+const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
 
-type DecorationComplexity = "simple" | "moderate" | "complex" | "elaborate";
-type CakeShape = "round" | "square" | "rectangle" | "heart" | "hexagon" | "tiered";
+type AllowedFlavor = (typeof AVAILABLE_FLAVORS)[number];
 
 interface ServingEstimateResponse {
+  predicted_servings: number;
+  suggestion: string;
+}
+
+interface SizeRecommendation {
+  recommended_size_inches: number;
   predicted_servings: number;
   suggestion: string;
 }
@@ -42,6 +53,7 @@ interface CustomCakeSubmissionResponse {
   status: string;
   predicted_price: string | number;
   predicted_servings: number;
+  predicted_size_inches?: number;
   price_breakdown?: PriceBreakdown;
   ai_descriptions?: AiDescriptions;
 }
@@ -58,39 +70,25 @@ interface MyCakeSummary {
 }
 
 interface CakeFormState {
-  flavor: string;
+  flavor: AllowedFlavor;
   diameter_inches: number;
-  height_inches: number;
-  layers: number;
-  shape: CakeShape;
-  decoration_complexity: DecorationComplexity;
+  desired_servings: number;
   decoration_description: string;
   cake_message: string;
-  event_type: string;
-  allergen_notes: string;
   requested_date: string;
   time_slot: string;
-  is_rush_order: boolean;
-  wants_image_on_cake: boolean;
-  approved_image_fee: boolean;
+  preferred_time: string;
 }
 
 const defaultFormState: CakeFormState = {
-  flavor: "",
-  diameter_inches: 8,
-  height_inches: 4,
-  layers: 1,
-  shape: "round",
-  decoration_complexity: "moderate",
+  flavor: "Spong + Vanila",
+  diameter_inches: 12,
+  desired_servings: 25,
   decoration_description: "",
   cake_message: "",
-  event_type: "",
-  allergen_notes: "",
   requested_date: "",
   time_slot: "Morning",
-  is_rush_order: false,
-  wants_image_on_cake: false,
-  approved_image_fee: false,
+  preferred_time: "",
 };
 
 function asCurrency(value: string | number | null | undefined) {
@@ -105,27 +103,6 @@ function asCurrency(value: string | number | null | undefined) {
     style: "currency",
     currency: "AUD",
   }).format(parsed);
-}
-
-function toHex(value: number) {
-  return value.toString(16).padStart(2, "0");
-}
-
-function rgbToHex(r: number, g: number, b: number) {
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function hexToRgb(hex: string) {
-  const normalized = hex.replace("#", "").trim();
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
-    return null;
-  }
-
-  return {
-    r: Number.parseInt(normalized.slice(0, 2), 16),
-    g: Number.parseInt(normalized.slice(2, 4), 16),
-    b: Number.parseInt(normalized.slice(4, 6), 16),
-  };
 }
 
 function validateReferenceFile(file: File) {
@@ -168,16 +145,324 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ");
 }
 
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface ThemedSelectProps {
+  value: string;
+  onChange: (next: string) => void;
+  options: SelectOption[];
+  className?: string;
+  placeholder?: string;
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInputValue(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+function formatDateLabel(value: string) {
+  const parsed = parseDateInputValue(value);
+  if (!parsed) {
+    return "Select date";
+  }
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function buildPreferredTimeOptions() {
+  const options: SelectOption[] = [{ value: "", label: "No specific time" }];
+
+  for (let hour = 6; hour <= 19; hour += 1) {
+    for (const minute of [0, 30]) {
+      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      const date = new Date();
+      date.setHours(hour, minute, 0, 0);
+      const label = new Intl.DateTimeFormat("en-AU", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date);
+
+      options.push({ value, label });
+    }
+  }
+
+  return options;
+}
+
+const PREFERRED_TIME_OPTIONS = buildPreferredTimeOptions();
+
+function ThemedSelect({
+  value,
+  onChange,
+  options,
+  className,
+  placeholder = "Select option",
+}: ThemedSelectProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current) {
+        return;
+      }
+
+      if (event.target instanceof Node && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, []);
+
+  return (
+    <div ref={rootRef} className={`relative ${className || ""}`}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-left text-sm text-gray-700 outline-none transition hover:border-[#d8c6ad] focus:ring-2 focus:ring-accent/25"
+      >
+        <span>{selected?.label || placeholder}</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 material-symbols-outlined text-[20px]">
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="absolute z-40 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-[#e5d5bf] bg-[#fbf7f0] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value || option.label}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                  isSelected
+                    ? "bg-[#f4e7d2] text-black font-semibold"
+                    : "text-gray-700 hover:bg-[#f1e4d0]"
+                }`}
+              >
+                <span>{option.label}</span>
+                {isSelected ? (
+                  <span className="material-symbols-outlined text-[17px] text-[#ad751c]">check</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface ThemedDatePickerProps {
+  value: string;
+  onChange: (next: string) => void;
+  className?: string;
+}
+
+function ThemedDatePicker({ value, onChange, className }: ThemedDatePickerProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const selectedDate = useMemo(() => parseDateInputValue(value), [value]);
+  const [viewMonth, setViewMonth] = useState(() => {
+    const initial = parseDateInputValue(value) || new Date();
+    return new Date(initial.getFullYear(), initial.getMonth(), 1);
+  });
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current) {
+        return;
+      }
+
+      if (event.target instanceof Node && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDate) {
+      return;
+    }
+
+    setViewMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }, [selectedDate]);
+
+  const calendarDays = useMemo(() => {
+    const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    const firstWeekdayMonday = (firstOfMonth.getDay() + 6) % 7;
+    const gridStart = new Date(firstOfMonth);
+    gridStart.setDate(firstOfMonth.getDate() - firstWeekdayMonday);
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const day = new Date(gridStart);
+      day.setDate(gridStart.getDate() + index);
+      return {
+        date: day,
+        isCurrentMonth: day.getMonth() === viewMonth.getMonth(),
+      };
+    });
+  }, [viewMonth]);
+
+  const monthLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-AU", {
+        month: "long",
+        year: "numeric",
+      }).format(viewMonth),
+    [viewMonth]
+  );
+
+  return (
+    <div ref={rootRef} className={`relative ${className || ""}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-left text-sm text-gray-700 outline-none transition hover:border-[#d8c6ad] focus:ring-2 focus:ring-accent/25"
+      >
+        <span>{formatDateLabel(value)}</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 material-symbols-outlined text-[19px]">
+          calendar_month
+        </span>
+      </button>
+
+      {open ? (
+        <div className="absolute z-40 mt-2 w-[310px] rounded-2xl border border-[#e5d5bf] bg-[#fbf7f0] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
+          <div className="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() =>
+                setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
+              }
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 transition hover:bg-[#f4e7d2]"
+              aria-label="Previous month"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+            </button>
+
+            <p className="text-sm font-bold text-black">{monthLabel}</p>
+
+            <button
+              type="button"
+              onClick={() =>
+                setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
+              }
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 transition hover:bg-[#f4e7d2]"
+              aria-label="Next month"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-gray-500">
+            {WEEKDAY_LABELS.map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+
+          <div className="mt-2 grid grid-cols-7 gap-1">
+            {calendarDays.map((entry) => {
+              const entryValue = toDateInputValue(entry.date);
+              const isSelected = value === entryValue;
+              return (
+                <button
+                  key={entryValue}
+                  type="button"
+                  onClick={() => {
+                    onChange(entryValue);
+                    setOpen(false);
+                  }}
+                  className={`h-9 rounded-lg text-sm transition ${
+                    isSelected
+                      ? "bg-[#ad751c] font-semibold text-white"
+                      : entry.isCurrentMonth
+                        ? "text-gray-800 hover:bg-[#f4e7d2]"
+                        : "text-gray-400 hover:bg-[#f4e7d2]"
+                  }`}
+                >
+                  {entry.date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="text-xs font-semibold text-gray-600 transition hover:text-black"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(toDateInputValue(new Date()));
+                setOpen(false);
+              }}
+              className="text-xs font-semibold text-[#ad751c] transition hover:text-[#8f5f13]"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CustomCakesPage() {
   const { user, accessToken, loading: authLoading, isAuthenticated } = useAuth();
 
   const [form, setForm] = useState<CakeFormState>(defaultFormState);
-  const [rgb, setRgb] = useState({ r: 173, g: 117, b: 28 });
+  const [referenceCakeFile, setReferenceCakeFile] = useState<File | null>(null);
   const [imageOnCakeFile, setImageOnCakeFile] = useState<File | null>(null);
-  const [colorReferenceFile, setColorReferenceFile] = useState<File | null>(null);
 
-  const [servingEstimate, setServingEstimate] = useState<ServingEstimateResponse | null>(null);
-  const [estimatingServings, setEstimatingServings] = useState(false);
+  const [sizeRecommendation, setSizeRecommendation] = useState<SizeRecommendation | null>(null);
+  const [estimatingSize, setEstimatingSize] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -187,7 +472,6 @@ export default function CustomCakesPage() {
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
-  const colorHex = useMemo(() => rgbToHex(rgb.r, rgb.g, rgb.b), [rgb.b, rgb.g, rgb.r]);
   const hasAnyContact = Boolean(user?.email || user?.phone);
 
   const updateForm = useCallback(<K extends keyof CakeFormState>(field: K, value: CakeFormState[K]) => {
@@ -221,38 +505,72 @@ export default function CustomCakesPage() {
   }, [authLoading, loadMyRequests]);
 
   useEffect(() => {
+    if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
+      setSizeRecommendation(null);
+      setEstimateError("Please enter a valid number of servings.");
+      return;
+    }
+
     const timeoutId = window.setTimeout(async () => {
-      setEstimatingServings(true);
+      setEstimatingSize(true);
       setEstimateError(null);
       try {
-        const estimate = await apiRequest<ServingEstimateResponse>("/api/v1/ml/estimate-servings", {
-          method: "POST",
-          body: {
-            diameter_inches: form.diameter_inches,
-            height_inches: form.height_inches,
-            layers: form.layers,
-            shape: form.shape,
-            serving_style: "party",
-          },
+        const results = await Promise.all(
+          AVAILABLE_SIZES_INCHES.map(async (size) => {
+            const estimate = await apiRequest<ServingEstimateResponse>("/api/v1/ml/estimate-servings", {
+              method: "POST",
+              body: {
+                diameter_inches: size,
+                height_inches: DEFAULT_HEIGHT_INCHES,
+                layers: DEFAULT_LAYERS,
+                shape: DEFAULT_SHAPE,
+                serving_style: "party",
+              },
+            });
+
+            return {
+              size,
+              predicted_servings: estimate.predicted_servings,
+              suggestion: estimate.suggestion,
+            };
+          })
+        );
+
+        const recommended =
+          results.find((row) => row.predicted_servings >= form.desired_servings) ||
+          results[results.length - 1];
+
+        setSizeRecommendation({
+          recommended_size_inches: recommended.size,
+          predicted_servings: recommended.predicted_servings,
+          suggestion: recommended.suggestion,
         });
-        setServingEstimate(estimate);
+
+        setForm((current) => {
+          if (current.diameter_inches === recommended.size) {
+            return current;
+          }
+          return { ...current, diameter_inches: recommended.size };
+        });
       } catch {
-        setEstimateError("Could not estimate servings right now.");
-        setServingEstimate(null);
+        setEstimateError("Could not calculate the best size right now.");
+        setSizeRecommendation(null);
       } finally {
-        setEstimatingServings(false);
+        setEstimatingSize(false);
       }
     }, 350);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [form.diameter_inches, form.height_inches, form.layers, form.shape]);
+  }, [form.desired_servings]);
 
   const resetFormAfterSuccess = () => {
     setForm(defaultFormState);
+    setReferenceCakeFile(null);
     setImageOnCakeFile(null);
-    setColorReferenceFile(null);
+    setSizeRecommendation(null);
+    setEstimateError(null);
   };
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -270,81 +588,58 @@ export default function CustomCakesPage() {
       return;
     }
 
-    if (!form.flavor.trim()) {
-      setSubmitError("Please enter the cake flavor.");
+    if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
+      setSubmitError("Please enter how many people the cake should serve.");
       return;
     }
 
-    if (form.wants_image_on_cake && !form.approved_image_fee) {
-      setSubmitError("Please confirm the $25 image-on-cake fee to continue.");
+    if (!referenceCakeFile) {
+      setSubmitError("Please upload one reference cake image.");
       return;
     }
 
-    if (form.wants_image_on_cake && form.approved_image_fee && !imageOnCakeFile) {
-      setSubmitError("Please upload one image for the cake print.");
+    const imageValidationError = validateReferenceFile(referenceCakeFile);
+    if (imageValidationError) {
+      setSubmitError(imageValidationError);
       return;
     }
 
     if (imageOnCakeFile) {
-      const imageValidationError = validateReferenceFile(imageOnCakeFile);
-      if (imageValidationError) {
-        setSubmitError(imageValidationError);
-        return;
-      }
-    }
-
-    if (colorReferenceFile) {
-      const colorValidationError = validateReferenceFile(colorReferenceFile);
-      if (colorValidationError) {
-        setSubmitError(colorValidationError);
+      const imageOnCakeValidationError = validateReferenceFile(imageOnCakeFile);
+      if (imageOnCakeValidationError) {
+        setSubmitError(imageOnCakeValidationError);
         return;
       }
     }
 
     setSubmitting(true);
     try {
-      const referenceImages: string[] = [];
-      if (colorReferenceFile) {
-        referenceImages.push(await fileToDataUrl(colorReferenceFile));
-      }
-      if (form.wants_image_on_cake && imageOnCakeFile) {
+      const referenceImages = [await fileToDataUrl(referenceCakeFile)];
+      if (imageOnCakeFile) {
         referenceImages.push(await fileToDataUrl(imageOnCakeFile));
       }
-
-      const colorText = `Preferred colour: ${colorHex} (rgb(${rgb.r}, ${rgb.g}, ${rgb.b}))`;
-      const imageRequestText = form.wants_image_on_cake
-        ? `Image on cake requested (+$${IMAGE_ON_CAKE_SURCHARGE}): yes`
-        : "Image on cake requested: no";
-      const decorationDescription = [form.decoration_description.trim(), colorText, imageRequestText]
-        .filter(Boolean)
-        .join("\n");
+      const formattedTimeSlot = form.preferred_time
+        ? `${form.time_slot} (${form.preferred_time})`
+        : form.time_slot;
 
       const submission = await apiRequest<CustomCakeSubmissionResponse>("/api/v1/custom-cakes", {
         method: "POST",
         token: accessToken,
         body: {
-          flavor: form.flavor.trim(),
+          flavor: form.flavor,
           diameter_inches: form.diameter_inches,
-          height_inches: form.height_inches,
-          layers: form.layers,
-          shape: form.shape,
-          decoration_complexity: form.decoration_complexity,
-          decoration_description: decorationDescription,
+          decoration_description: form.decoration_description.trim() || null,
           cake_message: form.cake_message.trim() || null,
-          event_type: form.event_type.trim() || null,
-          is_rush_order: form.is_rush_order,
           ingredients: {
-            preferred_colour_hex: colorHex,
-            preferred_colour_rgb: { r: rgb.r, g: rgb.g, b: rgb.b },
-            image_on_cake_requested: form.wants_image_on_cake,
-            image_on_cake_fee_approved: form.wants_image_on_cake ? form.approved_image_fee : false,
-            image_on_cake_fee_amount_aud: form.wants_image_on_cake ? IMAGE_ON_CAKE_SURCHARGE : 0,
-            color_reference_attached: Boolean(colorReferenceFile),
+            desired_servings: form.desired_servings,
+            selected_size_inches: form.diameter_inches,
+            allowed_sizes_inches: AVAILABLE_SIZES_INCHES,
+            preferred_time: form.preferred_time || null,
+            image_on_cake_requested: Boolean(imageOnCakeFile),
           },
-          allergen_notes: form.allergen_notes.trim() || null,
-          reference_images: referenceImages.length > 0 ? referenceImages : null,
+          reference_images: referenceImages,
           requested_date: form.requested_date ? `${form.requested_date}T00:00:00` : null,
-          time_slot: form.time_slot || null,
+          time_slot: formattedTimeSlot || null,
         },
       });
 
@@ -362,6 +657,11 @@ export default function CustomCakesPage() {
     }
   };
 
+  const sizeDetails = useMemo(() => {
+    const selected = form.diameter_inches;
+    return `${selected}-inch round custom cake`;
+  }, [form.diameter_inches]);
+
   return (
     <>
       <Navbar />
@@ -373,11 +673,12 @@ export default function CustomCakesPage() {
                 Custom Cake Studio
               </span>
               <h1 className="mt-5 text-4xl md:text-6xl font-extrabold tracking-tight text-black leading-[1.06]">
-                Build your cake request with exact size, colour, and style.
+                Tell us servings, style image, and timing. We predict size and price.
               </h1>
               <p className="mt-4 max-w-3xl text-sm md:text-base text-gray-600 leading-relaxed">
-                Submit everything in one go: flavor, servings, preferred RGB colour, cake text, and
-                optional image printing. Our ML engine estimates price from your size/spec, then admin reviews and confirms.
+                We currently offer only <strong>Spong + Vanila</strong> flavor, in
+                10, 12, 14, and 16 inch sizes. Share your reference cake image and how many people
+                the cake should serve, then our ML pricing system returns the suggested size and estimate.
               </p>
             </div>
           </ScrollReveal>
@@ -389,7 +690,7 @@ export default function CustomCakesPage() {
               <div className="rounded-2xl bg-cream-dark p-6">
                 <h2 className="text-2xl font-extrabold tracking-tight text-black">Sign in to request a custom cake</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  We need your customer account so your order goes to admin review and payment approval safely.
+                  We need your customer account so your request can be reviewed and approved safely.
                 </p>
                 <button
                   type="button"
@@ -421,200 +722,122 @@ export default function CustomCakesPage() {
                     />
                   </label>
                 </div>
+
                 {!hasAnyContact ? (
                   <p className="text-sm text-red-600">
                     Please update your profile with at least email or phone before submitting.
                   </p>
                 ) : null}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-1 gap-4">
                   <label className="text-sm font-semibold text-black">
                     Flavor
-                    <input
+                    <select
                       required
-                      type="text"
                       value={form.flavor}
-                      onChange={(event) => updateForm("flavor", event.target.value)}
-                      placeholder="e.g. Chocolate Hazelnut"
+                      onChange={(event) => updateForm("flavor", event.target.value as AllowedFlavor)}
                       className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                    />
-                  </label>
-                  <label className="text-sm font-semibold text-black">
-                    Event type
-                    <input
-                      type="text"
-                      value={form.event_type}
-                      onChange={(event) => updateForm("event_type", event.target.value)}
-                      placeholder="Birthday, wedding, engagement..."
-                      className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                    />
+                    >
+                      {AVAILABLE_FLAVORS.map((flavor) => (
+                        <option key={flavor} value={flavor}>
+                          {flavor}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-xs text-gray-500">Only Spong + Vanila is available.</span>
                   </label>
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-extrabold tracking-tight text-black">Size & Structure</h3>
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <h3 className="text-xl font-extrabold tracking-tight text-black">Size Planning</h3>
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label className="text-sm font-semibold text-black">
-                      Diameter (in)
-                      <input
-                        type="number"
-                        min={5}
-                        max={24}
-                        step={1}
-                        value={form.diameter_inches}
-                        onChange={(event) => updateForm("diameter_inches", Number(event.target.value))}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                      />
-                    </label>
-                    <label className="text-sm font-semibold text-black">
-                      Height (in)
-                      <input
-                        type="number"
-                        min={2}
-                        max={12}
-                        step={0.5}
-                        value={form.height_inches}
-                        onChange={(event) => updateForm("height_inches", Number(event.target.value))}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                      />
-                    </label>
-                    <label className="text-sm font-semibold text-black">
-                      Layers
+                      How many people should this cake serve?
                       <input
                         type="number"
                         min={1}
-                        max={5}
-                        value={form.layers}
-                        onChange={(event) => updateForm("layers", Number(event.target.value))}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
+                        max={500}
+                        value={form.desired_servings}
+                        onChange={(event) => updateForm("desired_servings", Number(event.target.value))}
+                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
                       />
                     </label>
                     <label className="text-sm font-semibold text-black">
-                      Shape
+                      Cake size (inches)
                       <select
-                        value={form.shape}
-                        onChange={(event) => updateForm("shape", event.target.value as CakeShape)}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-3 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
+                        value={form.diameter_inches}
+                        onChange={(event) => updateForm("diameter_inches", Number(event.target.value))}
+                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
                       >
-                        <option value="round">Round</option>
-                        <option value="square">Square</option>
-                        <option value="rectangle">Rectangle</option>
-                        <option value="heart">Heart</option>
-                        <option value="hexagon">Hexagon</option>
-                        <option value="tiered">Tiered</option>
+                        {AVAILABLE_SIZES_INCHES.map((size) => (
+                          <option key={size} value={size}>
+                            {size} inch
+                          </option>
+                        ))}
                       </select>
+                      <span className="mt-1 block text-xs text-gray-500">Available sizes: 10, 12, 14, 16 inch.</span>
                     </label>
                   </div>
+
                   <div className="mt-4 rounded-2xl bg-cream-dark/80 p-4">
                     <p className="text-sm font-semibold text-black">
-                      {estimatingServings
-                        ? "Estimating servings..."
-                        : servingEstimate
-                          ? `Estimated servings: ${servingEstimate.predicted_servings} people`
-                          : "Serving estimate unavailable"}
+                      {estimatingSize
+                        ? "Calculating best size..."
+                        : sizeRecommendation
+                          ? `Recommended size: ${sizeRecommendation.recommended_size_inches} inch (about ${sizeRecommendation.predicted_servings} servings)`
+                          : "Size recommendation unavailable"}
                     </p>
                     <p className="mt-1 text-xs text-gray-600">
-                      {estimateError || servingEstimate?.suggestion || "Serving estimate updates with size changes."}
+                      {estimateError || sizeRecommendation?.suggestion || "Recommendation updates when servings change."}
                     </p>
+                    <p className="mt-2 text-xs text-gray-500">Current selection: {sizeDetails}</p>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-extrabold tracking-tight text-black">Decoration & Colour</h3>
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] gap-5">
-                    <div className="space-y-4">
-                      <label className="text-sm font-semibold text-black block">
-                        Decoration complexity
-                        <select
-                          value={form.decoration_complexity}
-                          onChange={(event) => updateForm("decoration_complexity", event.target.value as DecorationComplexity)}
-                          className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                        >
-                          <option value="simple">Simple</option>
-                          <option value="moderate">Moderate</option>
-                          <option value="complex">Complex</option>
-                          <option value="elaborate">Elaborate</option>
-                        </select>
-                      </label>
-                      <label className="text-sm font-semibold text-black block">
-                        Decoration description
-                        <textarea
-                          rows={4}
-                          value={form.decoration_description}
-                          onChange={(event) => updateForm("decoration_description", event.target.value)}
-                          placeholder="Design ideas, piping style, flowers, theme..."
-                          className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none resize-none focus:ring-2 focus:ring-accent/25"
-                        />
-                      </label>
-                    </div>
-                    <div className="rounded-2xl border border-[#eadcc8] bg-[#f8f2e8] p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="h-20 w-20 rounded-full bg-white p-1 ring-1 ring-black/10">
-                          <span
-                            className="block h-full w-full rounded-full"
-                            style={{ backgroundColor: colorHex }}
-                          />
-                        </div>
-                        <div className="text-sm">
-                          <p className="font-semibold text-black">Pick colour with RGB</p>
-                          <p className="mt-1 text-xs leading-relaxed text-gray-600">
-                            Choose a base shade with Quick pick, then fine-tune it using the RGB sliders.
-                            The HEX code updates automatically for your final color choice.
-                          </p>
-                          <p className="mt-1 font-extrabold tracking-wide text-black">{colorHex.toUpperCase()}</p>
-                        </div>
-                      </div>
+                  <h3 className="text-xl font-extrabold tracking-tight text-black">Design Reference</h3>
+                  <div className="mt-4 space-y-4">
+                    <label className="text-sm font-semibold text-black block">
+                      Decoration description
+                      <textarea
+                        rows={4}
+                        value={form.decoration_description}
+                        onChange={(event) => updateForm("decoration_description", event.target.value)}
+                        placeholder="Design ideas, piping style, flowers, theme..."
+                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none resize-none focus:ring-2 focus:ring-accent/25"
+                      />
+                    </label>
 
-                      <label className="mt-4 flex items-center justify-between rounded-xl border border-[#eadcc8] bg-white px-3 py-2 text-xs text-gray-600">
-                        Quick pick
-                        <input
-                          type="color"
-                          value={colorHex}
-                          onChange={(event) => {
-                            const parsed = hexToRgb(event.target.value);
-                            if (parsed) {
-                              setRgb(parsed);
-                            }
-                          }}
-                          className="h-9 w-9 cursor-pointer rounded-full border-0 bg-transparent p-0"
-                        />
-                      </label>
+                    <label className="text-sm font-semibold text-black block">
+                      Reference cake image
+                      <input
+                        required
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                        onChange={(event) => {
+                          const selected = event.target.files?.[0] || null;
+                          setReferenceCakeFile(selected);
+                        }}
+                        className="mt-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-full file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
+                      />
+                      <span className="mt-1 block text-xs text-gray-500">Upload one clear image (JPG/PNG/WEBP, max 4MB).</span>
+                    </label>
 
-                      <div className="mt-4 space-y-3">
-                        <label className="text-xs text-gray-600 block">
-                          Red channel
-                          <input
-                            type="range"
-                            min={0}
-                            max={255}
-                            value={rgb.r}
-                            onChange={(event) => setRgb((current) => ({ ...current, r: Number(event.target.value) }))}
-                            className="mt-1 w-full accent-red-500"
-                          />
-                        </label>
-                        <label className="text-xs text-gray-600 block">
-                          Green channel
-                          <input
-                            type="range"
-                            min={0}
-                            max={255}
-                            value={rgb.g}
-                            onChange={(event) => setRgb((current) => ({ ...current, g: Number(event.target.value) }))}
-                            className="mt-1 w-full accent-green-500"
-                          />
-                        </label>
-                        <label className="text-xs text-gray-600 block">
-                          Blue channel
-                          <input
-                            type="range"
-                            min={0}
-                            max={255}
-                            value={rgb.b}
-                            onChange={(event) => setRgb((current) => ({ ...current, b: Number(event.target.value) }))}
-                            className="mt-1 w-full accent-blue-500"
-                          />
-                        </label>
-                      </div>
-                    </div>
+                    <label className="text-sm font-semibold text-black block">
+                      Image to print on cake (optional)
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                        onChange={(event) => {
+                          const selected = event.target.files?.[0] || null;
+                          setImageOnCakeFile(selected);
+                        }}
+                        className="mt-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-full file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
+                      />
+                      <span className="mt-1 block text-xs text-gray-500">
+                        Upload an image only if you want it printed on the cake.
+                      </span>
+                    </label>
                   </div>
                 </div>
 
@@ -629,16 +852,6 @@ export default function CustomCakesPage() {
                         value={form.cake_message}
                         onChange={(event) => updateForm("cake_message", event.target.value)}
                         placeholder="Happy Birthday Mustafa"
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                      />
-                    </label>
-                    <label className="text-sm font-semibold text-black">
-                      Allergen notes
-                      <input
-                        type="text"
-                        value={form.allergen_notes}
-                        onChange={(event) => updateForm("allergen_notes", event.target.value)}
-                        placeholder="Nut free, egg free, etc."
                         className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
                       />
                     </label>
@@ -663,75 +876,16 @@ export default function CustomCakesPage() {
                         <option value="Evening">Evening</option>
                       </select>
                     </label>
+                    <label className="text-sm font-semibold text-black md:col-span-2">
+                      Preferred time
+                      <input
+                        type="time"
+                        value={form.preferred_time}
+                        onChange={(event) => updateForm("preferred_time", event.target.value)}
+                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
+                      />
+                    </label>
                   </div>
-                  <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-black">
-                    <input
-                      type="checkbox"
-                      checked={form.is_rush_order}
-                      onChange={(event) => updateForm("is_rush_order", event.target.checked)}
-                    />
-                    Rush order needed
-                  </label>
-                </div>
-
-                <div className="rounded-2xl border border-[#e8dccb] bg-[#fbf7f0] p-5">
-                  <h3 className="text-lg font-extrabold tracking-tight text-black">Image options</h3>
-                  <label className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-black">
-                    <input
-                      type="checkbox"
-                      checked={form.wants_image_on_cake}
-                      onChange={(event) => {
-                        const nextValue = event.target.checked;
-                        updateForm("wants_image_on_cake", nextValue);
-                        if (!nextValue) {
-                          updateForm("approved_image_fee", false);
-                          setImageOnCakeFile(null);
-                        }
-                      }}
-                    />
-                    I want an image printed on the cake
-                  </label>
-                  {form.wants_image_on_cake ? (
-                    <div className="mt-3 space-y-3 rounded-xl bg-white p-4 border border-[#eadcc8]">
-                      <p className="text-sm text-black font-semibold">
-                        Image printing adds {asCurrency(IMAGE_ON_CAKE_SURCHARGE)}.
-                      </p>
-                      <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={form.approved_image_fee}
-                          onChange={(event) => updateForm("approved_image_fee", event.target.checked)}
-                        />
-                        I approve the extra image charge
-                      </label>
-                      <label className="block text-sm font-semibold text-black">
-                        Upload one image for the cake
-                        <input
-                          disabled={!form.approved_image_fee}
-                          type="file"
-                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                          onChange={(event) => {
-                            const selected = event.target.files?.[0] || null;
-                            setImageOnCakeFile(selected);
-                          }}
-                          className="mt-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-full file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:opacity-40"
-                        />
-                      </label>
-                    </div>
-                  ) : null}
-
-                  <label className="mt-4 block text-sm font-semibold text-black">
-                    Optional colour reference image
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                      onChange={(event) => {
-                        const selected = event.target.files?.[0] || null;
-                        setColorReferenceFile(selected);
-                      }}
-                      className="mt-2 block w-full text-sm text-gray-600 file:mr-4 file:rounded-full file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    />
-                  </label>
                 </div>
 
                 {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
@@ -751,8 +905,8 @@ export default function CustomCakesPage() {
             <ScrollReveal className="rounded-[1.5rem] bg-white border border-[#eadcc8] p-5">
               <h3 className="text-xl font-extrabold tracking-tight text-black">How this works</h3>
               <ol className="mt-4 space-y-2 text-sm text-gray-600 list-decimal list-inside">
-                <li>Submit your cake details and preferences.</li>
-                <li>ML estimates servings and predicts a price from size/spec.</li>
+                <li>Choose flavor, tell us servings, and upload your reference image.</li>
+                <li>ML selects from available sizes and predicts your cake price.</li>
                 <li>Admin reviews and confirms the final quote.</li>
                 <li>You receive payment approval details before final charge.</li>
               </ol>
@@ -766,8 +920,11 @@ export default function CustomCakesPage() {
                     <span className="font-semibold text-black">Request ID:</span> {submitResult.custom_cake_id}
                   </p>
                   <p>
-                    <span className="font-semibold text-black">Status:</span>{" "}
-                    {statusLabel(submitResult.status)}
+                    <span className="font-semibold text-black">Status:</span> {statusLabel(submitResult.status)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-black">Predicted size:</span>{" "}
+                    {submitResult.predicted_size_inches ? `${submitResult.predicted_size_inches} inch` : "N/A"}
                   </p>
                   <p>
                     <span className="font-semibold text-black">Predicted price:</span>{" "}
@@ -825,9 +982,7 @@ export default function CustomCakesPage() {
                 </div>
               )}
               {!isAuthenticated ? (
-                <p className="mt-4 text-sm text-gray-600">
-                  Please login to see your request history.
-                </p>
+                <p className="mt-4 text-sm text-gray-600">Please login to see your request history.</p>
               ) : null}
             </ScrollReveal>
           </div>
