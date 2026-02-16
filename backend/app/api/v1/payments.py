@@ -276,9 +276,10 @@ async def stripe_webhook(
                     stripe_payment_intent_id=payment_intent,
                     stripe_checkout_session_id=data.get("id"),
                     webhook_data=data,
+                    payment_status=data.get("payment_status", "paid"),
                 )
                 if order:
-                    logger.info("✅ Order %s paid via Stripe", order.order_number)
+                    logger.info("✅ Order %s updated via Stripe (status: %s)", order.order_number, order.status.value)
                 else:
                     logger.error("Order not found for webhook: %s", order_id)
             except Exception as e:

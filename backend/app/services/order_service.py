@@ -285,6 +285,65 @@ class OrderService:
                         variant.is_in_stock = True
             logger.info("Inventory restored for cancelled order: %s", order.order_number)
 
+    async def approve_order(self, order_id: uuid.UUID) -> dict:
+        """Approve an order that is pending approval (capture payment)."""
+        order = await self.get_order(order_id)
+        if not order:
+            return {"error": "Order not found"}
+
+        if order.status != OrderStatus.PENDING_APPROVAL:
+            return {"error": f"Order is not awaiting approval (status: {order.status.value})"}
+
+        # Capture payment
+        from app.services.stripe_service import StripeService
+        if order.payment and order.payment.stripe_payment_intent_id:
+            captured = await StripeService.capture_payment(order.payment.stripe_payment_intent_id)
+            if not captured:
+                return {"error": "Failed to capture payment with Stripe"}
+
+            # Update status
+            order.status = OrderStatus.PAID
+            order.paid_at = datetime.now(timezone.utc)
+            order.payment.status = PaymentStatus.SUCCEEDED
+            await self.db.flush()
+            logger.info("Order %s approved and payment captured", order.order_number)
+            return {"success": True, "message": "Order approved and payment captured"}
+        else:
+            return {"error": "No payment intent found to capture"}
+
+    async def reject_order(self, order_id: uuid.UUID, reason: str | None = None) -> dict:
+        """Reject an order (cancel payment authorization)."""
+        order = await self.get_order(order_id)
+        if not order:
+            return {"error": "Order not found"}
+
+        if order.status != OrderStatus.PENDING_APPROVAL:
+            return {"error": f"Order is not awaiting approval (status: {order.status.value})"}
+
+        # Cancel payment intent
+        from app.services.stripe_service import StripeService
+        if order.payment and order.payment.stripe_payment_intent_id:
+            cancelled = await StripeService.cancel_payment_intent(order.payment.stripe_payment_intent_id)
+            if not cancelled:
+                logger.warning("Failed to cancel Stripe payment for order %s", order.order_number)
+                # Continue anyway to cancel order status
+        
+        # Update status
+        old_status = order.status
+        order.status = OrderStatus.CANCELLED
+        order.admin_notes = f"Rejected: {reason}" if reason else "Rejected by admin"
+        
+        # Restore inventory
+        await self._handle_status_transition(order, OrderStatus.CANCELLED)
+
+        if order.payment:
+            order.payment.status = PaymentStatus.FAILED  # Or cancelled
+            order.payment.failure_message = reason or "Order rejected by admin"
+
+        await self.db.flush()
+        logger.info("Order %s rejected", order.order_number)
+        return {"success": True, "message": "Order rejected and payment authorization cancelled"}
+
     # ── Payment Status (called by Stripe webhook) ────────────────────────
     async def mark_order_paid(
         self,
@@ -292,24 +351,36 @@ class OrderService:
         stripe_payment_intent_id: str,
         stripe_checkout_session_id: str | None = None,
         webhook_data: dict | None = None,
+        payment_status: str = "paid",
     ) -> Order | None:
         """Mark an order as paid (called by Stripe webhook)."""
         order = await self.get_order(order_id)
         if not order:
             return None
 
-        order.status = OrderStatus.PAID
-        order.paid_at = datetime.now(timezone.utc)
+        # Check for manual capture (auth & hold)
+        if payment_status == "unpaid":
+            order.status = OrderStatus.PENDING_APPROVAL
+            logger.info("Order %s requires approval (auth & hold)", order.order_number)
+        else:
+            order.status = OrderStatus.PAID
+            order.paid_at = datetime.now(timezone.utc)
 
+        # Update payment record
         if order.payment:
-            order.payment.status = PaymentStatus.SUCCEEDED
             order.payment.stripe_payment_intent_id = stripe_payment_intent_id
             order.payment.stripe_checkout_session_id = stripe_checkout_session_id
             order.payment.webhook_data = webhook_data
 
+            if payment_status == "paid":
+                order.payment.status = PaymentStatus.SUCCEEDED
+            else:
+                # Keep as PENDING if auth & hold
+                order.payment.status = PaymentStatus.PENDING
+
         await self.db.flush()
         await self.db.refresh(order)
-        logger.info("Order %s marked as PAID", order.order_number)
+        logger.info("Order %s updated via webhook (status: %s)", order.order_number, order.status.value)
         return order
 
     async def mark_payment_failed(

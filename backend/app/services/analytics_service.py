@@ -354,6 +354,7 @@ class AnalyticsService:
             "revenue_this_month": await _revenue_since(month_start),
             "orders_today": await _count_orders(since=today_start),
             "orders_pending": await _count_orders(status=OrderStatus.PENDING),
+            "orders_pending_approval": await _count_orders(status=OrderStatus.PENDING_APPROVAL),
             "orders_preparing": await _count_orders(status=OrderStatus.PREPARING),
             "cake_orders_today": (await self.db.execute(
                 select(func.count(Order.id)).where(
@@ -362,4 +363,115 @@ class AnalyticsService:
             )).scalar() or 0,
             "low_stock_count": low_stock.scalar() or 0,
             "total_customers": customers.scalar() or 0,
+        }
+
+    # ── Visitor Analytics ────────────────────────────────────────────────
+    async def get_visitor_analytics(self, days: int = 30) -> dict:
+        """Get visitor analytics (visits over time, by location)."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # Daily visits
+        daily = await self.db.execute(
+            select(
+                cast(AnalyticsEvent.created_at, Date).label("date"),
+                func.count(AnalyticsEvent.id).label("visits"),
+                func.count(func.distinct(AnalyticsEvent.session_id)).label("unique_visitors"),
+            ).where(
+                AnalyticsEvent.created_at >= since,
+                AnalyticsEvent.event_type == "page_view"
+            ).group_by(
+                cast(AnalyticsEvent.created_at, Date)
+            ).order_by(
+                cast(AnalyticsEvent.created_at, Date)
+            )
+        )
+        
+        visits_over_time = [
+            {"date": row.date, "visits": row.visits, "unique_visitors": row.unique_visitors}
+            for row in daily.all()
+        ]
+
+        # By Location (Simulated by IP for now as we don't have geoip setup)
+        # In a real app, we'd enrichment IP to City/Country
+        # Here we just return empty or dummy data if no IP enrichment
+        locations = []
+        
+        # By Device
+        devices = await self.db.execute(
+             select(
+                AnalyticsEvent.user_agent, 
+                func.count(AnalyticsEvent.id)
+            ).where(
+                AnalyticsEvent.created_at >= since
+            ).group_by(AnalyticsEvent.user_agent).limit(10)
+        )
+        # Simplified parser
+        device_stats = [] # Placeholder
+
+        return {
+            "visits_over_time": visits_over_time,
+            "top_locations": locations,
+            "device_breakdown": device_stats
+        }
+
+    # ── Order Risk Analysis ──────────────────────────────────────────────
+    async def get_order_risk_analysis(self, order_id: uuid.UUID) -> dict:
+        """Get detailed risk/fraud analysis for an order."""
+        order = await self.db.get(Order, order_id)
+        if not order:
+             return {"error": "Order not found"}
+        
+        # 1. Customer History
+        customer_stats = {"total_spent": 0, "order_count": 0, "avg_value": 0}
+        if order.customer_id:
+             history = await self.db.execute(
+                 select(
+                     func.count(Order.id),
+                     func.sum(Order.total)
+                 ).where(
+                     Order.customer_id == order.customer_id,
+                     Order.id != order_id,
+                     Order.status.in_([OrderStatus.PAID, OrderStatus.COMPLETED, OrderStatus.CONFIRMED])
+                 )
+             )
+             cnt, total = history.one()
+             customer_stats = {
+                 "order_count": cnt or 0, 
+                 "total_spent": float(total or 0),
+                 "avg_value": float((total / cnt) if cnt else 0)
+             }
+
+        # 2. IP check (if we had it tracked on order, or link via session)
+        # For now, simplistic checks
+        risk_score = 0
+        risk_factors = []
+
+        if order.total > 500:
+            risk_score += 20
+            risk_factors.append("High value order (>$500)")
+        
+        if order.customer_email.endswith(".xyz"): # Example heuristic
+            risk_score += 10
+            risk_factors.append("Suspicious email domain")
+
+        # 3. Velocity check
+        # Check if customer placed many orders recently
+        if order.customer_id:
+             recent = await self.db.execute(
+                 select(func.count(Order.id)).where(
+                     Order.customer_id == order.customer_id,
+                     Order.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
+                 )
+             )
+             if (recent.scalar() or 0) > 3:
+                 risk_score += 30
+                 risk_factors.append("High order velocity (>3 in 24h)")
+
+        return {
+            "risk_score": min(risk_score, 100),
+            "risk_level": "High" if risk_score > 50 else ("Medium" if risk_score > 20 else "Low"),
+            "risk_factors": risk_factors,
+            "customer_stats": customer_stats,
+            "payment_method": order.payment.payment_method if order.payment else "Unknown",
+            "billing_matches_shipping": True # Placeholder
         }

@@ -138,6 +138,17 @@ async def get_worst_sellers(
     return await service.get_worst_sellers(days=days, limit=limit)
 
 
+@router.get("/visitors")
+async def get_visitor_analytics(
+    days: int = Query(30, ge=1, le=365),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get visitor traffic (visits over time)."""
+    service = AnalyticsService(db)
+    return await service.get_visitor_analytics(days=days)
+
+
 # ── Cake Analytics ───────────────────────────────────────────────────────────
 @router.get("/popular-cake-sizes", response_model=list[PopularVariantResponse])
 async def get_popular_cake_sizes(

@@ -170,7 +170,48 @@ async def update_order(
 ):
     """[Admin] Update order status, pickup time, or notes."""
     service = OrderService(db)
-    order = await service.update_order_admin(order_id, data)
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+    await self.db.flush()
+    await self.db.refresh(order)
+    logger.info("Order %s updated: %s", order.order_number, update_fields)
     return order
+
+
+@router.post("/{order_id}/approve")
+async def approve_order(
+    order_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Approve a pending order and capture payment."""
+    service = OrderService(db)
+    result = await service.approve_order(order_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{order_id}/reject")
+async def reject_order(
+    order_id: uuid.UUID,
+    reason: str | None = Query(None),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Reject a pending order and void payment authorization."""
+    service = OrderService(db)
+    result = await service.reject_order(order_id, reason)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/{order_id}/risk-analysis")
+async def get_order_risk_analysis(
+    order_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get fraud risk analysis for an order."""
+    from app.services.analytics_service import AnalyticsService
+    service = AnalyticsService(db)
+    return await service.get_order_risk_analysis(order_id)
