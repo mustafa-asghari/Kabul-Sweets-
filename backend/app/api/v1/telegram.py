@@ -31,7 +31,7 @@ ORDER_REJECT_REASON = "Rejected from Telegram by admin."
 CAKE_REJECT_REASON = "Rejected from Telegram by admin."
 APPROVED_FROM_TELEGRAM_NOTE = "Approved via Telegram bot."
 MAX_TELEGRAM_LIST_LIMIT = 20
-DEFAULT_PENDING_LIMIT = 10
+DEFAULT_PENDING_LIMIT = 5
 DEFAULT_DAY_LIMIT = 20
 QUICK_LIMIT_OPTIONS = (5, 10, 20)
 MAX_RANGE_RESULTS = 100
@@ -105,13 +105,23 @@ def _command_keyboard() -> dict:
     return {
         "inline_keyboard": [
             [
-                {"text": "📦 Pending Orders", "callback_data": "cmd:pending_orders"},
-                {"text": "🎂 Pending Cakes", "callback_data": "cmd:pending_cakes"},
-            ],
-            [
                 {"text": "📥 Incoming 7 Days", "callback_data": "cmd:incoming7"},
                 {"text": "📦🎂 Incoming 30 Days", "callback_data": "cmd:incoming30"},
             ],
+            [
+                {"text": "🗓️ Date Tools", "callback_data": "menu:date"},
+                {"text": "✅ Pending Actions", "callback_data": "menu:pending"},
+            ],
+            [
+                {"text": "📘 Help", "callback_data": "cmd:params"},
+            ],
+        ]
+    }
+
+
+def _date_tools_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
             [
                 {"text": "📆 Orders by Day", "callback_data": "cmd:orders_day"},
                 {"text": "🎂 Cakes by Day", "callback_data": "cmd:cakes_day"},
@@ -121,10 +131,46 @@ def _command_keyboard() -> dict:
                 {"text": "🧁 Cakes Date Range", "callback_data": "cmd:cakes_range"},
             ],
             [
-                {"text": "📘 Parameters", "callback_data": "cmd:params"},
+                {"text": "⬅️ Main Menu", "callback_data": "menu:main"},
             ],
         ]
     }
+
+
+def _pending_tools_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📦 Pending Orders", "callback_data": "cmd:pending_orders"},
+                {"text": "🎂 Pending Cakes", "callback_data": "cmd:pending_cakes"},
+            ],
+            [
+                {"text": "⬅️ Main Menu", "callback_data": "menu:main"},
+            ],
+        ]
+    }
+
+
+def _main_menu_message() -> str:
+    return (
+        "🤖 <b>Kabul Sweets Admin Bot</b>\n"
+        "Clean menu for daily use.\n"
+        "If chat is cleared, type <code>/menu</code> to restore this menu."
+    )
+
+
+def _date_menu_message() -> str:
+    return (
+        "🗓️ <b>Date Tools</b>\n"
+        "Pick exact dates with buttons (from date -> to date)."
+    )
+
+
+def _pending_menu_message() -> str:
+    return (
+        "✅ <b>Pending Actions</b>\n"
+        "Review and approve/reject pending orders and custom cakes."
+    )
 
 
 def _limit_option_keyboard(action_prefix: str, back_callback: str | None = None) -> dict:
@@ -142,7 +188,7 @@ def _limit_option_keyboard(action_prefix: str, back_callback: str | None = None)
     return {"inline_keyboard": rows}
 
 
-def _day_status_keyboard(day_prefix: str) -> dict:
+def _day_status_keyboard(day_prefix: str, back_callback: str = "menu:date") -> dict:
     status_action = "tds" if day_prefix == "td" else "tms"
     buttons = [
         {
@@ -154,7 +200,7 @@ def _day_status_keyboard(day_prefix: str) -> dict:
     rows: list[list[dict]] = []
     for index in range(0, len(buttons), 2):
         rows.append(buttons[index:index + 2])
-    rows.append([{"text": "⬅️ Back", "callback_data": "cmd:help"}])
+    rows.append([{"text": "⬅️ Back", "callback_data": back_callback}])
     return {"inline_keyboard": rows}
 
 
@@ -329,45 +375,29 @@ def _range_end_picker_keyboard(
 def _bot_help_message() -> str:
     return (
         "🤖 <b>Kabul Sweets Admin Bot</b>\n"
-        "New orders and custom cake requests are sent automatically.\n"
-        "Use buttons below for date pickers and quick ranges.\n\n"
-        "<b>Commands</b>\n"
-        "/pending_orders [limit]\n"
-        "/pending_cakes [limit]\n"
-        "/today [status] [limit]\n"
-        "/tomorrow [status] [limit]\n"
+        "Orders and custom cakes are sent automatically.\n"
+        "Use <code>/menu</code> any time to restore the clean menu.\n\n"
+        "<b>Main commands</b>\n"
+        "/menu\n"
         "/incoming7\n"
         "/incoming30\n"
         "/orders_day\n"
         "/cakes_day\n"
         "/orders_range\n"
         "/cakes_range\n"
-        "/params\n"
-        "/help\n"
+        "/pending_orders\n"
+        "/pending_cakes\n"
     )
 
 
 def _bot_params_message() -> str:
-    allowed_statuses = ", ".join(CAKE_STATUS_PARAM_MAP.keys())
     return (
-        "📘 <b>Allowed Parameters</b>\n\n"
-        "You can tap buttons for all parameters.\n\n"
-        "<b>/pending_orders [limit]</b>\n"
-        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_PENDING_LIMIT}\n\n"
-        "<b>/pending_cakes [limit]</b>\n"
-        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_PENDING_LIMIT}\n\n"
-        "<b>/today [status] [limit]</b>\n"
-        "<b>/tomorrow [status] [limit]</b>\n"
-        f"- <code>status</code>: {allowed_statuses}\n"
-        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_DAY_LIMIT}\n\n"
-        "<b>Examples</b>\n"
-        "<code>/pending_orders 5</code>\n"
-        "<code>/pending_cakes 3</code>\n"
-        "<code>/today pending_review 10</code>\n"
-        "<code>/tomorrow all 20</code>\n"
-        "<code>/incoming7</code>\n"
-        "<code>/orders_day</code>\n"
-        "<code>/orders_range</code>"
+        "📘 <b>Quick Guide</b>\n\n"
+        "1. Incoming alerts are automatic.\n"
+        "2. Use menu buttons for date picking.\n"
+        "3. No custom date typing is needed.\n\n"
+        "<b>If chat is cleared:</b> type <code>/menu</code>\n"
+        "<b>Date pickers:</b> choose start date, then end date."
     )
 
 
@@ -480,6 +510,53 @@ def _cake_message(cake: CustomCake, customer_name: str, customer_email: str) -> 
     )
 
 
+def _local_date_text(dt: datetime | None) -> str:
+    if dt is None:
+        return "N/A"
+    return dt.astimezone(_business_timezone()).date().isoformat()
+
+
+def _order_compact_line(order: Order) -> str:
+    pickup_date = _local_date_text(order.pickup_date)
+    pickup_slot = order.pickup_time_slot or "Anytime"
+    return (
+        f"- <b>{order.order_number}</b> | {pickup_date} {pickup_slot} | "
+        f"{_as_money(order.total)} | {order.status.value}"
+    )
+
+
+def _cake_compact_line(cake: CustomCake, customer_name: str) -> str:
+    requested_date = _local_date_text(cake.requested_date)
+    time_slot = cake.time_slot or "Anytime"
+    return (
+        f"- <b>{customer_name}</b> | {requested_date} {time_slot} | "
+        f"{cake.diameter_inches}\" | {_as_money(cake.final_price or cake.predicted_price)} | {cake.status.value}"
+    )
+
+
+async def _send_compact_list(
+    telegram: TelegramService,
+    chat_id: int,
+    *,
+    title: str,
+    lines: list[str],
+    empty_text: str,
+    admin_link: str,
+    admin_link_label: str,
+):
+    if not lines:
+        await _send_text(telegram, chat_id, empty_text)
+        return
+
+    max_lines = 30
+    visible = lines[:max_lines]
+    text = f"{title}\n" + "\n".join(visible)
+    if len(lines) > max_lines:
+        text += f"\n...and {len(lines) - max_lines} more."
+    text += f"\n\n<a href=\"{admin_link}\">{admin_link_label}</a>"
+    await _send_text(telegram, chat_id, text)
+
+
 def _order_to_email_payload(order, rejection_reason: str | None = None) -> dict:
     return {
         "order_id": str(order.id),
@@ -551,24 +628,17 @@ async def _handle_orders_in_range_command(
     )
     orders = list(result.scalars().all())
 
-    if not orders:
-        await _send_text(
-            telegram,
-            chat_id,
-            f"No orders scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
-        )
-        return
-
-    truncated = len(orders) >= MAX_RANGE_RESULTS
-    header = (
-        f"📦 Orders from {start_date.isoformat()} to {end_date.isoformat()}: {len(orders)}"
-        + (" (showing first 100)" if truncated else "")
+    title = f"📦 <b>Orders</b> | {start_date.isoformat()} to {end_date.isoformat()} | {len(orders)} total"
+    lines = [_order_compact_line(order) for order in orders]
+    await _send_compact_list(
+        telegram,
+        chat_id,
+        title=title,
+        lines=lines,
+        empty_text=f"No orders scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
+        admin_link=f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/orders",
+        admin_link_label="Open admin orders",
     )
-    await _send_text(telegram, chat_id, header)
-
-    for order in orders:
-        markup = _order_markup(order.id) if order.status == OrderStatus.PENDING_APPROVAL else None
-        await _send_text(telegram, chat_id, _order_message(order), markup)
 
 
 async def _handle_cakes_in_range_command(
@@ -593,35 +663,24 @@ async def _handle_cakes_in_range_command(
     )
     cakes = list(result.scalars().all())
 
-    if not cakes:
-        await _send_text(
-            telegram,
-            chat_id,
-            f"No custom cakes scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
-        )
-        return
-
     customer_map = await _load_customer_map(db, {cake.customer_id for cake in cakes})
-    truncated = len(cakes) >= MAX_RANGE_RESULTS
-    header = (
-        f"🎂 Cakes from {start_date.isoformat()} to {end_date.isoformat()}: {len(cakes)}"
-        + (" (showing first 100)" if truncated else "")
+    title = f"🎂 <b>Custom Cakes</b> | {start_date.isoformat()} to {end_date.isoformat()} | {len(cakes)} total"
+    lines = [
+        _cake_compact_line(
+            cake,
+            customer_map.get(cake.customer_id, ("Unknown customer", ""))[0],
+        )
+        for cake in cakes
+    ]
+    await _send_compact_list(
+        telegram,
+        chat_id,
+        title=title,
+        lines=lines,
+        empty_text=f"No custom cakes scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
+        admin_link=f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/custom-cakes",
+        admin_link_label="Open custom cakes in admin",
     )
-    await _send_text(telegram, chat_id, header)
-
-    for cake in cakes:
-        customer_name, customer_email = customer_map.get(
-            cake.customer_id,
-            ("Unknown customer", "Unknown email"),
-        )
-        markup = _cake_markup(cake.id) if cake.status == CustomCakeStatus.PENDING_REVIEW else None
-        await _send_text(
-            telegram,
-            chat_id,
-            _cake_message(cake, customer_name, customer_email),
-            markup,
-        )
-        await _send_first_reference_image(telegram, chat_id, cake.reference_images)
 
 
 async def _handle_incoming_window_command(
@@ -668,6 +727,33 @@ async def _send_text(
 ):
     await run_in_threadpool(
         telegram.send_text,
+        chat_id,
+        text,
+        reply_markup=reply_markup,
+    )
+
+
+async def _upsert_menu_message(
+    telegram: TelegramService,
+    chat_id: int,
+    text: str,
+    reply_markup: dict,
+    *,
+    message_id: int | None = None,
+):
+    if message_id is not None:
+        edited = await run_in_threadpool(
+            telegram.edit_message_text,
+            chat_id,
+            message_id,
+            text,
+            reply_markup=reply_markup,
+        )
+        if edited:
+            return
+
+    await _send_text(
+        telegram,
         chat_id,
         text,
         reply_markup=reply_markup,

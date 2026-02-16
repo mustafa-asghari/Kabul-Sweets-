@@ -15,9 +15,23 @@ from app.core.logging import get_logger
 settings = get_settings()
 logger = get_logger("telegram_service")
 
+DEFAULT_BOT_COMMANDS = [
+    {"command": "menu", "description": "Open admin menu"},
+    {"command": "incoming7", "description": "Incoming orders/cakes (next 7 days)"},
+    {"command": "incoming30", "description": "Incoming orders/cakes (next 30 days)"},
+    {"command": "orders_day", "description": "Orders for a selected day"},
+    {"command": "cakes_day", "description": "Cakes for a selected day"},
+    {"command": "orders_range", "description": "Orders from date to date"},
+    {"command": "cakes_range", "description": "Cakes from date to date"},
+    {"command": "pending_orders", "description": "Pending approval orders"},
+    {"command": "pending_cakes", "description": "Pending review cakes"},
+    {"command": "help", "description": "Show quick help"},
+]
+
 
 class TelegramService:
     """Lightweight Telegram Bot API client."""
+    _commands_configured: bool = False
 
     def __init__(self):
         self.bot_token = settings.TELEGRAM_BOT_TOKEN.strip()
@@ -126,6 +140,39 @@ class TelegramService:
         else:
             payload["reply_markup"] = {"inline_keyboard": []}
         return self._post_json("editMessageReplyMarkup", payload)
+
+    def edit_message_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        *,
+        reply_markup: dict[str, Any] | None = None,
+        disable_web_page_preview: bool = True,
+    ) -> bool:
+        """Edit message text and optional buttons to keep chat clean."""
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": disable_web_page_preview,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        return self._post_json("editMessageText", payload)
+
+    def ensure_default_commands(self) -> bool:
+        """Ensure slash command menu is configured for persistent access."""
+        if not self.api_base:
+            return False
+        if self.__class__._commands_configured:
+            return True
+
+        ok = self._post_json("setMyCommands", {"commands": DEFAULT_BOT_COMMANDS})
+        if ok:
+            self.__class__._commands_configured = True
+        return ok
 
     def _post_json(self, method: str, payload: dict[str, Any]) -> bool:
         if not self.api_base:
