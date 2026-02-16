@@ -58,14 +58,6 @@ export default function Footer() {
                     Collections
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    href="/blog"
-                    className="hover:text-black transition"
-                  >
-                    Blog
-                  </Link>
-                </li>
               </ul>
             </div>
             <div>
@@ -95,14 +87,6 @@ export default function Footer() {
                     className="hover:text-black transition"
                   >
                     Support
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="/missing-page"
-                    className="hover:text-black transition"
-                  >
-                    404
                   </Link>
                 </li>
               </ul>
