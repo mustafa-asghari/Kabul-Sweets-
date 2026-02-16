@@ -15,8 +15,26 @@ const AVAILABLE_FLAVORS = ["Spong + Vanila"] as const;
 const DEFAULT_HEIGHT_INCHES = 4;
 const DEFAULT_LAYERS = 1;
 const DEFAULT_SHAPE = "round";
-const TIME_SLOT_OPTIONS = ["Morning", "Afternoon", "Evening"] as const;
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+const BUSINESS_HOURS_BY_WEEKDAY: Record<number, { openHour: number; closeHour: number }> = {
+  0: { openHour: 9, closeHour: 18 }, // Sunday
+  1: { openHour: 9, closeHour: 18 }, // Monday
+  2: { openHour: 9, closeHour: 18 }, // Tuesday
+  3: { openHour: 9, closeHour: 18 }, // Wednesday
+  4: { openHour: 9, closeHour: 18 }, // Thursday
+  5: { openHour: 9, closeHour: 19 }, // Friday
+  6: { openHour: 9, closeHour: 19 }, // Saturday
+};
 
 type AllowedFlavor = (typeof AVAILABLE_FLAVORS)[number];
 
@@ -87,7 +105,7 @@ const defaultFormState: CakeFormState = {
   decoration_description: "",
   cake_message: "",
   requested_date: "",
-  time_slot: "Morning",
+  time_slot: "",
   preferred_time: "",
 };
 
