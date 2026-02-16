@@ -24,16 +24,6 @@ export interface SupportBenefit {
   description: string;
 }
 
-export interface BlogPost {
-  slug: string;
-  title: string;
-  tag: string;
-  excerpt: string;
-  author: string;
-  role: string;
-  imageSrc: string;
-}
-
 const cakeImage = "/products/cake-main.png";
 
 const cookiesImage = "/products/cookies-main.png";
@@ -226,49 +216,6 @@ export const supportBenefits: SupportBenefit[] = [
     icon: "call",
     title: "Call Before You Visit",
     description: "For current opening hours, call (07) 3162 7444 before visiting.",
-  },
-];
-
-export const blogPosts: BlogPost[] = [
-  {
-    slug: "event-sweets-planning",
-    title: "How to Plan a Dessert Table That Feels Effortless",
-    tag: "Must Read",
-    excerpt:
-      "A practical guide for choosing quantities, balancing flavors, and presenting sweets beautifully for weddings and big family gatherings.",
-    author: "Sarah Miller",
-    role: "Content Editor",
-    imageSrc: customDessertImage,
-  },
-  {
-    slug: "cake-size-guide",
-    title: "Choosing the Right Cake Size for Your Event",
-    tag: "Guides",
-    excerpt:
-      "Use this simple serving chart to choose the perfect cake size for birthdays, engagements, and corporate celebrations.",
-    author: "Aisha Khan",
-    role: "Bakery Planner",
-    imageSrc: cakeImage,
-  },
-  {
-    slug: "gift-box-ideas",
-    title: "3 Gift Box Ideas Customers Keep Reordering",
-    tag: "Trends",
-    excerpt:
-      "From Eid gifting to client appreciation, discover sweet box combinations that look premium and taste exceptional.",
-    author: "Omar Rahimi",
-    role: "Brand Lead",
-    imageSrc: baklavaImage,
-  },
-  {
-    slug: "cookie-pairings",
-    title: "Best Tea Pairings for Traditional Afghan Cookies",
-    tag: "Tips",
-    excerpt:
-      "Simple tea and cookie pairings that elevate your hosting without adding prep stress.",
-    author: "Nadia Safi",
-    role: "Recipe Team",
-    imageSrc: cookiesImage,
   },
 ];
 
