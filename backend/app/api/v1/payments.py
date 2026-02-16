@@ -71,6 +71,20 @@ def _order_to_email_payload(order, rejection_reason: str | None = None) -> dict:
     }
 
 
+def _queue_telegram_order_alert(order) -> None:
+    """Queue Telegram admin alert for orders awaiting approval."""
+    try:
+        from app.workers.telegram_tasks import send_admin_order_pending_alert
+
+        send_admin_order_pending_alert.delay(_order_to_email_payload(order))
+    except Exception as exc:
+        logger.warning(
+            "Failed to queue Telegram alert for order %s: %s",
+            order.order_number,
+            str(exc),
+        )
+
+
 # ── Create Checkout Session ──────────────────────────────────────────────────
 @router.post("/{order_id}/checkout", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
@@ -122,12 +136,14 @@ async def create_checkout_session(
 
     # In local test mode (no Stripe webhooks), move directly to pending approval.
     if result["session_id"].startswith("test_session_"):
-        await service.mark_order_pending_approval(
+        pending_order = await service.mark_order_pending_approval(
             order_id=order.id,
             stripe_payment_intent_id=result.get("payment_intent_id"),
             stripe_checkout_session_id=result["session_id"],
             webhook_data={"source": "test_checkout_fallback"},
         )
+        if pending_order:
+            _queue_telegram_order_alert(pending_order)
 
     await db.flush()
 
@@ -433,6 +449,7 @@ async def stripe_webhook(
                         "✅ Order %s authorized and awaiting approval",
                         order.order_number,
                     )
+                    _queue_telegram_order_alert(order)
                 else:
                     logger.error("Order not found for webhook: %s", order_id)
             except Exception as e:
