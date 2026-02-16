@@ -3,7 +3,7 @@ Telegram bot webhook endpoints for admin workflows.
 """
 
 import uuid
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.ml import CustomCake, CustomCakeStatus
-from app.models.order import OrderStatus
+from app.models.order import Order, OrderStatus
 from app.models.user import User, UserRole
 from app.services.custom_cake_service import CustomCakeService
 from app.services.order_service import OrderService
@@ -34,6 +34,11 @@ MAX_TELEGRAM_LIST_LIMIT = 20
 DEFAULT_PENDING_LIMIT = 10
 DEFAULT_DAY_LIMIT = 20
 QUICK_LIMIT_OPTIONS = (5, 10, 20)
+MAX_RANGE_RESULTS = 100
+INCOMING_MAX_DAYS = 30
+DATE_PICKER_MIN_OFFSET = -180
+DATE_PICKER_MAX_OFFSET = 180
+DATE_PICKER_PAGE_SIZE = 7
 CAKE_STATUS_PARAM_MAP: dict[str, CustomCakeStatus | None] = {
     "all": None,
     "pending_review": CustomCakeStatus.PENDING_REVIEW,
@@ -104,8 +109,16 @@ def _command_keyboard() -> dict:
                 {"text": "🎂 Pending Cakes", "callback_data": "cmd:pending_cakes"},
             ],
             [
-                {"text": "📅 Cakes Today", "callback_data": "cmd:today"},
-                {"text": "📆 Cakes Tomorrow", "callback_data": "cmd:tomorrow"},
+                {"text": "📥 Incoming 7 Days", "callback_data": "cmd:incoming7"},
+                {"text": "📦🎂 Incoming 30 Days", "callback_data": "cmd:incoming30"},
+            ],
+            [
+                {"text": "📆 Orders by Day", "callback_data": "cmd:orders_day"},
+                {"text": "🎂 Cakes by Day", "callback_data": "cmd:cakes_day"},
+            ],
+            [
+                {"text": "🗓️ Orders Date Range", "callback_data": "cmd:orders_range"},
+                {"text": "🧁 Cakes Date Range", "callback_data": "cmd:cakes_range"},
             ],
             [
                 {"text": "📘 Parameters", "callback_data": "cmd:params"},
@@ -167,15 +180,168 @@ def _status_label(status_key: str) -> str:
     return status_key
 
 
+def _today_local_date() -> date:
+    return datetime.now(_business_timezone()).date()
+
+
+def _date_for_offset(offset: int) -> date:
+    return _today_local_date() + timedelta(days=offset)
+
+
+def _offset_to_utc_range(offset: int) -> tuple[datetime, datetime, date]:
+    tz = _business_timezone()
+    target_date = _date_for_offset(offset)
+    start_local = datetime.combine(target_date, time.min, tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc), target_date
+
+
+def _offset_span_to_utc_range(start_offset: int, end_offset: int) -> tuple[datetime, datetime, date, date]:
+    tz = _business_timezone()
+    start_date = _date_for_offset(start_offset)
+    end_date = _date_for_offset(end_offset)
+    start_local = datetime.combine(start_date, time.min, tzinfo=tz)
+    end_local = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz)
+    return (
+        start_local.astimezone(timezone.utc),
+        end_local.astimezone(timezone.utc),
+        start_date,
+        end_date,
+    )
+
+
+def _parse_picker_value(raw: str, *, min_value: int, max_value: int) -> int | None:
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    if value < min_value or value > max_value:
+        return None
+    return value
+
+
+def _picker_page_for_offset(
+    *,
+    offset: int = 0,
+    min_offset: int = DATE_PICKER_MIN_OFFSET,
+    max_offset: int = DATE_PICKER_MAX_OFFSET,
+) -> int:
+    total = max_offset - min_offset + 1
+    max_page = max((total - 1) // DATE_PICKER_PAGE_SIZE, 0)
+    page = (offset - min_offset) // DATE_PICKER_PAGE_SIZE
+    return max(0, min(page, max_page))
+
+
+def _date_picker_keyboard(
+    *,
+    select_prefix: str,
+    page_prefix: str,
+    page: int,
+    min_offset: int = DATE_PICKER_MIN_OFFSET,
+    max_offset: int = DATE_PICKER_MAX_OFFSET,
+    back_callback: str = "cmd:help",
+) -> dict:
+    total = max_offset - min_offset + 1
+    max_page = max((total - 1) // DATE_PICKER_PAGE_SIZE, 0)
+    safe_page = max(0, min(page, max_page))
+    start_offset = min_offset + (safe_page * DATE_PICKER_PAGE_SIZE)
+    end_offset = min(start_offset + DATE_PICKER_PAGE_SIZE - 1, max_offset)
+
+    rows: list[list[dict]] = []
+    day_buttons: list[dict] = []
+    for offset in range(start_offset, end_offset + 1):
+        label = _date_for_offset(offset).strftime("%a %d %b")
+        day_buttons.append(
+            {"text": label, "callback_data": f"{select_prefix}:{offset}"}
+        )
+
+    for index in range(0, len(day_buttons), 2):
+        rows.append(day_buttons[index:index + 2])
+
+    nav_row: list[dict] = []
+    if safe_page > 0:
+        nav_row.append(
+            {"text": "⬅️ Prev", "callback_data": f"{page_prefix}:{safe_page - 1}"}
+        )
+    if safe_page < max_page:
+        nav_row.append(
+            {"text": "Next ➡️", "callback_data": f"{page_prefix}:{safe_page + 1}"}
+        )
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append([{"text": "⬅️ Back", "callback_data": back_callback}])
+    return {"inline_keyboard": rows}
+
+
+def _range_end_picker_keyboard(
+    *,
+    select_prefix: str,
+    page_prefix: str,
+    start_offset: int,
+    page: int,
+    back_callback: str,
+) -> dict:
+    min_offset = start_offset
+    max_offset = DATE_PICKER_MAX_OFFSET
+    total = max_offset - min_offset + 1
+    max_page = max((total - 1) // DATE_PICKER_PAGE_SIZE, 0)
+    safe_page = max(0, min(page, max_page))
+    from_offset = min_offset + (safe_page * DATE_PICKER_PAGE_SIZE)
+    to_offset = min(from_offset + DATE_PICKER_PAGE_SIZE - 1, max_offset)
+
+    rows: list[list[dict]] = []
+    end_buttons: list[dict] = []
+    for end_offset in range(from_offset, to_offset + 1):
+        label = _date_for_offset(end_offset).strftime("%a %d %b")
+        end_buttons.append(
+            {
+                "text": label,
+                "callback_data": f"{select_prefix}:{start_offset}:{end_offset}",
+            }
+        )
+
+    for index in range(0, len(end_buttons), 2):
+        rows.append(end_buttons[index:index + 2])
+
+    nav_row: list[dict] = []
+    if safe_page > 0:
+        nav_row.append(
+            {
+                "text": "⬅️ Prev",
+                "callback_data": f"{page_prefix}:{start_offset}:{safe_page - 1}",
+            }
+        )
+    if safe_page < max_page:
+        nav_row.append(
+            {
+                "text": "Next ➡️",
+                "callback_data": f"{page_prefix}:{start_offset}:{safe_page + 1}",
+            }
+        )
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append([{"text": "⬅️ Back to start date", "callback_data": back_callback}])
+    return {"inline_keyboard": rows}
+
+
 def _bot_help_message() -> str:
     return (
         "🤖 <b>Kabul Sweets Admin Bot</b>\n"
-        "Use commands or tap buttons below (no parameter typing needed).\n\n"
+        "New orders and custom cake requests are sent automatically.\n"
+        "Use buttons below for date pickers and quick ranges.\n\n"
         "<b>Commands</b>\n"
         "/pending_orders [limit]\n"
         "/pending_cakes [limit]\n"
         "/today [status] [limit]\n"
         "/tomorrow [status] [limit]\n"
+        "/incoming7\n"
+        "/incoming30\n"
+        "/orders_day\n"
+        "/cakes_day\n"
+        "/orders_range\n"
+        "/cakes_range\n"
         "/params\n"
         "/help\n"
     )
@@ -198,7 +364,10 @@ def _bot_params_message() -> str:
         "<code>/pending_orders 5</code>\n"
         "<code>/pending_cakes 3</code>\n"
         "<code>/today pending_review 10</code>\n"
-        "<code>/tomorrow all 20</code>"
+        "<code>/tomorrow all 20</code>\n"
+        "<code>/incoming7</code>\n"
+        "<code>/orders_day</code>\n"
+        "<code>/orders_range</code>"
     )
 
 
@@ -274,7 +443,7 @@ def _order_message(order) -> str:
     admin_link = f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/orders"
 
     return (
-        "🧁 <b>Order Pending Approval</b>\n"
+        "🧁 <b>Order</b>\n"
         f"Order: <b>{order.order_number}</b>\n"
         f"Customer: {order.customer_name}\n"
         f"Phone: {order.customer_phone or 'N/A'}\n"
@@ -357,6 +526,138 @@ def _date_range_utc(day_offset: int) -> tuple[datetime, datetime, datetime.date]
     start_local = datetime.combine(target_date, time.min, tzinfo=tz)
     end_local = start_local + timedelta(days=1)
     return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc), target_date
+
+
+async def _handle_orders_in_range_command(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    start_utc: datetime,
+    end_utc: datetime,
+    start_date: date,
+    end_date: date,
+):
+    result = await db.execute(
+        select(Order)
+        .where(
+            Order.pickup_date.is_not(None),
+            Order.pickup_date >= start_utc,
+            Order.pickup_date < end_utc,
+            Order.status != OrderStatus.DRAFT,
+        )
+        .order_by(Order.pickup_date.asc(), Order.created_at.asc())
+        .limit(MAX_RANGE_RESULTS)
+    )
+    orders = list(result.scalars().all())
+
+    if not orders:
+        await _send_text(
+            telegram,
+            chat_id,
+            f"No orders scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
+        )
+        return
+
+    truncated = len(orders) >= MAX_RANGE_RESULTS
+    header = (
+        f"📦 Orders from {start_date.isoformat()} to {end_date.isoformat()}: {len(orders)}"
+        + (" (showing first 100)" if truncated else "")
+    )
+    await _send_text(telegram, chat_id, header)
+
+    for order in orders:
+        markup = _order_markup(order.id) if order.status == OrderStatus.PENDING_APPROVAL else None
+        await _send_text(telegram, chat_id, _order_message(order), markup)
+
+
+async def _handle_cakes_in_range_command(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    start_utc: datetime,
+    end_utc: datetime,
+    start_date: date,
+    end_date: date,
+):
+    result = await db.execute(
+        select(CustomCake)
+        .where(
+            CustomCake.requested_date.is_not(None),
+            CustomCake.requested_date >= start_utc,
+            CustomCake.requested_date < end_utc,
+        )
+        .order_by(CustomCake.requested_date.asc(), CustomCake.created_at.asc())
+        .limit(MAX_RANGE_RESULTS)
+    )
+    cakes = list(result.scalars().all())
+
+    if not cakes:
+        await _send_text(
+            telegram,
+            chat_id,
+            f"No custom cakes scheduled between {start_date.isoformat()} and {end_date.isoformat()}.",
+        )
+        return
+
+    customer_map = await _load_customer_map(db, {cake.customer_id for cake in cakes})
+    truncated = len(cakes) >= MAX_RANGE_RESULTS
+    header = (
+        f"🎂 Cakes from {start_date.isoformat()} to {end_date.isoformat()}: {len(cakes)}"
+        + (" (showing first 100)" if truncated else "")
+    )
+    await _send_text(telegram, chat_id, header)
+
+    for cake in cakes:
+        customer_name, customer_email = customer_map.get(
+            cake.customer_id,
+            ("Unknown customer", "Unknown email"),
+        )
+        markup = _cake_markup(cake.id) if cake.status == CustomCakeStatus.PENDING_REVIEW else None
+        await _send_text(
+            telegram,
+            chat_id,
+            _cake_message(cake, customer_name, customer_email),
+            markup,
+        )
+        await _send_first_reference_image(telegram, chat_id, cake.reference_images)
+
+
+async def _handle_incoming_window_command(
+    telegram: TelegramService,
+    chat_id: int,
+    db: AsyncSession,
+    *,
+    days: int,
+):
+    if days < 1:
+        days = 1
+    end_offset = min(days - 1, INCOMING_MAX_DAYS - 1)
+    start_utc, end_utc, start_date, end_date = _offset_span_to_utc_range(0, end_offset)
+    await _send_text(
+        telegram,
+        chat_id,
+        f"📥 Incoming window: {start_date.isoformat()} to {end_date.isoformat()}",
+    )
+    await _handle_orders_in_range_command(
+        telegram,
+        chat_id,
+        db,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    await _handle_cakes_in_range_command(
+        telegram,
+        chat_id,
+        db,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 async def _send_text(
@@ -781,9 +1082,267 @@ async def telegram_webhook(
                         "Select a status for tomorrow's cakes:",
                         _day_status_keyboard("tm"),
                     )
+                elif action == "incoming7":
+                    await _handle_incoming_window_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        days=7,
+                    )
+                elif action == "incoming30":
+                    await _handle_incoming_window_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        days=30,
+                    )
+                elif action == "orders_day":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a pickup day for orders:",
+                        _date_picker_keyboard(
+                            select_prefix="od",
+                            page_prefix="odp",
+                            page=_picker_page_for_offset(offset=0),
+                            back_callback="cmd:help",
+                        ),
+                    )
+                elif action == "cakes_day":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a requested day for custom cakes:",
+                        _date_picker_keyboard(
+                            select_prefix="cd",
+                            page_prefix="cdp",
+                            page=_picker_page_for_offset(offset=0),
+                            back_callback="cmd:help",
+                        ),
+                    )
+                elif action == "orders_range":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select START date for orders range:",
+                        _date_picker_keyboard(
+                            select_prefix="ors",
+                            page_prefix="orsp",
+                            page=_picker_page_for_offset(offset=0),
+                            back_callback="cmd:help",
+                        ),
+                    )
+                elif action == "cakes_range":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select START date for cakes range:",
+                        _date_picker_keyboard(
+                            select_prefix="crs",
+                            page_prefix="crsp",
+                            page=_picker_page_for_offset(offset=0),
+                            back_callback="cmd:help",
+                        ),
+                    )
                 else:
                     await _answer_callback(telegram, callback_id, "Unsupported command action")
                     return {"ok": True}
+
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 2 and parts[0] in {"odp", "cdp", "orsp", "crsp"}:
+                page = _parse_picker_value(parts[1], min_value=0, max_value=99)
+                if page is None:
+                    await _answer_callback(telegram, callback_id, "Invalid page")
+                    return {"ok": True}
+
+                if parts[0] == "odp":
+                    text, markup = (
+                        "Select a pickup day for orders:",
+                        _date_picker_keyboard(
+                            select_prefix="od",
+                            page_prefix="odp",
+                            page=page,
+                            back_callback="cmd:help",
+                        ),
+                    )
+                elif parts[0] == "cdp":
+                    text, markup = (
+                        "Select a requested day for custom cakes:",
+                        _date_picker_keyboard(
+                            select_prefix="cd",
+                            page_prefix="cdp",
+                            page=page,
+                            back_callback="cmd:help",
+                        ),
+                    )
+                elif parts[0] == "orsp":
+                    text, markup = (
+                        "Select START date for orders range:",
+                        _date_picker_keyboard(
+                            select_prefix="ors",
+                            page_prefix="orsp",
+                            page=page,
+                            back_callback="cmd:help",
+                        ),
+                    )
+                else:
+                    text, markup = (
+                        "Select START date for cakes range:",
+                        _date_picker_keyboard(
+                            select_prefix="crs",
+                            page_prefix="crsp",
+                            page=page,
+                            back_callback="cmd:help",
+                        ),
+                    )
+
+                await _send_text(telegram, int(chat_id), text, markup)
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 2 and parts[0] in {"od", "cd"}:
+                offset = _parse_picker_value(
+                    parts[1],
+                    min_value=DATE_PICKER_MIN_OFFSET,
+                    max_value=DATE_PICKER_MAX_OFFSET,
+                )
+                if offset is None:
+                    await _answer_callback(telegram, callback_id, "Invalid date")
+                    return {"ok": True}
+
+                start_utc, end_utc, target_date = _offset_to_utc_range(offset)
+                if parts[0] == "od":
+                    await _handle_orders_in_range_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        start_date=target_date,
+                        end_date=target_date,
+                    )
+                else:
+                    await _handle_cakes_in_range_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        start_date=target_date,
+                        end_date=target_date,
+                    )
+
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 2 and parts[0] in {"ors", "crs"}:
+                start_offset = _parse_picker_value(
+                    parts[1],
+                    min_value=DATE_PICKER_MIN_OFFSET,
+                    max_value=DATE_PICKER_MAX_OFFSET,
+                )
+                if start_offset is None:
+                    await _answer_callback(telegram, callback_id, "Invalid start date")
+                    return {"ok": True}
+
+                if parts[0] == "ors":
+                    label = f"Select END date for orders (from {_date_for_offset(start_offset).isoformat()}):"
+                    markup = _range_end_picker_keyboard(
+                        select_prefix="ore",
+                        page_prefix="orep",
+                        start_offset=start_offset,
+                        page=0,
+                        back_callback="cmd:orders_range",
+                    )
+                else:
+                    label = f"Select END date for cakes (from {_date_for_offset(start_offset).isoformat()}):"
+                    markup = _range_end_picker_keyboard(
+                        select_prefix="cre",
+                        page_prefix="crep",
+                        start_offset=start_offset,
+                        page=0,
+                        back_callback="cmd:cakes_range",
+                    )
+
+                await _send_text(telegram, int(chat_id), label, markup)
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 3 and parts[0] in {"orep", "crep"}:
+                start_offset = _parse_picker_value(
+                    parts[1],
+                    min_value=DATE_PICKER_MIN_OFFSET,
+                    max_value=DATE_PICKER_MAX_OFFSET,
+                )
+                page = _parse_picker_value(parts[2], min_value=0, max_value=99)
+                if start_offset is None or page is None:
+                    await _answer_callback(telegram, callback_id, "Invalid page")
+                    return {"ok": True}
+
+                if parts[0] == "orep":
+                    label = f"Select END date for orders (from {_date_for_offset(start_offset).isoformat()}):"
+                    markup = _range_end_picker_keyboard(
+                        select_prefix="ore",
+                        page_prefix="orep",
+                        start_offset=start_offset,
+                        page=page,
+                        back_callback="cmd:orders_range",
+                    )
+                else:
+                    label = f"Select END date for cakes (from {_date_for_offset(start_offset).isoformat()}):"
+                    markup = _range_end_picker_keyboard(
+                        select_prefix="cre",
+                        page_prefix="crep",
+                        start_offset=start_offset,
+                        page=page,
+                        back_callback="cmd:cakes_range",
+                    )
+
+                await _send_text(telegram, int(chat_id), label, markup)
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 3 and parts[0] in {"ore", "cre"}:
+                start_offset = _parse_picker_value(
+                    parts[1],
+                    min_value=DATE_PICKER_MIN_OFFSET,
+                    max_value=DATE_PICKER_MAX_OFFSET,
+                )
+                end_offset = _parse_picker_value(
+                    parts[2],
+                    min_value=DATE_PICKER_MIN_OFFSET,
+                    max_value=DATE_PICKER_MAX_OFFSET,
+                )
+                if start_offset is None or end_offset is None or end_offset < start_offset:
+                    await _answer_callback(telegram, callback_id, "Invalid date range")
+                    return {"ok": True}
+
+                start_utc, end_utc, start_date, end_date = _offset_span_to_utc_range(
+                    start_offset,
+                    end_offset,
+                )
+                if parts[0] == "ore":
+                    await _handle_orders_in_range_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                else:
+                    await _handle_cakes_in_range_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
 
                 await _answer_callback(telegram, callback_id, "Done")
                 return {"ok": True}
@@ -922,6 +1481,80 @@ async def telegram_webhook(
             int(chat_id),
             _bot_params_message(),
             _command_keyboard(),
+        )
+        return {"ok": True}
+
+    if command == "/incoming7":
+        await _handle_incoming_window_command(
+            telegram,
+            int(chat_id),
+            db,
+            days=7,
+        )
+        return {"ok": True}
+
+    if command == "/incoming30":
+        await _handle_incoming_window_command(
+            telegram,
+            int(chat_id),
+            db,
+            days=30,
+        )
+        return {"ok": True}
+
+    if command == "/orders_day":
+        await _send_text(
+            telegram,
+            int(chat_id),
+            "Select a pickup day for orders:",
+            _date_picker_keyboard(
+                select_prefix="od",
+                page_prefix="odp",
+                page=_picker_page_for_offset(offset=0),
+                back_callback="cmd:help",
+            ),
+        )
+        return {"ok": True}
+
+    if command == "/cakes_day":
+        await _send_text(
+            telegram,
+            int(chat_id),
+            "Select a requested day for custom cakes:",
+            _date_picker_keyboard(
+                select_prefix="cd",
+                page_prefix="cdp",
+                page=_picker_page_for_offset(offset=0),
+                back_callback="cmd:help",
+            ),
+        )
+        return {"ok": True}
+
+    if command == "/orders_range":
+        await _send_text(
+            telegram,
+            int(chat_id),
+            "Select START date for orders range:",
+            _date_picker_keyboard(
+                select_prefix="ors",
+                page_prefix="orsp",
+                page=_picker_page_for_offset(offset=0),
+                back_callback="cmd:help",
+            ),
+        )
+        return {"ok": True}
+
+    if command == "/cakes_range":
+        await _send_text(
+            telegram,
+            int(chat_id),
+            "Select START date for cakes range:",
+            _date_picker_keyboard(
+                select_prefix="crs",
+                page_prefix="crsp",
+                page=_picker_page_for_offset(offset=0),
+                back_callback="cmd:help",
+            ),
         )
         return {"ok": True}
 
