@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import ScrollReveal from "@/components/ScrollReveal";
-import { addToCart } from "@/lib/cart";
+import { ApiError } from "@/lib/api-client";
 import {
   formatPrice,
   supportBenefits,
 } from "@/data/storefront";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import type { StorefrontProduct } from "@/lib/storefront-types";
 
 interface ProductDetailViewProps {
@@ -41,23 +43,37 @@ export default function ProductDetailView({
     product.variants[0]?.id ?? null
   );
   const [activeAccordion, setActiveAccordion] = useState(0);
-  const [addedToCart, setAddedToCart] = useState(false);
+  const [cartMessage, setCartMessage] = useState<string | null>(null);
   const activeVariant =
     (activeVariantId && product.variants.find((variant) => variant.id === activeVariantId)) ||
     product.variants[0];
   const displayPrice = activeVariant?.price ?? product.price;
-  const selectedOptionLabel = activeVariant?.name ?? "Standard";
+  const { isAuthenticated } = useAuth();
+  const { addItem } = useCart();
 
-  const handleAddToCart = () => {
-    addToCart({
-      slug: product.slug,
-      title: product.title,
-      price: displayPrice,
-      imageSrc: product.thumbnails[activeImage] ?? product.imageSrc,
-      selectedColor: selectedOptionLabel,
-    });
-    setAddedToCart(true);
-    window.setTimeout(() => setAddedToCart(false), 1500);
+  const handleAddToCart = async () => {
+    setCartMessage(null);
+    if (!isAuthenticated) {
+      window.dispatchEvent(new Event("open-auth-modal"));
+      setCartMessage("Please login first to add items.");
+      return;
+    }
+
+    try {
+      await addItem({
+        productId: product.id,
+        variantId: activeVariant?.id || null,
+        quantity: 1,
+      });
+      setCartMessage("Added to cart");
+      window.setTimeout(() => setCartMessage(null), 1400);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setCartMessage(error.detail);
+      } else {
+        setCartMessage("Unable to add item to cart.");
+      }
+    }
   };
 
   return (
@@ -158,15 +174,16 @@ export default function ProductDetailView({
                 onClick={handleAddToCart}
                 className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
               >
-                {addedToCart ? "Added to Cart" : "Add to Cart"}
+                Add to Cart
               </button>
               <button
                 type="button"
                 onClick={handleAddToCart}
                 className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
               >
-                Buy Now
+                Add & Checkout
               </button>
+              {cartMessage ? <p className="text-sm text-gray-600">{cartMessage}</p> : null}
             </div>
 
             <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200">
