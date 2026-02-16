@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.models.ml import CustomCake, CustomCakeStatus, DecorationComplexity
 from app.services.ml_service import CakePricingService, ServingEstimationService
-from app.services.llm_service import DescriptionService
 
 logger = get_logger("custom_cake_service")
 
@@ -24,6 +23,34 @@ class CustomCakeService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _build_template_descriptions(
+        self,
+        flavor: str,
+        decoration_description: str | None,
+        event_type: str | None,
+    ) -> dict:
+        decoration = decoration_description.strip() if decoration_description else "classic"
+        event = event_type.strip() if event_type else "special occasions"
+
+        short = (
+            f"A handcrafted {flavor} custom cake made for {event}."
+        )
+        long = (
+            f"Our {flavor} custom cake is prepared fresh to order with careful attention to detail. "
+            f"This design features {decoration} decoration and is tailored to your event needs."
+        )
+        seo = (
+            f"Custom {flavor} cake by Kabul Sweets. Made fresh for {event} with personalized design options."
+        )[:155]
+
+        return {
+            "short": short,
+            "long": long,
+            "seo": seo,
+            "generated_by": "template",
+            "model": None,
+        }
 
     async def submit_custom_cake(
         self,
@@ -97,14 +124,11 @@ class CustomCakeService:
         )
         cake.predicted_servings = serving_result["predicted_servings"]
 
-        # Auto-generate AI descriptions
-        desc_service = DescriptionService()
-        descriptions = await desc_service.generate_descriptions(
+        # Customer submission must not trigger paid AI APIs.
+        descriptions = self._build_template_descriptions(
             flavor=flavor,
-            ingredients=list((ingredients or {}).keys()) if ingredients else None,
-            decoration_style=decoration_description,
+            decoration_description=decoration_description,
             event_type=event_type,
-            size_info=f'{diameter_inches}" {shape}, {layers} layer(s)',
         )
         cake.ai_description_short = descriptions.get("short")
         cake.ai_description_long = descriptions.get("long")

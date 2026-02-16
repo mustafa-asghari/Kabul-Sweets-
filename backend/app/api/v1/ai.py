@@ -40,10 +40,11 @@ class IndexProductRequest(BaseModel):
 async def ask_question(
     data: AIQueryRequest,
     request: Request,
+    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Ask a natural-language question about products.
+    [Admin] Ask a natural-language question about products.
     Uses RAG to retrieve relevant products and generate an answer.
     Rate limited to 10 requests/min per IP.
     """
@@ -58,20 +59,7 @@ async def ask_question(
 
     service = AIService(db)
 
-    # Extract user ID if authenticated
-    user_id = None
-    try:
-        from app.api.deps import bearer_scheme
-        from app.core.security import decode_token
-        creds = await bearer_scheme(request)
-        if creds:
-            payload = decode_token(creds.credentials)
-            if payload:
-                user_id = payload.get("sub")
-    except Exception:
-        pass
-
-    result = await service.query(data.question, user_id=user_id)
+    result = await service.query(data.question, user_id=admin.id)
     return result
 
 
