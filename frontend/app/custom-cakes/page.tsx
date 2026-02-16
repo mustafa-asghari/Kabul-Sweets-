@@ -732,18 +732,15 @@ export default function CustomCakesPage() {
                 <div className="grid grid-cols-1 gap-4">
                   <label className="text-sm font-semibold text-black">
                     Flavor
-                    <select
-                      required
+                    <ThemedSelect
+                      className="mt-2"
                       value={form.flavor}
-                      onChange={(event) => updateForm("flavor", event.target.value as AllowedFlavor)}
-                      className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                    >
-                      {AVAILABLE_FLAVORS.map((flavor) => (
-                        <option key={flavor} value={flavor}>
-                          {flavor}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(next) => updateForm("flavor", next as AllowedFlavor)}
+                      options={AVAILABLE_FLAVORS.map((flavor) => ({
+                        value: flavor,
+                        label: flavor,
+                      }))}
+                    />
                     <span className="mt-1 block text-xs text-gray-500">Only Spong + Vanila is available.</span>
                   </label>
                 </div>
@@ -764,17 +761,15 @@ export default function CustomCakesPage() {
                     </label>
                     <label className="text-sm font-semibold text-black">
                       Cake size (inches)
-                      <select
-                        value={form.diameter_inches}
-                        onChange={(event) => updateForm("diameter_inches", Number(event.target.value))}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                      >
-                        {AVAILABLE_SIZES_INCHES.map((size) => (
-                          <option key={size} value={size}>
-                            {size} inch
-                          </option>
-                        ))}
-                      </select>
+                      <ThemedSelect
+                        className="mt-2"
+                        value={String(form.diameter_inches)}
+                        onChange={(next) => updateForm("diameter_inches", Number(next))}
+                        options={AVAILABLE_SIZES_INCHES.map((size) => ({
+                          value: String(size),
+                          label: `${size} inch`,
+                        }))}
+                      />
                       <span className="mt-1 block text-xs text-gray-500">Available sizes: 10, 12, 14, 16 inch.</span>
                     </label>
                   </div>
@@ -857,32 +852,32 @@ export default function CustomCakesPage() {
                     </label>
                     <label className="text-sm font-semibold text-black">
                       Requested date
-                      <input
-                        type="date"
+                      <ThemedDatePicker
+                        className="mt-2"
                         value={form.requested_date}
-                        onChange={(event) => updateForm("requested_date", event.target.value)}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
+                        onChange={(next) => updateForm("requested_date", next)}
                       />
                     </label>
                     <label className="text-sm font-semibold text-black">
                       Preferred time slot
-                      <select
+                      <ThemedSelect
+                        className="mt-2"
                         value={form.time_slot}
-                        onChange={(event) => updateForm("time_slot", event.target.value)}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
-                      >
-                        <option value="Morning">Morning</option>
-                        <option value="Afternoon">Afternoon</option>
-                        <option value="Evening">Evening</option>
-                      </select>
+                        onChange={(next) => updateForm("time_slot", next)}
+                        options={TIME_SLOT_OPTIONS.map((slot) => ({
+                          value: slot,
+                          label: slot,
+                        }))}
+                      />
                     </label>
                     <label className="text-sm font-semibold text-black md:col-span-2">
                       Preferred time
-                      <input
-                        type="time"
+                      <ThemedSelect
+                        className="mt-2"
                         value={form.preferred_time}
-                        onChange={(event) => updateForm("preferred_time", event.target.value)}
-                        className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
+                        onChange={(next) => updateForm("preferred_time", next)}
+                        options={PREFERRED_TIME_OPTIONS}
+                        placeholder="Select preferred time"
                       />
                     </label>
                   </div>
