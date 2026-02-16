@@ -146,6 +146,7 @@ class CustomCakeService:
             "status": cake.status.value,
             "predicted_price": cake.predicted_price,
             "predicted_servings": cake.predicted_servings,
+            "predicted_size_inches": cake.diameter_inches,
             "price_breakdown": price_result["breakdown"],
             "serving_details": serving_result["details"],
             "ai_descriptions": descriptions,
