@@ -93,16 +93,16 @@ export default function Footer() {
             </div>
             <div>
               <h4 className="text-xs font-bold text-black mb-4 uppercase tracking-wider">
-                Visit & Contact
+                Location & Contact
               </h4>
               <ul className="space-y-2.5 text-sm text-gray-500">
-                <li>Kabul Sweets, Kabul, Afghanistan</li>
+                <li>Shahr-e-Naw, Kabul, Afghanistan</li>
                 <li>
                   <a
                     href="tel:+93700000000"
                     className="hover:text-black transition"
                   >
-                    +93 700 000 000
+                    Call us: +93 700 000 000
                   </a>
                 </li>
                 <li>
@@ -110,7 +110,7 @@ export default function Footer() {
                     href="mailto:hello@kabulsweets.com"
                     className="hover:text-black transition"
                   >
-                    hello@kabulsweets.com
+                    Email: hello@kabulsweets.com
                   </a>
                 </li>
               </ul>

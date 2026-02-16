@@ -39,10 +39,9 @@ class StripeService:
     ) -> dict:
         """
         Create a Stripe Checkout Session.
-        Returns checkout URL and session ID.
+        Returns checkout URL, session ID, and payment intent ID.
         """
         if not STRIPE_AVAILABLE:
-            # Test mode — return a fake session
             logger.warning("Stripe not configured — returning test checkout session")
             return {
                 "checkout_url": f"{success_url.replace('{CHECKOUT_SESSION_ID}', 'test_session_' + order_id)}",
@@ -70,14 +69,11 @@ class StripeService:
                             "name": f"Order {order_number}",
                             "description": line_items_description,
                         },
-                        "unit_amount": int(amount * 100),  # Stripe uses cents
+                        "unit_amount": int(amount * 100),
                     },
                     "quantity": 1,
                 },
             ],
-            payment_intent_data={
-                "capture_method": "manual",  # Require admin approval before charging
-            },
             metadata={
                 "order_id": order_id,
                 "order_number": order_number,
@@ -187,31 +183,3 @@ class StripeService:
         except Exception as e:
             logger.error("Webhook processing error: %s", str(e))
             return None
-
-    @staticmethod
-    async def capture_payment(payment_intent_id: str) -> bool:
-        """Capture a previously authorized payment."""
-        if not STRIPE_AVAILABLE:
-            logger.info("Test mode: Captured payment %s", payment_intent_id)
-            return True
-
-        try:
-            stripe.PaymentIntent.capture(payment_intent_id)
-            return True
-        except stripe.error.StripeError as e:
-            logger.error("Failed to capture payment %s: %s", payment_intent_id, str(e))
-            return False
-
-    @staticmethod
-    async def cancel_payment_intent(payment_intent_id: str) -> bool:
-        """Cancel a payment intent (release authorization)."""
-        if not STRIPE_AVAILABLE:
-            logger.info("Test mode: Cancelled payment %s", payment_intent_id)
-            return True
-
-        try:
-            stripe.PaymentIntent.cancel(payment_intent_id)
-            return True
-        except stripe.error.StripeError as e:
-            logger.error("Failed to cancel payment %s: %s", payment_intent_id, str(e))
-            return False

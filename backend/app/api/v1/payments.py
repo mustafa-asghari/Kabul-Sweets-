@@ -120,6 +120,15 @@ async def create_checkout_session(
         order.payment.stripe_checkout_session_id = result["session_id"]
         order.payment.stripe_payment_intent_id = result.get("payment_intent_id")
 
+    # In local test mode (no Stripe webhooks), move directly to pending approval.
+    if result["session_id"].startswith("test_session_"):
+        await service.mark_order_pending_approval(
+            order_id=order.id,
+            stripe_payment_intent_id=result.get("payment_intent_id"),
+            stripe_checkout_session_id=result["session_id"],
+            webhook_data={"source": "test_checkout_fallback"},
+        )
+
     await db.flush()
 
     return CheckoutSessionResponse(
