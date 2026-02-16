@@ -365,6 +365,48 @@ class AnalyticsService:
             "total_customers": customers.scalar() or 0,
         }
 
+    async def get_weekly_order_status_mix(self) -> dict:
+        """Get this week's order mix grouped as passed, rejected, and pending."""
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+
+        result = await self.db.execute(
+            select(
+                Order.status,
+                func.count(Order.id).label("count"),
+            ).where(
+                Order.created_at >= week_start,
+                Order.created_at <= now,
+                Order.status != OrderStatus.DRAFT,
+            ).group_by(Order.status)
+        )
+
+        status_counts = {row[0]: row[1] for row in result.all()}
+
+        passed_statuses = [
+            OrderStatus.PAID,
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY,
+            OrderStatus.COMPLETED,
+        ]
+        rejected_statuses = [OrderStatus.CANCELLED, OrderStatus.REFUNDED]
+        pending_statuses = [OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL]
+
+        passed_orders = sum(status_counts.get(status, 0) for status in passed_statuses)
+        rejected_orders = sum(status_counts.get(status, 0) for status in rejected_statuses)
+        pending_orders = sum(status_counts.get(status, 0) for status in pending_statuses)
+
+        return {
+            "week_start": week_start.date(),
+            "week_end": now.date(),
+            "passed_orders": passed_orders,
+            "rejected_orders": rejected_orders,
+            "pending_orders": pending_orders,
+            "total_orders": passed_orders + rejected_orders + pending_orders,
+        }
+
     # ── Visitor Analytics ────────────────────────────────────────────────
     async def get_visitor_analytics(self, days: int = 30) -> dict:
         """Get visitor analytics (visits over time, by location)."""
@@ -413,6 +455,42 @@ class AnalyticsService:
             "top_locations": locations,
             "device_breakdown": device_stats
         }
+
+    async def get_product_page_views(self, days: int = 30, limit: int = 10) -> list[dict]:
+        """Get most visited product pages from tracked page_view events."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        result = await self.db.execute(
+            select(
+                AnalyticsEvent.page_url,
+                func.count(AnalyticsEvent.id).label("visits"),
+            ).where(
+                AnalyticsEvent.created_at >= since,
+                AnalyticsEvent.event_type == "page_view",
+                AnalyticsEvent.page_url.is_not(None),
+                AnalyticsEvent.page_url.ilike("%/products/%"),
+            ).group_by(
+                AnalyticsEvent.page_url
+            ).order_by(
+                desc("visits")
+            ).limit(limit)
+        )
+
+        rows = []
+        for row in result.all():
+            page_url = row.page_url or ""
+            slug = page_url.rstrip("/").split("/products/")[-1].split("?")[0]
+            if not slug:
+                continue
+            rows.append(
+                {
+                    "product_slug": slug,
+                    "page_url": page_url,
+                    "visits": row.visits or 0,
+                }
+            )
+
+        return rows
 
     # ── Order Risk Analysis ──────────────────────────────────────────────
     async def get_order_risk_analysis(self, order_id: uuid.UUID) -> dict:

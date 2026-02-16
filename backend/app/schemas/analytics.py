@@ -97,3 +97,13 @@ class DashboardSummary(BaseModel):
     cake_orders_today: int
     low_stock_count: int
     total_customers: int
+
+
+class WeeklyOrderStatusMixResponse(BaseModel):
+    """Weekly order status mix for operations chart."""
+    week_start: date
+    week_end: date
+    passed_orders: int
+    rejected_orders: int
+    pending_orders: int
+    total_orders: int

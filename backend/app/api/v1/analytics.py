@@ -19,6 +19,7 @@ from app.schemas.analytics import (
     InventoryTurnoverResponse,
     PopularVariantResponse,
     RevenueSummary,
+    WeeklyOrderStatusMixResponse,
 )
 from app.services.analytics_service import AnalyticsService
 from app.services.trend_service import TrendService
@@ -76,6 +77,16 @@ async def get_dashboard(
     """[Admin] Get dashboard summary metrics."""
     service = AnalyticsService(db)
     return await service.get_dashboard_summary()
+
+
+@router.get("/orders-status-mix", response_model=WeeklyOrderStatusMixResponse)
+async def get_orders_status_mix(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get this week's passed/rejected/pending order mix."""
+    service = AnalyticsService(db)
+    return await service.get_weekly_order_status_mix()
 
 
 # ── Revenue ──────────────────────────────────────────────────────────────────
@@ -147,6 +158,18 @@ async def get_visitor_analytics(
     """[Admin] Get visitor traffic (visits over time)."""
     service = AnalyticsService(db)
     return await service.get_visitor_analytics(days=days)
+
+
+@router.get("/product-page-views")
+async def get_product_page_views(
+    days: int = Query(30, ge=1, le=365),
+    limit: int = Query(10, ge=1, le=50),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """[Admin] Get most visited product pages."""
+    service = AnalyticsService(db)
+    return await service.get_product_page_views(days=days, limit=limit)
 
 
 # ── Cake Analytics ───────────────────────────────────────────────────────────

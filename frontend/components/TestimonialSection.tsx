@@ -13,6 +13,12 @@ interface Review {
   time: number;
 }
 
+interface ReviewsApiResponse {
+  source?: "google" | "fallback";
+  placeName?: string;
+  reviews?: Review[];
+}
+
 const ROTATE_MS = 6500;
 const FEATURED_REVIEWS: Review[] = [
   {
@@ -50,11 +56,64 @@ function getInitials(name: string) {
     .join("");
 }
 
+function isReview(value: unknown): value is Review {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<Review>;
+  return (
+    typeof candidate.authorName === "string" &&
+    typeof candidate.text === "string" &&
+    typeof candidate.rating === "number" &&
+    typeof candidate.relativeTime === "string" &&
+    typeof candidate.time === "number"
+  );
+}
+
 export default function TestimonialSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "0px 0px -50px 0px" });
-  const reviews = FEATURED_REVIEWS;
+  const [reviews, setReviews] = useState<Review[]>(FEATURED_REVIEWS);
+  const [source, setSource] = useState<"google" | "fallback">("fallback");
+  const [placeName, setPlaceName] = useState("Kabul Sweets Bakery");
   const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReviews = async () => {
+      try {
+        const response = await fetch("/api/google-reviews", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as ReviewsApiResponse;
+        const loadedReviews = Array.isArray(payload.reviews)
+          ? payload.reviews.filter(isReview)
+          : [];
+
+        if (cancelled || loadedReviews.length === 0) {
+          return;
+        }
+
+        setReviews(loadedReviews);
+        setSource(payload.source === "google" ? "google" : "fallback");
+        if (typeof payload.placeName === "string" && payload.placeName.trim().length > 0) {
+          setPlaceName(payload.placeName.trim());
+        }
+      } catch {
+        // Keep local fallback reviews when API fetch fails.
+      }
+    };
+
+    void loadReviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (reviews.length < 2) {
@@ -200,13 +259,15 @@ export default function TestimonialSection() {
         </AnimatePresence>
 
         <p className="text-xs text-gray-400 mt-8 mb-4">
-          Featured customer reviews from Kabul Sweets Bakery.
+          {source === "google"
+            ? `Top customer reviews from ${placeName} on Google.`
+            : "Featured customer reviews from Kabul Sweets Bakery."}
         </p>
         <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
           <span className="material-symbols-outlined text-[17px] text-black">star</span>
           <span className="font-semibold">{averageRating?.toFixed(1) ?? "5.0"}</span>
           <span>Customer rating</span>
-          <span>({reviews.length} featured reviews)</span>
+          <span>({reviews.length} reviews)</span>
         </div>
       </motion.div>
     </section>
