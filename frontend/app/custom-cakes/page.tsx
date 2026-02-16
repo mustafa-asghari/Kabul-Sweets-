@@ -525,10 +525,41 @@ export default function CustomCakesPage() {
   const [loadingRequests, setLoadingRequests] = useState(false);
 
   const hasAnyContact = Boolean(user?.email || user?.phone);
+  const activeScheduleDate = useMemo(() => parseDateInputValue(form.requested_date) || new Date(), [form.requested_date]);
+  const timeSlotOptions = useMemo(() => buildTimeSlotOptionsForDate(activeScheduleDate), [activeScheduleDate]);
+  const preferredTimeOptions = useMemo(
+    () => buildPreferredTimeOptionsForDate(activeScheduleDate),
+    [activeScheduleDate]
+  );
+  const businessHoursText = useMemo(() => formatBusinessHoursText(activeScheduleDate), [activeScheduleDate]);
 
   const updateForm = useCallback(<K extends keyof CakeFormState>(field: K, value: CakeFormState[K]) => {
     setForm((current) => ({ ...current, [field]: value }));
   }, []);
+
+  useEffect(() => {
+    setForm((current) => {
+      let next = current;
+      let changed = false;
+
+      const hasSlot = timeSlotOptions.some((option) => option.value === current.time_slot);
+      if (!hasSlot) {
+        const fallbackSlot = timeSlotOptions[0]?.value || "";
+        if (current.time_slot !== fallbackSlot) {
+          next = { ...next, time_slot: fallbackSlot };
+          changed = true;
+        }
+      }
+
+      const hasPreferredTime = preferredTimeOptions.some((option) => option.value === current.preferred_time);
+      if (!hasPreferredTime && current.preferred_time !== "") {
+        next = { ...next, preferred_time: "" };
+        changed = true;
+      }
+
+      return changed ? next : current;
+    });
+  }, [timeSlotOptions, preferredTimeOptions]);
 
   const loadMyRequests = useCallback(async () => {
     if (!accessToken || !isAuthenticated) {
@@ -645,6 +676,11 @@ export default function CustomCakesPage() {
       return;
     }
 
+    if (!form.time_slot) {
+      setSubmitError("Please select a pickup time slot.");
+      return;
+    }
+
     if (!referenceCakeFile) {
       setSubmitError("Please upload one reference cake image.");
       return;
@@ -670,9 +706,13 @@ export default function CustomCakesPage() {
       if (imageOnCakeFile) {
         referenceImages.push(await fileToDataUrl(imageOnCakeFile));
       }
+      const selectedTimeSlot = timeSlotOptions.find((option) => option.value === form.time_slot);
+      const selectedPreferredTime = preferredTimeOptions.find(
+        (option) => option.value === form.preferred_time
+      );
       const formattedTimeSlot = form.preferred_time
-        ? `${form.time_slot} (${form.preferred_time})`
-        : form.time_slot;
+        ? `${selectedTimeSlot?.label || form.time_slot} (${selectedPreferredTime?.label || form.preferred_time})`
+        : selectedTimeSlot?.label || form.time_slot;
 
       const submission = await apiRequest<CustomCakeSubmissionResponse>("/api/v1/custom-cakes", {
         method: "POST",
