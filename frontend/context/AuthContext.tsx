@@ -47,6 +47,8 @@ interface AuthContextValue {
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<string>;
+  resetPassword: (payload: { token: string; newPassword: string }) => Promise<string>;
   updateProfile: (payload: { full_name?: string; phone?: string }) => Promise<void>;
   changePassword: (payload: { current_password: string; new_password: string }) => Promise<void>;
 }
@@ -271,6 +273,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [accessToken]
   );
 
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const response = await apiRequest<{ message: string }>("/api/v1/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+    });
+    return response.message;
+  }, []);
+
+  const resetPassword = useCallback(
+    async (payload: { token: string; newPassword: string }) => {
+      const response = await apiRequest<{ message: string }>("/api/v1/auth/reset-password", {
+        method: "POST",
+        body: {
+          token: payload.token,
+          new_password: payload.newPassword,
+        },
+      });
+      return response.message;
+    },
+    []
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -282,6 +306,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout,
       refreshUser,
+      requestPasswordReset,
+      resetPassword,
       updateProfile,
       changePassword,
     }),
@@ -294,6 +320,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout,
       refreshUser,
+      requestPasswordReset,
+      resetPassword,
       updateProfile,
       changePassword,
     ]

@@ -3,6 +3,7 @@ Authentication endpoints: register, login, refresh, logout.
 Includes login rate limiting via Redis.
 """
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -15,6 +16,7 @@ from app.core.rate_limiter import check_rate_limit
 from app.core.redis import get_redis
 from app.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     decode_token,
     hash_password,
@@ -23,8 +25,10 @@ from app.core.security import (
 from app.models.user import User
 from app.api.deps import get_current_user
 from app.schemas.user import (
+    ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    ResetPasswordRequest,
     Token,
     TokenRefresh,
     UserCreate,
@@ -197,6 +201,92 @@ async def refresh_token(
         pass
 
     return Token(access_token=new_access, refresh_token=new_refresh)
+
+
+# ── Forgot / Reset Password ─────────────────────────────────────────────────
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Request a password reset link.
+    Always returns the same response to avoid email enumeration.
+    """
+    generic_message = (
+        "If an account exists for this email, a password reset link has been sent."
+    )
+
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return MessageResponse(message=generic_message)
+
+    reset_token = create_password_reset_token({"sub": str(user.id)})
+
+    try:
+        from app.workers.email_tasks import send_password_reset_email
+
+        send_password_reset_email.delay(
+            {
+                "customer_email": user.email,
+                "customer_name": user.full_name,
+                "reset_token": reset_token,
+            }
+        )
+    except Exception as exc:
+        logger.warning("Could not enqueue password reset email for %s: %s", user.email, str(exc))
+
+    return MessageResponse(message=generic_message)
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset password using a valid password-reset token."""
+    decoded = decode_token(payload.token)
+    if decoded is None or decoded.get("type") != "password_reset":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user_id = decoded.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token payload",
+        )
+
+    try:
+        parsed_user_id = uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token payload",
+        )
+
+    result = await db.execute(select(User).where(User.id == parsed_user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user.hashed_password = hash_password(payload.new_password)
+
+    # Revoke active refresh token to force re-authentication after password change.
+    try:
+        redis = await get_redis()
+        await redis.delete(f"refresh_token:{str(user.id)}")
+    except Exception as exc:
+        logger.warning("Could not revoke refresh token after password reset: %s", str(exc))
+
+    logger.info("Password reset completed for user: %s", user.email)
+    return MessageResponse(message="Password has been reset successfully")
 
 
 # ── Get Current User ────────────────────────────────────────────────────────

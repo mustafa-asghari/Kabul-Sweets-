@@ -9,6 +9,7 @@ import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from urllib.parse import quote
 
 from app.celery_app import celery_app
 
@@ -351,6 +352,53 @@ def send_abandoned_cart_email(self, data: dict):
         )
     except Exception as exc:
         logger.error("Abandoned cart email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name="app.workers.email_tasks.send_password_reset_email",
+)
+def send_password_reset_email(self, data: dict):
+    """Send password reset email with secure reset link."""
+    try:
+        reset_token = data.get("reset_token", "")
+        encoded_token = quote(reset_token, safe="")
+        reset_link = f"{FRONTEND_URL}/reset-password?token={encoded_token}"
+
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">Kabul Sweets</h1>
+                <p style="color: #666; margin-top: 5px;">Password Reset Request</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Reset your password</h2>
+                <p style="color: #444; line-height: 1.6;">
+                    We received a request to reset your password. Click the button below to set a new password.
+                </p>
+                <div style="text-align: center; margin-top: 24px;">
+                    <a href="{reset_link}"
+                       style="background: #1a1a2e; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
+                        Reset Password
+                    </a>
+                </div>
+                <p style="color: #666; font-size: 13px; margin-top: 20px;">
+                    This link expires soon. If you did not request this reset, you can safely ignore this email.
+                </p>
+            </div>
+        </div>
+        """
+
+        _send_email(
+            to_email=data.get("customer_email", ""),
+            subject="Reset your password | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Password reset email failed: %s", str(exc))
         self.retry(exc=exc)
 
 
