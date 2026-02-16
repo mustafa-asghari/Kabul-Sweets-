@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import ProductDetailView from "@/components/ProductDetailView";
-import { getProductBySlug, storeProducts } from "@/data/storefront";
+import {
+  fetchRelatedStoreProducts,
+  fetchStoreProductBySlug,
+} from "@/lib/storefront-api";
 
 interface ProductPageProps {
   params: Promise<{
@@ -13,7 +16,7 @@ interface ProductPageProps {
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await fetchStoreProductBySlug(slug);
 
   if (!product) {
     return {
@@ -29,15 +32,13 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const product = await fetchStoreProductBySlug(slug);
 
   if (!product) {
     notFound();
   }
 
-  const relatedProducts = storeProducts
-    .filter((candidate) => candidate.slug !== product.slug)
-    .slice(0, 3);
+  const relatedProducts = await fetchRelatedStoreProducts(product, 3);
 
   return (
     <>

@@ -6,9 +6,11 @@ import ProductCard from "@/components/ProductCard";
 import ScrollReveal from "@/components/ScrollReveal";
 import {
   formatPrice,
-  productCategories,
-  storeProducts,
 } from "@/data/storefront";
+import {
+  fetchStoreProducts,
+  getProductCategoriesFromProducts,
+} from "@/lib/storefront-api";
 
 interface ShopPageProps {
   searchParams: Promise<{
@@ -19,14 +21,17 @@ interface ShopPageProps {
 
 export default async function ShopPage({ searchParams }: ShopPageProps) {
   const params = await searchParams;
+  const allProducts = await fetchStoreProducts({ limit: 120 });
+  const productCategories = getProductCategoriesFromProducts(allProducts);
   const selectedCategory = params.category ?? "All";
+  const safeCategory = productCategories.includes(selectedCategory) ? selectedCategory : "All";
   const searchQuery = params.q?.trim() ?? "";
   const normalizedQuery = searchQuery.toLowerCase();
 
   const productsByCategory =
-    selectedCategory === "All"
-      ? storeProducts
-      : storeProducts.filter((product) => product.category === selectedCategory);
+    safeCategory === "All"
+      ? allProducts
+      : allProducts.filter((product) => product.category === safeCategory);
   const products =
     normalizedQuery.length === 0
       ? productsByCategory
@@ -38,9 +43,9 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
         );
 
   const clearSearchHref =
-    selectedCategory === "All"
+    safeCategory === "All"
       ? "/shop"
-      : `/shop?category=${encodeURIComponent(selectedCategory)}`;
+      : `/shop?category=${encodeURIComponent(safeCategory)}`;
 
   return (
     <>
@@ -61,8 +66,8 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
                   Split products into categories so visitors can browse faster.
                 </p>
                 <form action="/shop" method="get" className="mt-5" id="catalog-search">
-                  {selectedCategory !== "All" ? (
-                    <input type="hidden" name="category" value={selectedCategory} />
+                  {safeCategory !== "All" ? (
+                    <input type="hidden" name="category" value={safeCategory} />
                   ) : null}
                   <label htmlFor="product-search" className="sr-only">
                     Search products
@@ -93,7 +98,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
                 ) : null}
                 <ul className="mt-5 divide-y divide-cream">
                   {productCategories.map((category) => {
-                    const isActive = category === selectedCategory;
+                    const isActive = category === safeCategory;
                     const hrefParams = new URLSearchParams();
                     if (category !== "All") {
                       hrefParams.set("category", category);

@@ -8,13 +8,13 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { addToCart } from "@/lib/cart";
 import {
   formatPrice,
-  type StoreProduct,
   supportBenefits,
 } from "@/data/storefront";
+import { type StorefrontProduct } from "@/lib/storefront-api";
 
 interface ProductDetailViewProps {
-  product: StoreProduct;
-  relatedProducts: StoreProduct[];
+  product: StorefrontProduct;
+  relatedProducts: StorefrontProduct[];
 }
 
 const accordionItems = [
@@ -37,17 +37,24 @@ export default function ProductDetailView({
   relatedProducts,
 }: ProductDetailViewProps) {
   const [activeImage, setActiveImage] = useState(0);
-  const [activeColor, setActiveColor] = useState(product.colors[0] ?? "");
+  const [activeVariantId, setActiveVariantId] = useState(
+    product.variants[0]?.id ?? null
+  );
   const [activeAccordion, setActiveAccordion] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
+  const activeVariant =
+    (activeVariantId && product.variants.find((variant) => variant.id === activeVariantId)) ||
+    product.variants[0];
+  const displayPrice = activeVariant?.price ?? product.price;
+  const selectedOptionLabel = activeVariant?.name ?? "Standard";
 
   const handleAddToCart = () => {
     addToCart({
       slug: product.slug,
       title: product.title,
-      price: product.price,
+      price: displayPrice,
       imageSrc: product.thumbnails[activeImage] ?? product.imageSrc,
-      selectedColor: activeColor,
+      selectedColor: selectedOptionLabel,
     });
     setAddedToCart(true);
     window.setTimeout(() => setAddedToCart(false), 1500);
@@ -114,39 +121,36 @@ export default function ProductDetailView({
             </h1>
 
             <p className="mt-4 text-4xl font-extrabold tracking-tight text-black">
-              {formatPrice(product.price)}
-              {product.compareAtPrice ? (
-                <span className="ml-3 text-3xl font-semibold text-gray-400 line-through">
-                  {formatPrice(product.compareAtPrice)}
-                </span>
-              ) : null}
+              {formatPrice(displayPrice)}
             </p>
 
             <p className="mt-7 text-xl text-gray-600 leading-relaxed">{product.description}</p>
 
-            <div className="mt-8">
-              <h2 className="text-2xl font-bold tracking-tight text-black">Color</h2>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {product.colors.map((color) => {
-                  const isActive = color === activeColor;
+            {product.variants.length > 0 ? (
+              <div className="mt-8">
+                <h2 className="text-2xl font-bold tracking-tight text-black">Options</h2>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {product.variants.map((variant) => {
+                    const isActive = variant.id === activeVariant?.id;
 
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setActiveColor(color)}
-                      className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
-                        isActive
-                          ? "bg-black text-white"
-                          : "bg-cream-dark text-black hover:bg-[#eadbc4]"
-                      }`}
-                    >
-                      {color}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => setActiveVariantId(variant.id)}
+                        className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
+                          isActive
+                            ? "bg-black text-white"
+                            : "bg-cream-dark text-black hover:bg-[#eadbc4]"
+                        }`}
+                      >
+                        {variant.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="mt-8 space-y-3">
               <button

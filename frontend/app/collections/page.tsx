@@ -4,9 +4,12 @@ import PageHero from "@/components/PageHero";
 import CollectionCard from "@/components/CollectionCard";
 import ActionBanner from "@/components/ActionBanner";
 import ScrollReveal from "@/components/ScrollReveal";
-import { collections } from "@/data/storefront";
+import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export default function CollectionsPage() {
+export default async function CollectionsPage() {
+  const products = await fetchStoreProducts({ limit: 120 });
+  const collections = getCollectionsFromProducts(products);
+
   return (
     <>
       <Navbar />
@@ -22,16 +25,25 @@ export default function CollectionsPage() {
             staggerChildren={0.1}
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
           >
-            {collections.map((collection) => (
-              <CollectionCard
-                key={collection.title}
-                title={collection.title}
-                description={collection.description}
-                imageSrc={collection.imageSrc}
-                imageAlt={collection.imageAlt}
-                href={`/shop?category=${encodeURIComponent(collection.title)}`}
-              />
-            ))}
+            {collections.length > 0 ? (
+              collections.map((collection) => (
+                <CollectionCard
+                  key={collection.title}
+                  title={collection.title}
+                  description={collection.description}
+                  imageSrc={collection.imageSrc}
+                  imageAlt={collection.imageAlt}
+                  href={`/shop?category=${encodeURIComponent(collection.title)}`}
+                />
+              ))
+            ) : (
+              <article className="md:col-span-2 xl:col-span-3 rounded-[1.5rem] bg-cream-dark/60 p-8">
+                <h2 className="text-2xl font-extrabold tracking-tight text-black">No collections available</h2>
+                <p className="mt-2 text-sm text-gray-600">
+                  Add products in backend categories to populate this page.
+                </p>
+              </article>
+            )}
           </ScrollReveal>
         </section>
 

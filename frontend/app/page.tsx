@@ -8,31 +8,18 @@ import ActionBanner from "@/components/ActionBanner";
 import FeatureCard from "@/components/FeatureCard";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
-import { collections, formatPrice, storeProducts } from "@/data/storefront";
+import { formatPrice, supportBenefits } from "@/data/storefront";
+import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-const featuredProducts = storeProducts.slice(0, 3);
-const featuredCollections = collections;
-const businessHighlights = [
-  {
-    icon: "location_on",
-    title: "Store Location",
-    description: "1102 Beaudesert Rd, Acacia Ridge QLD 4110.",
-  },
-  {
-    icon: "star",
-    title: "Google Rating 4.5",
-    description:
-      "Google users rate Kabul Sweets Bakery 4.5 out of 5.",
-  },
-  {
-    icon: "storefront",
-    title: "Pickup & Takeaway",
-    description:
-      "No delivery service. Orders are for in-store pickup and takeaway.",
-  },
-];
+export default async function Home() {
+  const allProducts = await fetchStoreProducts({ limit: 120 });
+  const featuredProducts = (allProducts.filter((product) => product.isFeatured).length > 0
+    ? allProducts.filter((product) => product.isFeatured)
+    : allProducts
+  ).slice(0, 3);
+  const featuredCollections = getCollectionsFromProducts(allProducts).slice(0, 3);
+  const businessHighlights = supportBenefits.slice(0, 3);
 
-export default function Home() {
   return (
     <>
       <Navbar />
@@ -66,17 +53,26 @@ export default function Home() {
             staggerChildren={0.1}
             className="grid grid-cols-1 md:grid-cols-3 gap-6"
           >
-            {featuredProducts.map((product) => (
-              <ProductCard
-                key={product.slug}
-                slug={product.slug}
-                title={product.title}
-                category={product.category}
-                price={formatPrice(product.price)}
-                imageSrc={product.imageSrc}
-                imageAlt={product.title}
-              />
-            ))}
+            {featuredProducts.length > 0 ? (
+              featuredProducts.map((product) => (
+                <ProductCard
+                  key={product.slug}
+                  slug={product.slug}
+                  title={product.title}
+                  category={product.category}
+                  price={formatPrice(product.price)}
+                  imageSrc={product.imageSrc}
+                  imageAlt={product.title}
+                />
+              ))
+            ) : (
+              <article className="md:col-span-3 rounded-[1.5rem] bg-cream-dark/60 p-8">
+                <h3 className="text-2xl font-extrabold tracking-tight text-black">No featured products yet</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  Add products in the backend to populate this section.
+                </p>
+              </article>
+            )}
           </ScrollReveal>
         </section>
 
@@ -118,16 +114,25 @@ export default function Home() {
             staggerChildren={0.1}
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
           >
-            {featuredCollections.map((collection) => (
-              <CollectionCard
-                key={collection.title}
-                title={collection.title}
-                description={collection.description}
-                imageSrc={collection.imageSrc}
-                imageAlt={collection.imageAlt}
-                href={`/shop?category=${encodeURIComponent(collection.title)}`}
-              />
-            ))}
+            {featuredCollections.length > 0 ? (
+              featuredCollections.map((collection) => (
+                <CollectionCard
+                  key={collection.title}
+                  title={collection.title}
+                  description={collection.description}
+                  imageSrc={collection.imageSrc}
+                  imageAlt={collection.imageAlt}
+                  href={`/shop?category=${encodeURIComponent(collection.title)}`}
+                />
+              ))
+            ) : (
+              <article className="md:col-span-2 xl:col-span-3 rounded-[1.5rem] bg-cream-dark/60 p-8">
+                <h3 className="text-2xl font-extrabold tracking-tight text-black">No collections available</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  Collections are generated from product categories in the backend.
+                </p>
+              </article>
+            )}
           </ScrollReveal>
         </section>
 

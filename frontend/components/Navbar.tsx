@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { collections, productCategories } from "@/data/storefront";
 import { getCartCount, readCart } from "@/lib/cart";
 
 const CartDrawer = dynamic(() => import("@/components/CartDrawer"), {
@@ -127,24 +126,6 @@ export default function Navbar() {
     const normalizedQuery = query.toLowerCase();
     if (normalizedQuery.includes("collection")) {
       navigateFromSearch("/collections");
-      return;
-    }
-
-    const matchedCategory = productCategories
-      .filter((category) => category !== "All")
-      .find((category) => category.toLowerCase() === normalizedQuery);
-
-    if (matchedCategory) {
-      navigateFromSearch(`/shop?category=${encodeURIComponent(matchedCategory)}`);
-      return;
-    }
-
-    const matchedCollection = collections.find(
-      (collection) => collection.title.toLowerCase() === normalizedQuery
-    );
-
-    if (matchedCollection) {
-      navigateFromSearch(`/shop?category=${encodeURIComponent(matchedCollection.title)}`);
       return;
     }
 
