@@ -208,28 +208,62 @@ function formatDateLabel(value: string) {
   }).format(parsed);
 }
 
-function buildPreferredTimeOptions() {
+function formatTimeLabel(hour: number, minute = 0) {
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return new Intl.DateTimeFormat("en-AU", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function getBusinessHoursForDate(date: Date) {
+  return BUSINESS_HOURS_BY_WEEKDAY[date.getDay()] ?? BUSINESS_HOURS_BY_WEEKDAY[1];
+}
+
+function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
+  const { openHour, closeHour } = getBusinessHoursForDate(date);
+  const options: SelectOption[] = [];
+
+  for (let hour = openHour; hour < closeHour; hour += 1) {
+    const fromValue = `${String(hour).padStart(2, "0")}:00`;
+    const toValue = `${String(hour + 1).padStart(2, "0")}:00`;
+    options.push({
+      value: `${fromValue}-${toValue}`,
+      label: `${formatTimeLabel(hour)} - ${formatTimeLabel(hour + 1)}`,
+    });
+  }
+
+  return options;
+}
+
+function buildPreferredTimeOptionsForDate(date: Date): SelectOption[] {
+  const { openHour, closeHour } = getBusinessHoursForDate(date);
   const options: SelectOption[] = [{ value: "", label: "No specific time" }];
 
-  for (let hour = 6; hour <= 19; hour += 1) {
+  for (let hour = openHour; hour <= closeHour; hour += 1) {
     for (const minute of [0, 30]) {
-      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-      const date = new Date();
-      date.setHours(hour, minute, 0, 0);
-      const label = new Intl.DateTimeFormat("en-AU", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }).format(date);
+      if (hour === closeHour && minute > 0) {
+        continue;
+      }
 
-      options.push({ value, label });
+      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      options.push({
+        value,
+        label: formatTimeLabel(hour, minute),
+      });
     }
   }
 
   return options;
 }
 
-const PREFERRED_TIME_OPTIONS = buildPreferredTimeOptions();
+function formatBusinessHoursText(date: Date) {
+  const { openHour, closeHour } = getBusinessHoursForDate(date);
+  const dayName = WEEKDAY_NAMES[date.getDay()];
+  return `${dayName}: ${formatTimeLabel(openHour)} - ${formatTimeLabel(closeHour)}`;
+}
 
 function ThemedSelect({
   value,
