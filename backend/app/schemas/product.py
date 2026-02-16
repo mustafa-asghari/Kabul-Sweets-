@@ -54,6 +54,8 @@ class ProductBase(BaseModel):
     short_description: str | None = Field(None, max_length=500)
     category: str = "other"
     base_price: Decimal = Field(..., ge=0)
+    images: list[str] | None = []
+    thumbnail: str | None = None
     tags: list[str] | None = []
     is_active: bool = True
     is_featured: bool = False
@@ -74,6 +76,8 @@ class ProductUpdate(BaseModel):
     short_description: str | None = None
     category: str | None = None
     base_price: Decimal | None = Field(None, ge=0)
+    images: list[str] | None = None
+    thumbnail: str | None = None
     tags: list[str] | None = None
     is_active: bool | None = None
     is_featured: bool | None = None

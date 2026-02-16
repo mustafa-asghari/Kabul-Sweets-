@@ -10,7 +10,7 @@ import {
   formatPrice,
   supportBenefits,
 } from "@/data/storefront";
-import { type StorefrontProduct } from "@/lib/storefront-api";
+import type { StorefrontProduct } from "@/lib/storefront-types";
 
 interface ProductDetailViewProps {
   product: StorefrontProduct;

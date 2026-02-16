@@ -28,6 +28,7 @@ class OrderStatus(str, enum.Enum):
     """Order lifecycle statuses."""
     DRAFT = "draft"                      # Cart-like, not submitted
     PENDING = "pending"                  # Submitted, awaiting payment
+    PENDING_APPROVAL = "pending_approval"  # Auth held, awaiting admin approval
     PAID = "paid"                        # Payment confirmed via Stripe webhook
     CONFIRMED = "confirmed"              # Admin confirmed / prep started
     PREPARING = "preparing"              # Being made

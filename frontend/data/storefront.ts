@@ -1,21 +1,6 @@
-export interface StoreProduct {
-  slug: string;
-  title: string;
-  category: string;
-  price: number;
-  compareAtPrice?: number;
-  shortDescription: string;
-  description: string;
-  colors: string[];
-  imageSrc: string;
-  thumbnails: string[];
-}
-
-export interface Collection {
-  title: string;
-  description: string;
-  imageSrc: string;
-  imageAlt: string;
+export interface SupportFaq {
+  question: string;
+  answer: string;
 }
 
 export interface SupportBenefit {
@@ -24,151 +9,7 @@ export interface SupportBenefit {
   description: string;
 }
 
-const cakeImage = "/products/cake-main.png";
-
-const cookiesImage = "/products/cookies-main.png";
-
-const customDessertImage = "/products/pastry-main.png";
-
-const baklavaImage = "/products/sweets-main.png";
-
-export const storeProducts: StoreProduct[] = [
-  {
-    slug: "celebration-cake",
-    title: "Celebration Cake",
-    category: "Cakes",
-    price: 45,
-    compareAtPrice: 55,
-    shortDescription: "Layered custom cake for birthdays, weddings, and celebrations.",
-    description:
-      "Hand-finished with premium cream and Afghan-inspired flavors. Perfect for birthdays, engagements, and special events.",
-    colors: ["Classic", "Rose", "Chocolate"],
-    imageSrc: cakeImage,
-    thumbnails: [cakeImage, customDessertImage, baklavaImage],
-  },
-  {
-    slug: "traditional-cookies",
-    title: "Traditional Cookies",
-    category: "Cookies",
-    price: 12,
-    compareAtPrice: 16,
-    shortDescription: "Fresh baked cookies packed for tea-time and gifting.",
-    description:
-      "A daily cookie selection with rich flavor and crisp texture. Ideal for everyday treats and smaller orders.",
-    colors: ["Assorted", "Pistachio", "Date"],
-    imageSrc: cookiesImage,
-    thumbnails: [cookiesImage, cakeImage, customDessertImage],
-  },
-  {
-    slug: "custom-dessert-tray",
-    title: "Custom Dessert Tray",
-    category: "Pastries",
-    price: 60,
-    compareAtPrice: 70,
-    shortDescription: "A mixed pastry tray crafted for events with custom flavor requests.",
-    description:
-      "Choose your preferred mix of pastries and sweets. Our team builds each tray to match your event size, style, and flavor profile.",
-    colors: ["Mixed", "Nutty", "No Nuts"],
-    imageSrc: customDessertImage,
-    thumbnails: [customDessertImage, baklavaImage, cookiesImage],
-  },
-  {
-    slug: "premium-baklava-box",
-    title: "Premium Baklava Box",
-    category: "Sweets",
-    price: 28,
-    compareAtPrice: 35,
-    shortDescription: "Buttery, flaky baklava in an elegant gift-ready box.",
-    description:
-      "Authentic baklava layered by hand and finished with pistachio and light syrup. A standout for celebrations and premium gifts.",
-    colors: ["Pistachio", "Walnut", "Mixed"],
-    imageSrc: baklavaImage,
-    thumbnails: [baklavaImage, customDessertImage, cakeImage],
-  },
-  {
-    slug: "engagement-cake",
-    title: "Engagement Cake",
-    category: "Cakes",
-    price: 75,
-    shortDescription: "Elegant two-tier design tailored for engagement events.",
-    description:
-      "Built with soft sponge layers and balanced sweetness, then finished with intricate piping and personalized details.",
-    colors: ["Ivory", "Gold", "Rose"],
-    imageSrc: cakeImage,
-    thumbnails: [cakeImage, baklavaImage, customDessertImage],
-  },
-  {
-    slug: "saffron-cookie-mix",
-    title: "Saffron Cookie Mix",
-    category: "Cookies",
-    price: 18,
-    shortDescription: "Signature saffron and cardamom cookie assortment.",
-    description:
-      "Aromatic saffron and cardamom blends in bite-size cookies that pair perfectly with tea and coffee.",
-    colors: ["Classic", "Saffron", "Cardamom"],
-    imageSrc: cookiesImage,
-    thumbnails: [cookiesImage, cakeImage, baklavaImage],
-  },
-  {
-    slug: "wedding-dessert-table",
-    title: "Wedding Dessert Table",
-    category: "Cakes",
-    price: 120,
-    shortDescription: "Large custom cake and dessert setup for wedding receptions.",
-    description:
-      "Complete dessert styling package with trays, color matching, and portion planning to create a memorable wedding display.",
-    colors: ["Gold", "Cream", "Rose"],
-    imageSrc: customDessertImage,
-    thumbnails: [customDessertImage, cakeImage, cookiesImage],
-  },
-  {
-    slug: "baklava-festival-pack",
-    title: "Baklava Festival Pack",
-    category: "Sweets",
-    price: 42,
-    shortDescription: "Large family-size pack for gatherings and festivals.",
-    description:
-      "A rich assortment of mini baklava cuts prepared fresh for Eid, weddings, and large family celebrations.",
-    colors: ["Mixed", "Pistachio", "Walnut"],
-    imageSrc: baklavaImage,
-    thumbnails: [baklavaImage, cookiesImage, customDessertImage],
-  },
-  {
-    slug: "corporate-gift-box",
-    title: "Corporate Gift Box",
-    category: "Sweets",
-    price: 34,
-    shortDescription: "Premium branded sweet box for corporate gifting.",
-    description:
-      "Refined assortment presented in a gift-ready box with optional custom labeling for company events and clients.",
-    colors: ["Signature", "Gold", "Minimal"],
-    imageSrc: cookiesImage,
-    thumbnails: [cookiesImage, baklavaImage, cakeImage],
-  },
-];
-
-export const collections: Collection[] = [
-  {
-    title: "Pastries",
-    description: "Small cakes and pastry bites for everyday pickup.",
-    imageSrc: customDessertImage,
-    imageAlt: "Pastries collection",
-  },
-  {
-    title: "Sweets",
-    description: "Traditional Afghan sweets and baklava made fresh each day.",
-    imageSrc: baklavaImage,
-    imageAlt: "Sweets collection",
-  },
-  {
-    title: "Cookies",
-    description: "Fresh cookie assortments for tea-time, gifting, and events.",
-    imageSrc: cookiesImage,
-    imageAlt: "Cookies collection",
-  },
-];
-
-export const supportFaqs = [
+export const supportFaqs: SupportFaq[] = [
   {
     question: "How do I place a custom cake order?",
     answer:
@@ -219,12 +60,6 @@ export const supportBenefits: SupportBenefit[] = [
   },
 ];
 
-export const productCategories = ["All", ...new Set(storeProducts.map((product) => product.category))];
-
 export function formatPrice(value: number) {
   return `USD $${value.toFixed(2)}`;
-}
-
-export function getProductBySlug(slug: string) {
-  return storeProducts.find((product) => product.slug === slug);
 }

@@ -54,6 +54,8 @@ class ProductService:
             short_description=data.short_description,
             category=ProductCategory(data.category),
             base_price=data.base_price,
+            images=data.images,
+            thumbnail=data.thumbnail,
             tags=data.tags,
             is_active=data.is_active,
             is_featured=data.is_featured,

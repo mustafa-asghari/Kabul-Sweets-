@@ -201,6 +201,36 @@ SAMPLE_PRODUCTS = [
     },
 ]
 
+CATEGORY_IMAGE_SETS = {
+    ProductCategory.CAKE: [
+        "/products/cake-main.png",
+        "/products/cake-alt.png",
+    ],
+    ProductCategory.PASTRY: [
+        "/products/pastry-main.png",
+        "/products/pastry-alt.png",
+    ],
+    ProductCategory.COOKIE: [
+        "/products/cookies-main.png",
+        "/products/cake-main.png",
+    ],
+    ProductCategory.SWEET: [
+        "/products/sweets-main.png",
+        "/products/pastry-main.png",
+    ],
+    ProductCategory.BREAD: [
+        "/products/pastry-alt.png",
+        "/products/pastry-main.png",
+    ],
+    ProductCategory.DRINK: [
+        "/products/pastry-alt.png",
+        "/products/cookies-main.png",
+    ],
+    ProductCategory.OTHER: [
+        "/products/pastry-main.png",
+    ],
+}
+
 
 async def seed_database():
     """Seed the database with initial data."""
@@ -274,10 +304,41 @@ async def seed_database():
         # ── Sample Products ──────────────────────────────────────────────
         result = await session.execute(select(Product).limit(1))
         if result.scalar_one_or_none():
-            logger.info("⏭️  Products already exist — skipping product seed")
+            logger.info("⏭️  Products already exist — backfilling missing image fields")
+            products_result = await session.execute(select(Product))
+            existing_products = products_result.scalars().all()
+            updated_count = 0
+
+            for product in existing_products:
+                default_images = CATEGORY_IMAGE_SETS.get(
+                    product.category, CATEGORY_IMAGE_SETS[ProductCategory.OTHER]
+                )
+                changed = False
+                if not product.thumbnail:
+                    product.thumbnail = default_images[0]
+                    changed = True
+                if not product.images:
+                    product.images = default_images
+                    changed = True
+                if changed:
+                    updated_count += 1
+
+            if updated_count > 0:
+                await session.commit()
+                logger.info("✅ Backfilled thumbnails/images for %d products", updated_count)
+            else:
+                logger.info("⏭️  Existing products already have image data")
         else:
             for prod_data in SAMPLE_PRODUCTS:
                 variants_data = prod_data.pop("variants", [])
+                category = prod_data.get("category", ProductCategory.OTHER)
+                default_images = CATEGORY_IMAGE_SETS.get(
+                    category, CATEGORY_IMAGE_SETS[ProductCategory.OTHER]
+                )
+                if not prod_data.get("thumbnail"):
+                    prod_data["thumbnail"] = default_images[0]
+                if not prod_data.get("images"):
+                    prod_data["images"] = default_images
                 product = Product(**prod_data)
                 session.add(product)
                 await session.flush()
