@@ -50,8 +50,9 @@ async function proxy(
     const { path } = await params;
     const targetUrl = buildTargetUrl(path, request.nextUrl.search);
     const method = request.method.toUpperCase();
+    // Blob remains replayable across 307/308 redirects in Node/Undici.
     const body =
-      method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer();
+      method === "GET" || method === "HEAD" ? undefined : await request.blob();
 
     const upstream = await fetch(targetUrl, {
       method,

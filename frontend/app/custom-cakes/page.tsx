@@ -842,8 +842,21 @@ export default function CustomCakesPage() {
                         type="number"
                         min={1}
                         max={500}
-                        value={form.desired_servings}
-                        onChange={(event) => updateForm("desired_servings", Number(event.target.value))}
+                        value={Number.isFinite(form.desired_servings) ? form.desired_servings : ""}
+                        onChange={(event) => {
+                          const rawValue = event.target.value;
+                          if (rawValue === "") {
+                            updateForm("desired_servings", Number.NaN);
+                            return;
+                          }
+
+                          const parsedValue = Number(rawValue);
+                          if (!Number.isFinite(parsedValue)) {
+                            return;
+                          }
+
+                          updateForm("desired_servings", parsedValue);
+                        }}
                         className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
                       />
                     </label>

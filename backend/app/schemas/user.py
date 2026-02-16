@@ -29,6 +29,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Schema for forgot password requests."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Schema for password reset confirmation."""
+    token: str = Field(..., min_length=20)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
 # ── Tokens ───────────────────────────────────────────────────────────────────
 class Token(BaseModel):
     """JWT token response."""
