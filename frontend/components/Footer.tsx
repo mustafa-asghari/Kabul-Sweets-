@@ -96,22 +96,29 @@ export default function Footer() {
                 Location & Contact
               </h4>
               <ul className="space-y-2.5 text-sm text-gray-500">
-                <li>Shahr-e-Naw, Kabul, Afghanistan</li>
                 <li>
-                  <a
-                    href="tel:+93700000000"
+                  <Link
+                    href="/contact#map"
                     className="hover:text-black transition"
                   >
-                    Call us: +93 700 000 000
-                  </a>
+                    View map & directions
+                  </Link>
                 </li>
                 <li>
-                  <a
-                    href="mailto:hello@kabulsweets.com"
+                  <Link
+                    href="/contact#contact-info"
                     className="hover:text-black transition"
                   >
-                    Email: hello@kabulsweets.com
-                  </a>
+                    Contact details
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/contact"
+                    className="hover:text-black transition"
+                  >
+                    Open contact page
+                  </Link>
                 </li>
               </ul>
             </div>
