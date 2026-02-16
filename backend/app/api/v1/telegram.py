@@ -30,6 +30,30 @@ logger = get_logger("telegram_webhook")
 ORDER_REJECT_REASON = "Rejected from Telegram by admin."
 CAKE_REJECT_REASON = "Rejected from Telegram by admin."
 APPROVED_FROM_TELEGRAM_NOTE = "Approved via Telegram bot."
+MAX_TELEGRAM_LIST_LIMIT = 20
+DEFAULT_PENDING_LIMIT = 10
+DEFAULT_DAY_LIMIT = 20
+QUICK_LIMIT_OPTIONS = (5, 10, 20)
+CAKE_STATUS_PARAM_MAP: dict[str, CustomCakeStatus | None] = {
+    "all": None,
+    "pending_review": CustomCakeStatus.PENDING_REVIEW,
+    "approved_awaiting_payment": CustomCakeStatus.APPROVED_AWAITING_PAYMENT,
+    "paid": CustomCakeStatus.PAID,
+    "in_production": CustomCakeStatus.IN_PRODUCTION,
+    "completed": CustomCakeStatus.COMPLETED,
+    "rejected": CustomCakeStatus.REJECTED,
+    "cancelled": CustomCakeStatus.CANCELLED,
+}
+CAKE_STATUS_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("All", "all"),
+    ("Pending Review", "pending_review"),
+    ("Approved Awaiting Payment", "approved_awaiting_payment"),
+    ("Paid", "paid"),
+    ("In Production", "in_production"),
+    ("Completed", "completed"),
+    ("Rejected", "rejected"),
+    ("Cancelled", "cancelled"),
+)
 
 
 def _as_money(value: Decimal | int | float | str | None) -> str:
@@ -70,6 +94,171 @@ def _cake_markup(cake_id: uuid.UUID) -> dict:
             ]
         ]
     }
+
+
+def _command_keyboard() -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📦 Pending Orders", "callback_data": "cmd:pending_orders"},
+                {"text": "🎂 Pending Cakes", "callback_data": "cmd:pending_cakes"},
+            ],
+            [
+                {"text": "📅 Cakes Today", "callback_data": "cmd:today"},
+                {"text": "📆 Cakes Tomorrow", "callback_data": "cmd:tomorrow"},
+            ],
+            [
+                {"text": "📘 Parameters", "callback_data": "cmd:params"},
+            ],
+        ]
+    }
+
+
+def _limit_option_keyboard(action_prefix: str, back_callback: str | None = None) -> dict:
+    rows: list[list[dict]] = [
+        [
+            {
+                "text": str(limit),
+                "callback_data": f"{action_prefix}:{limit}",
+            }
+            for limit in QUICK_LIMIT_OPTIONS
+        ]
+    ]
+    if back_callback:
+        rows.append([{"text": "⬅️ Back", "callback_data": back_callback}])
+    return {"inline_keyboard": rows}
+
+
+def _day_status_keyboard(day_prefix: str) -> dict:
+    status_action = "tds" if day_prefix == "td" else "tms"
+    buttons = [
+        {
+            "text": label,
+            "callback_data": f"{status_action}:{status_key}",
+        }
+        for label, status_key in CAKE_STATUS_OPTIONS
+    ]
+    rows: list[list[dict]] = []
+    for index in range(0, len(buttons), 2):
+        rows.append(buttons[index:index + 2])
+    rows.append([{"text": "⬅️ Back", "callback_data": "cmd:help"}])
+    return {"inline_keyboard": rows}
+
+
+def _day_limit_keyboard(day_prefix: str, status_key: str) -> dict:
+    back_callback = "cmd:today" if day_prefix == "td" else "cmd:tomorrow"
+    rows: list[list[dict]] = [
+        [
+            {
+                "text": str(limit),
+                "callback_data": f"{day_prefix}:{status_key}:{limit}",
+            }
+            for limit in QUICK_LIMIT_OPTIONS
+        ],
+        [{"text": "⬅️ Back to status", "callback_data": back_callback}],
+    ]
+    return {"inline_keyboard": rows}
+
+
+def _status_label(status_key: str) -> str:
+    for label, key in CAKE_STATUS_OPTIONS:
+        if key == status_key:
+            return label
+    return status_key
+
+
+def _bot_help_message() -> str:
+    return (
+        "🤖 <b>Kabul Sweets Admin Bot</b>\n"
+        "Use commands or tap buttons below (no parameter typing needed).\n\n"
+        "<b>Commands</b>\n"
+        "/pending_orders [limit]\n"
+        "/pending_cakes [limit]\n"
+        "/today [status] [limit]\n"
+        "/tomorrow [status] [limit]\n"
+        "/params\n"
+        "/help\n"
+    )
+
+
+def _bot_params_message() -> str:
+    allowed_statuses = ", ".join(CAKE_STATUS_PARAM_MAP.keys())
+    return (
+        "📘 <b>Allowed Parameters</b>\n\n"
+        "You can tap buttons for all parameters.\n\n"
+        "<b>/pending_orders [limit]</b>\n"
+        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_PENDING_LIMIT}\n\n"
+        "<b>/pending_cakes [limit]</b>\n"
+        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_PENDING_LIMIT}\n\n"
+        "<b>/today [status] [limit]</b>\n"
+        "<b>/tomorrow [status] [limit]</b>\n"
+        f"- <code>status</code>: {allowed_statuses}\n"
+        f"- <code>limit</code>: 1-{MAX_TELEGRAM_LIST_LIMIT}, default {DEFAULT_DAY_LIMIT}\n\n"
+        "<b>Examples</b>\n"
+        "<code>/pending_orders 5</code>\n"
+        "<code>/pending_cakes 3</code>\n"
+        "<code>/today pending_review 10</code>\n"
+        "<code>/tomorrow all 20</code>"
+    )
+
+
+def _parse_limit_arg(raw: str | None, default: int) -> tuple[int | None, str | None]:
+    if raw is None:
+        return default, None
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return None, "Limit must be a number."
+
+    if value < 1 or value > MAX_TELEGRAM_LIST_LIMIT:
+        return (
+            None,
+            f"Limit must be between 1 and {MAX_TELEGRAM_LIST_LIMIT}.",
+        )
+    return value, None
+
+
+def _parse_day_command_args(
+    args: list[str],
+) -> tuple[CustomCakeStatus | None, int, str | None]:
+    status_filter: CustomCakeStatus | None = None
+    limit = DEFAULT_DAY_LIMIT
+
+    if not args:
+        return status_filter, limit, None
+
+    if len(args) == 1:
+        token = args[0].lower()
+        if token in CAKE_STATUS_PARAM_MAP:
+            status_filter = CAKE_STATUS_PARAM_MAP[token]
+            return status_filter, limit, None
+
+        parsed_limit, err = _parse_limit_arg(token, DEFAULT_DAY_LIMIT)
+        if err:
+            return None, DEFAULT_DAY_LIMIT, (
+                f"Invalid parameter. Use /params for help.\n{err}"
+            )
+        return status_filter, parsed_limit or DEFAULT_DAY_LIMIT, None
+
+    if len(args) == 2:
+        status_token = args[0].lower()
+        if status_token not in CAKE_STATUS_PARAM_MAP:
+            allowed_statuses = ", ".join(CAKE_STATUS_PARAM_MAP.keys())
+            return (
+                None,
+                DEFAULT_DAY_LIMIT,
+                f"Invalid status. Allowed: {allowed_statuses}",
+            )
+
+        parsed_limit, err = _parse_limit_arg(args[1], DEFAULT_DAY_LIMIT)
+        if err:
+            return None, DEFAULT_DAY_LIMIT, err
+
+        status_filter = CAKE_STATUS_PARAM_MAP[status_token]
+        return status_filter, parsed_limit or DEFAULT_DAY_LIMIT, None
+
+    return None, DEFAULT_DAY_LIMIT, "Too many parameters. Use /params for help."
 
 
 def _order_message(order) -> str:
@@ -264,9 +453,14 @@ async def _handle_pending_orders_command(
     telegram: TelegramService,
     chat_id: int,
     db: AsyncSession,
+    *,
+    limit: int = DEFAULT_PENDING_LIMIT,
 ):
     service = OrderService(db)
-    orders = await service.list_orders(status=OrderStatus.PENDING_APPROVAL.value, limit=10)
+    orders = await service.list_orders(
+        status=OrderStatus.PENDING_APPROVAL.value,
+        limit=limit,
+    )
 
     if not orders:
         await _send_text(telegram, chat_id, "No pending approval orders right now.")
@@ -285,9 +479,14 @@ async def _handle_pending_cakes_command(
     telegram: TelegramService,
     chat_id: int,
     db: AsyncSession,
+    *,
+    limit: int = DEFAULT_PENDING_LIMIT,
 ):
     service = CustomCakeService(db)
-    cakes = await service.list_custom_cakes(status=CustomCakeStatus.PENDING_REVIEW, limit=10)
+    cakes = await service.list_custom_cakes(
+        status=CustomCakeStatus.PENDING_REVIEW,
+        limit=limit,
+    )
 
     if not cakes:
         await _send_text(telegram, chat_id, "No custom cakes pending review right now.")
@@ -316,15 +515,20 @@ async def _handle_cakes_by_day_command(
     db: AsyncSession,
     *,
     day_offset: int,
+    status_filter: CustomCakeStatus | None = None,
+    limit: int = DEFAULT_DAY_LIMIT,
 ):
     start_utc, end_utc, target_date = _date_range_utc(day_offset)
-    result = await db.execute(
-        select(CustomCake).where(
-            CustomCake.requested_date.is_not(None),
-            CustomCake.requested_date >= start_utc,
-            CustomCake.requested_date < end_utc,
-        ).order_by(CustomCake.requested_date.asc(), CustomCake.created_at.asc())
+    query = select(CustomCake).where(
+        CustomCake.requested_date.is_not(None),
+        CustomCake.requested_date >= start_utc,
+        CustomCake.requested_date < end_utc,
     )
+    if status_filter is not None:
+        query = query.where(CustomCake.status == status_filter)
+    query = query.order_by(CustomCake.requested_date.asc(), CustomCake.created_at.asc()).limit(limit)
+
+    result = await db.execute(query)
     cakes = list(result.scalars().all())
 
     if not cakes:
@@ -533,6 +737,121 @@ async def telegram_webhook(
 
         try:
             parts = data.split(":")
+            if len(parts) == 2 and parts[0] == "cmd":
+                action = parts[1]
+                if action == "help":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        _bot_help_message(),
+                        _command_keyboard(),
+                    )
+                elif action == "params":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        _bot_params_message(),
+                        _command_keyboard(),
+                    )
+                elif action == "pending_orders":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a limit for pending orders:",
+                        _limit_option_keyboard("po", "cmd:help"),
+                    )
+                elif action == "pending_cakes":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a limit for pending custom cakes:",
+                        _limit_option_keyboard("pc", "cmd:help"),
+                    )
+                elif action == "today":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a status for today's cakes:",
+                        _day_status_keyboard("td"),
+                    )
+                elif action == "tomorrow":
+                    await _send_text(
+                        telegram,
+                        int(chat_id),
+                        "Select a status for tomorrow's cakes:",
+                        _day_status_keyboard("tm"),
+                    )
+                else:
+                    await _answer_callback(telegram, callback_id, "Unsupported command action")
+                    return {"ok": True}
+
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 2 and parts[0] in {"po", "pc"}:
+                limit, err = _parse_limit_arg(parts[1], DEFAULT_PENDING_LIMIT)
+                if err:
+                    await _answer_callback(telegram, callback_id, err)
+                    return {"ok": True}
+
+                if parts[0] == "po":
+                    await _handle_pending_orders_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        limit=limit or DEFAULT_PENDING_LIMIT,
+                    )
+                else:
+                    await _handle_pending_cakes_command(
+                        telegram,
+                        int(chat_id),
+                        db,
+                        limit=limit or DEFAULT_PENDING_LIMIT,
+                    )
+
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 2 and parts[0] in {"tds", "tms"}:
+                status_key = parts[1].lower()
+                if status_key not in CAKE_STATUS_PARAM_MAP:
+                    await _answer_callback(telegram, callback_id, "Invalid status")
+                    return {"ok": True}
+
+                day_prefix = "td" if parts[0] == "tds" else "tm"
+                day_label = "today" if day_prefix == "td" else "tomorrow"
+                await _send_text(
+                    telegram,
+                    int(chat_id),
+                    f"Select a limit for {day_label} ({_status_label(status_key)}):",
+                    _day_limit_keyboard(day_prefix, status_key),
+                )
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
+            if len(parts) == 3 and parts[0] in {"td", "tm"}:
+                day_prefix = parts[0]
+                status_key = parts[1].lower()
+                if status_key not in CAKE_STATUS_PARAM_MAP:
+                    await _answer_callback(telegram, callback_id, "Invalid status")
+                    return {"ok": True}
+
+                limit, err = _parse_limit_arg(parts[2], DEFAULT_DAY_LIMIT)
+                if err:
+                    await _answer_callback(telegram, callback_id, err)
+                    return {"ok": True}
+
+                await _handle_cakes_by_day_command(
+                    telegram,
+                    int(chat_id),
+                    db,
+                    day_offset=0 if day_prefix == "td" else 1,
+                    status_filter=CAKE_STATUS_PARAM_MAP[status_key],
+                    limit=limit or DEFAULT_DAY_LIMIT,
+                )
+                await _answer_callback(telegram, callback_id, "Done")
+                return {"ok": True}
+
             if len(parts) != 3:
                 await _answer_callback(telegram, callback_id, "Unsupported action payload")
                 return {"ok": True}
@@ -581,49 +900,96 @@ async def telegram_webhook(
     if not _is_authorized_chat(chat_id):
         return {"ok": True}
 
-    text = message.get("text", "") or ""
+    text = (message.get("text", "") or "").strip()
     if not text.startswith("/"):
         return {"ok": True}
 
-    command = _extract_command(text)
+    tokens = text.split()
+    command = _extract_command(tokens[0]) if tokens else ""
+    args = tokens[1:]
     if command in ("/start", "/help"):
         await _send_text(
             telegram,
             int(chat_id),
-            (
-                "🤖 <b>Kabul Sweets Admin Bot</b>\n"
-                "Commands:\n"
-                "/pending_orders - pending approval orders\n"
-                "/pending_cakes - pending custom cake requests\n"
-                "/today - cakes scheduled for today\n"
-                "/tomorrow - cakes scheduled for tomorrow\n"
-            ),
+            _bot_help_message(),
+            _command_keyboard(),
+        )
+        return {"ok": True}
+
+    if command == "/params":
+        await _send_text(
+            telegram,
+            int(chat_id),
+            _bot_params_message(),
+            _command_keyboard(),
         )
         return {"ok": True}
 
     if command == "/pending_orders":
-        await _handle_pending_orders_command(telegram, int(chat_id), db)
+        if len(args) > 1:
+            await _send_text(telegram, int(chat_id), "Too many parameters. Use /params.")
+            return {"ok": True}
+
+        limit, err = _parse_limit_arg(args[0] if args else None, DEFAULT_PENDING_LIMIT)
+        if err:
+            await _send_text(telegram, int(chat_id), err)
+            return {"ok": True}
+
+        await _handle_pending_orders_command(
+            telegram,
+            int(chat_id),
+            db,
+            limit=limit or DEFAULT_PENDING_LIMIT,
+        )
         return {"ok": True}
 
     if command == "/pending_cakes":
-        await _handle_pending_cakes_command(telegram, int(chat_id), db)
+        if len(args) > 1:
+            await _send_text(telegram, int(chat_id), "Too many parameters. Use /params.")
+            return {"ok": True}
+
+        limit, err = _parse_limit_arg(args[0] if args else None, DEFAULT_PENDING_LIMIT)
+        if err:
+            await _send_text(telegram, int(chat_id), err)
+            return {"ok": True}
+
+        await _handle_pending_cakes_command(
+            telegram,
+            int(chat_id),
+            db,
+            limit=limit or DEFAULT_PENDING_LIMIT,
+        )
         return {"ok": True}
 
     if command == "/today":
+        status_filter, limit, err = _parse_day_command_args(args)
+        if err:
+            await _send_text(telegram, int(chat_id), err)
+            return {"ok": True}
+
         await _handle_cakes_by_day_command(
             telegram,
             int(chat_id),
             db,
             day_offset=0,
+            status_filter=status_filter,
+            limit=limit,
         )
         return {"ok": True}
 
     if command == "/tomorrow":
+        status_filter, limit, err = _parse_day_command_args(args)
+        if err:
+            await _send_text(telegram, int(chat_id), err)
+            return {"ok": True}
+
         await _handle_cakes_by_day_command(
             telegram,
             int(chat_id),
             db,
             day_offset=1,
+            status_filter=status_filter,
+            limit=limit,
         )
         return {"ok": True}
 
