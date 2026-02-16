@@ -4,7 +4,7 @@ Price prediction, serving estimation, description generation, and custom cake wo
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -183,6 +183,13 @@ async def submit_custom_cake(
             requested_date = datetime.fromisoformat(data.requested_date)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format")
+
+        minimum_allowed_date = datetime.now(timezone.utc).date() + timedelta(days=1)
+        if requested_date.date() < minimum_allowed_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Requested date must be tomorrow or a future date.",
+            )
 
     return await service.submit_custom_cake(
         customer_id=current_user.id,

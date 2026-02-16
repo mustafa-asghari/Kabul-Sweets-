@@ -333,13 +333,18 @@ interface ThemedDatePickerProps {
   value: string;
   onChange: (next: string) => void;
   className?: string;
+  minDateValue?: string;
 }
 
-function ThemedDatePicker({ value, onChange, className }: ThemedDatePickerProps) {
+function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDatePickerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
 
   const selectedDate = useMemo(() => parseDateInputValue(value), [value]);
+  const minimumDate = useMemo(() => {
+    if (!minDateValue) return null;
+    return parseDateInputValue(minDateValue);
+  }, [minDateValue]);
   const [viewMonth, setViewMonth] = useState(() => {
     const initial = parseDateInputValue(value) || new Date();
     return new Date(initial.getFullYear(), initial.getMonth(), 1);
@@ -446,18 +451,23 @@ function ThemedDatePicker({ value, onChange, className }: ThemedDatePickerProps)
             {calendarDays.map((entry) => {
               const entryValue = toDateInputValue(entry.date);
               const isSelected = value === entryValue;
+              const isDisabled = minimumDate ? entry.date < minimumDate : false;
               return (
                 <button
                   key={entryValue}
                   type="button"
+                  disabled={isDisabled}
                   onClick={() => {
+                    if (isDisabled) return;
                     onChange(entryValue);
                     setOpen(false);
                   }}
                   className={`h-9 rounded-lg text-sm transition ${
                     isSelected
                       ? "bg-[#ad751c] font-semibold text-white"
-                      : entry.isCurrentMonth
+                      : isDisabled
+                        ? "cursor-not-allowed text-gray-300"
+                        : entry.isCurrentMonth
                         ? "text-gray-800 hover:bg-[#f4e7d2]"
                         : "text-gray-400 hover:bg-[#f4e7d2]"
                   }`}
@@ -479,12 +489,15 @@ function ThemedDatePicker({ value, onChange, className }: ThemedDatePickerProps)
             <button
               type="button"
               onClick={() => {
-                onChange(toDateInputValue(new Date()));
+                const tomorrow = new Date();
+                tomorrow.setHours(0, 0, 0, 0);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                onChange(toDateInputValue(tomorrow));
                 setOpen(false);
               }}
               className="text-xs font-semibold text-[#ad751c] transition hover:text-[#8f5f13]"
             >
-              Today
+              Tomorrow
             </button>
           </div>
         </div>
@@ -510,6 +523,13 @@ export default function CustomCakesPage() {
 
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+
+  const minimumRequestedDate = useMemo(() => {
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return toDateInputValue(tomorrow);
+  }, []);
 
   const hasAnyContact = Boolean(user?.email || user?.phone);
   const activeScheduleDate = useMemo(() => parseDateInputValue(form.requested_date) || new Date(), [form.requested_date]);
@@ -650,6 +670,11 @@ export default function CustomCakesPage() {
 
     if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
       setSubmitError("Please enter how many people the cake should serve.");
+      return;
+    }
+
+    if (form.requested_date && form.requested_date < minimumRequestedDate) {
+      setSubmitError("Please select tomorrow or a future date for pickup.");
       return;
     }
 
@@ -919,6 +944,7 @@ export default function CustomCakesPage() {
                         className="mt-2"
                         value={form.requested_date}
                         onChange={(next) => updateForm("requested_date", next)}
+                        minDateValue={minimumRequestedDate}
                       />
                     </label>
                     <label className="text-sm font-semibold text-black">
