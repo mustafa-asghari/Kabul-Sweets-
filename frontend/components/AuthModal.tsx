@@ -58,6 +58,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         const message = await requestPasswordReset(cleanEmail);
         setNotice(message);
         setMode("login");
+        setPassword("");
       }
     } catch (submitError) {
       const normalizedMessage = normalizeAuthError(submitError);
