@@ -35,6 +35,7 @@ const BUSINESS_HOURS_BY_WEEKDAY: Record<number, { openHour: number; closeHour: n
   5: { openHour: 9, closeHour: 19 }, // Friday
   6: { openHour: 9, closeHour: 19 }, // Saturday
 };
+const PICKUP_BUFFER_HOURS = 1;
 
 type AllowedFlavor = (typeof AVAILABLE_FLAVORS)[number];
 
@@ -95,7 +96,6 @@ interface CakeFormState {
   cake_message: string;
   requested_date: string;
   time_slot: string;
-  preferred_time: string;
 }
 
 const defaultFormState: CakeFormState = {
@@ -106,7 +106,6 @@ const defaultFormState: CakeFormState = {
   cake_message: "",
   requested_date: "",
   time_slot: "",
-  preferred_time: "",
 };
 
 function asCurrency(value: string | number | null | undefined) {
@@ -222,11 +221,20 @@ function getBusinessHoursForDate(date: Date) {
   return BUSINESS_HOURS_BY_WEEKDAY[date.getDay()] ?? BUSINESS_HOURS_BY_WEEKDAY[1];
 }
 
-function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
+function getPickupHoursForDate(date: Date) {
   const { openHour, closeHour } = getBusinessHoursForDate(date);
+  const pickupStartHour = Math.min(closeHour - 1, openHour + PICKUP_BUFFER_HOURS);
+  return {
+    startHour: pickupStartHour,
+    closeHour,
+  };
+}
+
+function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
+  const { startHour, closeHour } = getPickupHoursForDate(date);
   const options: SelectOption[] = [];
 
-  for (let hour = openHour; hour < closeHour; hour += 1) {
+  for (let hour = startHour; hour < closeHour; hour += 1) {
     const fromValue = `${String(hour).padStart(2, "0")}:00`;
     const toValue = `${String(hour + 1).padStart(2, "0")}:00`;
     options.push({
@@ -238,31 +246,10 @@ function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
   return options;
 }
 
-function buildPreferredTimeOptionsForDate(date: Date): SelectOption[] {
-  const { openHour, closeHour } = getBusinessHoursForDate(date);
-  const options: SelectOption[] = [{ value: "", label: "No specific time" }];
-
-  for (let hour = openHour; hour <= closeHour; hour += 1) {
-    for (const minute of [0, 30]) {
-      if (hour === closeHour && minute > 0) {
-        continue;
-      }
-
-      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-      options.push({
-        value,
-        label: formatTimeLabel(hour, minute),
-      });
-    }
-  }
-
-  return options;
-}
-
 function formatBusinessHoursText(date: Date) {
-  const { openHour, closeHour } = getBusinessHoursForDate(date);
+  const { startHour, closeHour } = getPickupHoursForDate(date);
   const dayName = WEEKDAY_NAMES[date.getDay()];
-  return `${dayName}: ${formatTimeLabel(openHour)} - ${formatTimeLabel(closeHour)}`;
+  return `${dayName}: ${formatTimeLabel(startHour)} - ${formatTimeLabel(closeHour)}`;
 }
 
 function ThemedSelect({
@@ -527,10 +514,6 @@ export default function CustomCakesPage() {
   const hasAnyContact = Boolean(user?.email || user?.phone);
   const activeScheduleDate = useMemo(() => parseDateInputValue(form.requested_date) || new Date(), [form.requested_date]);
   const timeSlotOptions = useMemo(() => buildTimeSlotOptionsForDate(activeScheduleDate), [activeScheduleDate]);
-  const preferredTimeOptions = useMemo(
-    () => buildPreferredTimeOptionsForDate(activeScheduleDate),
-    [activeScheduleDate]
-  );
   const businessHoursText = useMemo(() => formatBusinessHoursText(activeScheduleDate), [activeScheduleDate]);
 
   const updateForm = useCallback(<K extends keyof CakeFormState>(field: K, value: CakeFormState[K]) => {
@@ -551,15 +534,9 @@ export default function CustomCakesPage() {
         }
       }
 
-      const hasPreferredTime = preferredTimeOptions.some((option) => option.value === current.preferred_time);
-      if (!hasPreferredTime && current.preferred_time !== "") {
-        next = { ...next, preferred_time: "" };
-        changed = true;
-      }
-
       return changed ? next : current;
     });
-  }, [timeSlotOptions, preferredTimeOptions]);
+  }, [timeSlotOptions]);
 
   const loadMyRequests = useCallback(async () => {
     if (!accessToken || !isAuthenticated) {
@@ -707,12 +684,7 @@ export default function CustomCakesPage() {
         referenceImages.push(await fileToDataUrl(imageOnCakeFile));
       }
       const selectedTimeSlot = timeSlotOptions.find((option) => option.value === form.time_slot);
-      const selectedPreferredTime = preferredTimeOptions.find(
-        (option) => option.value === form.preferred_time
-      );
-      const formattedTimeSlot = form.preferred_time
-        ? `${selectedTimeSlot?.label || form.time_slot} (${selectedPreferredTime?.label || form.preferred_time})`
-        : selectedTimeSlot?.label || form.time_slot;
+      const formattedTimeSlot = selectedTimeSlot?.label || form.time_slot;
 
       const submission = await apiRequest<CustomCakeSubmissionResponse>("/api/v1/custom-cakes", {
         method: "POST",
@@ -726,7 +698,6 @@ export default function CustomCakesPage() {
             desired_servings: form.desired_servings,
             selected_size_inches: form.diameter_inches,
             allowed_sizes_inches: AVAILABLE_SIZES_INCHES,
-            preferred_time: form.preferred_time || null,
             image_on_cake_requested: Boolean(imageOnCakeFile),
           },
           reference_images: referenceImages,
@@ -951,7 +922,7 @@ export default function CustomCakesPage() {
                       />
                     </label>
                     <label className="text-sm font-semibold text-black">
-                      Preferred time slot
+                      Pickup time
                       <ThemedSelect
                         className="mt-2"
                         value={form.time_slot}
@@ -959,18 +930,8 @@ export default function CustomCakesPage() {
                         options={timeSlotOptions}
                       />
                       <span className="mt-1 block text-xs text-gray-500">
-                        Pickup hours for selected day: {businessHoursText}
+                        Available pickup hours for selected day: {businessHoursText}
                       </span>
-                    </label>
-                    <label className="text-sm font-semibold text-black md:col-span-2">
-                      Preferred time
-                      <ThemedSelect
-                        className="mt-2"
-                        value={form.preferred_time}
-                        onChange={(next) => updateForm("preferred_time", next)}
-                        options={preferredTimeOptions}
-                        placeholder="Select preferred time"
-                      />
                     </label>
                   </div>
                 </div>
