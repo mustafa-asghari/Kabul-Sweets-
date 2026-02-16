@@ -28,7 +28,7 @@ export default function Footer() {
             </form>
           </div>
           {/* Links */}
-          <div className="flex gap-16">
+          <div className="flex flex-wrap gap-16">
             <div>
               <h4 className="text-xs font-bold text-black mb-4 uppercase tracking-wider">
                 Pages
@@ -88,6 +88,30 @@ export default function Footer() {
                   >
                     Support
                   </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-black mb-4 uppercase tracking-wider">
+                Visit & Contact
+              </h4>
+              <ul className="space-y-2.5 text-sm text-gray-500">
+                <li>Kabul Sweets, Kabul, Afghanistan</li>
+                <li>
+                  <a
+                    href="tel:+93700000000"
+                    className="hover:text-black transition"
+                  >
+                    +93 700 000 000
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="mailto:hello@kabulsweets.com"
+                    className="hover:text-black transition"
+                  >
+                    hello@kabulsweets.com
+                  </a>
                 </li>
               </ul>
             </div>

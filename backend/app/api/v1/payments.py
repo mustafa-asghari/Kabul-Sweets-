@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.logging import get_logger
+from app.models.order import OrderStatus
 from app.models.user import User
 from app.schemas.order import CheckoutSessionResponse
 from app.schemas.user import MessageResponse
@@ -32,6 +33,42 @@ class CreateDepositRequest(BaseModel):
 class RefundRequest(BaseModel):
     amount: Decimal | None = None  # None = full refund
     reason: str = Field(..., min_length=1, max_length=500)
+
+
+class AdminOrderDecisionRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+def _order_to_email_payload(order, rejection_reason: str | None = None) -> dict:
+    return {
+        "order_id": str(order.id),
+        "order_number": order.order_number,
+        "customer_name": order.customer_name,
+        "customer_email": order.customer_email,
+        "customer_phone": order.customer_phone,
+        "pickup_date": order.pickup_date.isoformat() if order.pickup_date else None,
+        "pickup_time_slot": order.pickup_time_slot,
+        "cake_message": order.cake_message,
+        "special_instructions": order.special_instructions,
+        "status": order.status.value,
+        "subtotal": str(order.subtotal),
+        "tax_amount": str(order.tax_amount),
+        "discount_amount": str(order.discount_amount),
+        "total": str(order.total),
+        "paid_at": order.paid_at.isoformat() if order.paid_at else None,
+        "rejection_reason": rejection_reason,
+        "items": [
+            {
+                "product_name": item.product_name,
+                "variant_name": item.variant_name,
+                "unit_price": str(item.unit_price),
+                "quantity": item.quantity,
+                "line_total": str(item.line_total),
+                "cake_message": item.cake_message,
+            }
+            for item in order.items
+        ],
+    }
 
 
 # ── Create Checkout Session ──────────────────────────────────────────────────
@@ -74,12 +111,14 @@ async def create_checkout_session(
         amount=order.total,
         currency="aud",
         customer_email=order.customer_email,
+        authorize_only=True,
         line_items_description=description,
     )
 
-    # Store session ID
+    # Store Stripe references for later admin approval/capture
     if order.payment:
         order.payment.stripe_checkout_session_id = result["session_id"]
+        order.payment.stripe_payment_intent_id = result.get("payment_intent_id")
 
     await db.flush()
 
@@ -148,6 +187,109 @@ async def get_deposit_status(
     if not result:
         raise HTTPException(status_code=404, detail="No deposit found for this order")
     return result
+
+
+# ── Admin Approval Flow ─────────────────────────────────────────────────────
+@router.post("/admin/orders/{order_id}/approve", response_model=MessageResponse)
+async def admin_approve_order(
+    order_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [Admin] Approve an authorized order and capture the customer's payment.
+    """
+    service = OrderService(db)
+    order = await service.get_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order cannot be approved from status '{order.status.value}'",
+        )
+
+    if not order.payment:
+        raise HTTPException(status_code=400, detail="No payment record found for this order")
+
+    payment_intent_id = order.payment.stripe_payment_intent_id
+    if payment_intent_id:
+        captured = await StripeService.capture_payment_intent(payment_intent_id)
+        if captured.get("status") not in ("succeeded", "requires_capture"):
+            raise HTTPException(status_code=400, detail="Payment capture failed")
+
+    updated_order = await service.mark_order_paid(
+        order_id=order.id,
+        stripe_payment_intent_id=payment_intent_id or f"manual_{order.id}",
+        stripe_checkout_session_id=order.payment.stripe_checkout_session_id,
+        webhook_data={"approved_by_admin_id": str(admin.id)},
+        status_after_payment=OrderStatus.CONFIRMED,
+    )
+    if not updated_order:
+        raise HTTPException(status_code=404, detail="Order not found after update")
+
+    try:
+        from app.workers.email_tasks import send_order_confirmation, send_payment_receipt
+
+        payload = _order_to_email_payload(updated_order)
+        send_order_confirmation.delay(payload)
+        send_payment_receipt.delay(payload)
+    except Exception as exc:
+        logger.warning("Failed to queue approval emails for order %s: %s", order.order_number, str(exc))
+
+    return MessageResponse(
+        message="Order approved and payment captured successfully",
+        detail=updated_order.order_number,
+    )
+
+
+@router.post("/admin/orders/{order_id}/reject", response_model=MessageResponse)
+async def admin_reject_order(
+    order_id: uuid.UUID,
+    data: AdminOrderDecisionRequest,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [Admin] Reject an authorized order, release payment hold, and notify customer.
+    """
+    service = OrderService(db)
+    order = await service.get_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order cannot be rejected from status '{order.status.value}'",
+        )
+
+    if order.payment and order.payment.stripe_payment_intent_id:
+        try:
+            await StripeService.cancel_payment_intent(order.payment.stripe_payment_intent_id)
+        except Exception as exc:
+            logger.warning(
+                "Failed to cancel payment intent for order %s: %s",
+                order.order_number,
+                str(exc),
+            )
+
+    updated_order = await service.reject_order_after_authorization(order.id, data.reason)
+    if not updated_order:
+        raise HTTPException(status_code=404, detail="Order not found after update")
+
+    try:
+        from app.workers.email_tasks import send_order_rejection_email
+
+        send_order_rejection_email.delay(_order_to_email_payload(updated_order, data.reason))
+    except Exception as exc:
+        logger.warning("Failed to queue rejection email for order %s: %s", order.order_number, str(exc))
+
+    return MessageResponse(
+        message="Order rejected and customer notified",
+        detail=updated_order.order_number,
+    )
 
 
 # ── Refund Endpoint ──────────────────────────────────────────────────────────
@@ -271,19 +413,33 @@ async def stripe_webhook(
 
         if order_id:
             try:
-                order = await service.mark_order_paid(
+                order = await service.mark_order_pending_approval(
                     order_id=uuid.UUID(order_id),
                     stripe_payment_intent_id=payment_intent,
                     stripe_checkout_session_id=data.get("id"),
                     webhook_data=data,
-                    payment_status=data.get("payment_status", "paid"),
                 )
                 if order:
-                    logger.info("✅ Order %s updated via Stripe (status: %s)", order.order_number, order.status.value)
+                    logger.info(
+                        "✅ Order %s authorized and awaiting approval",
+                        order.order_number,
+                    )
                 else:
                     logger.error("Order not found for webhook: %s", order_id)
             except Exception as e:
                 logger.error("Error processing payment webhook: %s", str(e))
+
+    elif event_type == "payment_intent.succeeded":
+        order_id = data.get("metadata", {}).get("order_id")
+        if order_id:
+            order = await service.mark_order_paid(
+                order_id=uuid.UUID(order_id),
+                stripe_payment_intent_id=data.get("id", ""),
+                webhook_data=data,
+                status_after_payment=OrderStatus.CONFIRMED,
+            )
+            if order:
+                logger.info("✅ Order %s payment captured", order.order_number)
 
     elif event_type == "payment_intent.payment_failed":
         order_id = data.get("metadata", {}).get("order_id")

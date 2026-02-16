@@ -32,6 +32,7 @@ class StripeService:
         amount: Decimal,
         currency: str = "aud",
         customer_email: str | None = None,
+        authorize_only: bool = False,
         success_url: str = "http://localhost:3000/order/success?session_id={CHECKOUT_SESSION_ID}",
         cancel_url: str = "http://localhost:3000/order/cancel",
         line_items_description: str = "Kabul Sweets Order",
@@ -46,7 +47,16 @@ class StripeService:
             return {
                 "checkout_url": f"{success_url.replace('{CHECKOUT_SESSION_ID}', 'test_session_' + order_id)}",
                 "session_id": f"test_session_{order_id}",
+                "payment_intent_id": f"test_intent_{order_id}",
             }
+
+        payment_intent_data = {
+            "capture_method": "manual" if authorize_only else "automatic",
+            "metadata": {
+                "order_id": order_id,
+                "order_number": order_number,
+            },
+        }
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -72,6 +82,7 @@ class StripeService:
                 "order_id": order_id,
                 "order_number": order_number,
             },
+            payment_intent_data=payment_intent_data,
             success_url=success_url,
             cancel_url=cancel_url,
         )
@@ -79,7 +90,28 @@ class StripeService:
         return {
             "checkout_url": session.url,
             "session_id": session.id,
+            "payment_intent_id": session.payment_intent,
         }
+
+    @staticmethod
+    async def capture_payment_intent(payment_intent_id: str) -> dict:
+        """Capture a previously authorized payment intent."""
+        if not STRIPE_AVAILABLE:
+            logger.warning("Stripe not configured — simulating payment capture")
+            return {"id": payment_intent_id, "status": "succeeded"}
+
+        intent = stripe.PaymentIntent.capture(payment_intent_id)
+        return {"id": intent.id, "status": intent.status}
+
+    @staticmethod
+    async def cancel_payment_intent(payment_intent_id: str) -> dict:
+        """Cancel an authorized payment intent."""
+        if not STRIPE_AVAILABLE:
+            logger.warning("Stripe not configured — simulating payment cancellation")
+            return {"id": payment_intent_id, "status": "canceled"}
+
+        intent = stripe.PaymentIntent.cancel(payment_intent_id)
+        return {"id": intent.id, "status": intent.status}
 
     @staticmethod
     async def create_payment_link(

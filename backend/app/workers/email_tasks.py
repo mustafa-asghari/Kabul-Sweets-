@@ -248,6 +248,57 @@ def send_custom_cake_payment_email(self, data: dict):
     bind=True,
     max_retries=3,
     default_retry_delay=120,
+    name="app.workers.email_tasks.send_order_rejection_email",
+)
+def send_order_rejection_email(self, order_data: dict):
+    """Send order rejection email with admin-provided reason."""
+    try:
+        reason = order_data.get("rejection_reason") or "Your order could not be approved at this time."
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">Kabul Sweets</h1>
+                <p style="color: #c0392b; font-weight: 600; margin-top: 5px;">Order Update</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Hi {order_data.get('customer_name', 'Valued Customer')},</h2>
+                <p style="color: #444;">
+                    Your order <strong>{order_data.get('order_number', '')}</strong> was not approved by our team.
+                </p>
+                <div style="border-top: 1px solid #eee; margin: 18px 0; padding-top: 14px;">
+                    <p style="margin: 5px 0;"><strong>Reason:</strong> {reason}</p>
+                    <p style="margin: 5px 0;"><strong>Total:</strong> ${order_data.get('total', '0.00')} AUD</p>
+                    <p style="margin: 5px 0; color: #666;">
+                        No charge has been captured. Any authorization hold will be released by your bank.
+                    </p>
+                </div>
+                <div style="text-align: center; margin-top: 24px;">
+                    <a href="{FRONTEND_URL}/shop"
+                       style="background: #7C3AED; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
+                        Place a New Order
+                    </a>
+                </div>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                Kabul Sweets — Authentic Afghan Bakery
+            </p>
+        </div>
+        """
+
+        _send_email(
+            to_email=order_data.get("customer_email", ""),
+            subject=f"Order Update — {order_data.get('order_number', '')} | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Order rejection email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
     name="app.workers.email_tasks.send_abandoned_cart_email",
 )
 def send_abandoned_cart_email(self, data: dict):
