@@ -13,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
+from app.core.logging import get_logger
 from app.models.user import User
 from app.services.custom_cake_service import CustomCakeService
 from app.services.llm_service import DescriptionService
 from app.services.ml_service import CakePricingService, ServingEstimationService
 
 router = APIRouter(tags=["ML & Custom Cakes"])
+logger = get_logger("ml_custom_cakes")
 
 ALLOWED_CUSTOM_CAKE_FLAVOR_NORMALIZED = {
     "spong + vanila",
@@ -191,7 +193,7 @@ async def submit_custom_cake(
                 detail="Requested date must be tomorrow or a future date.",
             )
 
-    return await service.submit_custom_cake(
+    result = await service.submit_custom_cake(
         customer_id=current_user.id,
         flavor="Spong + Vanila",
         diameter_inches=float(size_inches),
@@ -209,6 +211,30 @@ async def submit_custom_cake(
         requested_date=requested_date,
         time_slot=data.time_slot,
     )
+
+    try:
+        from app.workers.telegram_tasks import send_admin_custom_cake_pending_alert
+
+        send_admin_custom_cake_pending_alert.delay(
+            {
+                "id": result["custom_cake_id"],
+                "customer_name": current_user.full_name,
+                "customer_email": current_user.email,
+                "flavor": "Spong + Vanila",
+                "diameter_inches": float(size_inches),
+                "predicted_price": result.get("predicted_price"),
+                "predicted_servings": result.get("predicted_servings"),
+                "requested_date": requested_date.isoformat() if requested_date else None,
+                "time_slot": data.time_slot,
+                "cake_message": data.cake_message,
+                "decoration_description": data.decoration_description,
+                "reference_images": data.reference_images or [],
+            }
+        )
+    except Exception as exc:
+        logger.warning("Failed to queue Telegram custom cake alert: %s", str(exc))
+
+    return result
 
 
 @router.get("/custom-cakes/my-cakes")
