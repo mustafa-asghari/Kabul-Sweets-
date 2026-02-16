@@ -12,8 +12,8 @@ export default function CollectionsPage() {
       <main className="flex-1 pb-20">
         <PageHero
           badge="Collections"
-          title="Curate your products into simple collections."
-          description="Use collections to group products clearly so customers can explore and order faster."
+          title="Explore Our Product Collections."
+          description="Browse curated categories to quickly find the sweets, pastries, and cookies you need."
         />
 
         <section className="max-w-[1200px] mx-auto px-6">
