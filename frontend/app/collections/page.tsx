@@ -14,10 +14,8 @@ export default function CollectionsPage() {
         <PageHero
           badge="Collections"
           title="Explore Our Product Collections."
-          description="Browse curated categories to quickly find the sweets, cakes, pastries, and cookies you need."
+          description="Browse curated categories to quickly find the sweets, pastries, and cookies you need."
         />
-
-        <ActionBanner zoomOut />
 
         <section className="max-w-[1200px] mx-auto px-6">
           <ScrollReveal
@@ -36,6 +34,8 @@ export default function CollectionsPage() {
             ))}
           </ScrollReveal>
         </section>
+
+        <ActionBanner zoomOut />
       </main>
       <Footer />
     </>
