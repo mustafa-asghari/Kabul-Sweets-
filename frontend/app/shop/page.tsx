@@ -48,8 +48,8 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
       <main className="flex-1 pb-20">
         <PageHero
           badge="Shop"
-          title="Showcase all your products in one place."
-          description="Use this page to display your full catalog so customers can discover products quickly."
+          title="Shop Fresh Cakes, Sweets, Pastries, and Cookies."
+          description="Browse our full menu and place your order for in-store pickup in Acacia Ridge."
         />
 
         <section className="max-w-[1200px] mx-auto px-6">

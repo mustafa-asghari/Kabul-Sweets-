@@ -20,11 +20,11 @@ export default function SupportPage() {
             </div>
             <div className="mt-6 mx-auto max-w-[920px] rounded-2xl px-6 py-8 text-center">
               <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-black leading-[1.08]">
-                Help your customers.
+                Customer Support
               </h1>
               <p className="mt-4 text-sm md:text-base text-gray-500 max-w-2xl mx-auto leading-relaxed">
-                Use this page to answer common questions, offer help, and guide
-                customers to the right solution quickly.
+                Find answers about pickup, custom cake orders, and store details,
+                or contact our team directly for help.
               </p>
             </div>
           </div>
@@ -61,7 +61,7 @@ export default function SupportPage() {
                   Name
                   <input
                     type="text"
-                    placeholder="Joe Gomez"
+                    placeholder="Your full name"
                     className="mt-2 w-full rounded-xl border border-transparent bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/30"
                   />
                 </label>
@@ -69,7 +69,7 @@ export default function SupportPage() {
                   Email
                   <input
                     type="email"
-                    placeholder="joe@gomez.com"
+                    placeholder="you@example.com"
                     className="mt-2 w-full rounded-xl border border-transparent bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/30"
                   />
                 </label>
@@ -77,7 +77,7 @@ export default function SupportPage() {
                   Message
                   <textarea
                     rows={4}
-                    placeholder="Hey, I need help with..."
+                    placeholder="Tell us what you need help with..."
                     className="mt-2 w-full rounded-xl border border-transparent bg-white px-4 py-3 text-sm text-gray-700 outline-none resize-none focus:ring-2 focus:ring-accent/30"
                   />
                 </label>
