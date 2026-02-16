@@ -17,6 +17,24 @@ from app.core.redis import close_redis
 settings = get_settings()
 
 
+ORDER_STATUS_ENUM_SYNC_SQL = """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'orderstatus')
+       AND NOT EXISTS (
+            SELECT 1
+            FROM pg_type t
+            JOIN pg_enum e ON e.enumtypid = t.oid
+            WHERE t.typname = 'orderstatus'
+              AND e.enumlabel = 'PENDING_APPROVAL'
+       )
+    THEN
+        ALTER TYPE orderstatus ADD VALUE 'PENDING_APPROVAL' AFTER 'PENDING';
+    END IF;
+END $$;
+"""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifecycle: startup and shutdown events."""
@@ -46,6 +64,7 @@ async def lifespan(app: FastAPI):
         # Create tables if they don't exist
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text(ORDER_STATUS_ENUM_SYNC_SQL))
         logger.info("✅ Database tables verified")
 
         # Check if database needs seeding (no users = empty DB)

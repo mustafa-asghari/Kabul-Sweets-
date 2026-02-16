@@ -213,7 +213,7 @@ async def admin_approve_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+    if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
             detail=f"Order cannot be approved from status '{order.status.value}'",
@@ -268,7 +268,7 @@ async def admin_reject_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+    if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
             detail=f"Order cannot be rejected from status '{order.status.value}'",

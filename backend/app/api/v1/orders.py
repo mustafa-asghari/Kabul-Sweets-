@@ -188,7 +188,7 @@ async def approve_order(
     order = await service.get_order(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+    if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(status_code=400, detail=f"Cannot approve order in status '{order.status.value}'")
     if not order.payment:
         raise HTTPException(status_code=400, detail="No payment record found")
@@ -220,7 +220,7 @@ async def reject_order(
     order = await service.get_order(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status not in (OrderStatus.PENDING_APPROVAL, OrderStatus.PENDING):
+    if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(status_code=400, detail=f"Cannot reject order in status '{order.status.value}'")
 
     if order.payment and order.payment.stripe_payment_intent_id:

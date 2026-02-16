@@ -112,14 +112,6 @@ export default function Footer() {
                     Contact details
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    href="/contact"
-                    className="hover:text-black transition"
-                  >
-                    Open contact page
-                  </Link>
-                </li>
               </ul>
             </div>
           </div>

@@ -1,11 +1,12 @@
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 
-const STORE_ADDRESS = "Shahr-e-Naw, Kabul, Afghanistan";
+const STORE_NAME = "Kabul Sweets Bakery";
+const STORE_ADDRESS = "1102 Beaudesert Rd, Acacia Ridge QLD 4110";
 const GOOGLE_MAPS_DIRECTIONS_URL =
-  "https://www.google.com/maps/dir/?api=1&destination=Shahr-e-Naw%2C+Kabul%2C+Afghanistan";
+  "https://www.google.com/maps/dir/?api=1&destination=1102%20Beaudesert%20Rd%2C%20Acacia%20Ridge%20QLD%204110";
 const GOOGLE_MAPS_EMBED_URL =
-  "https://maps.google.com/maps?q=Shahr-e-Naw%2C%20Kabul%2C%20Afghanistan&t=&z=15&ie=UTF8&iwloc=&output=embed";
+  "https://maps.google.com/maps?q=1102%20Beaudesert%20Rd%2C%20Acacia%20Ridge%20QLD%204110&t=&z=15&ie=UTF8&iwloc=&output=embed";
 
 export default function ContactPage() {
   return (
@@ -19,7 +20,7 @@ export default function ContactPage() {
                 Contact
               </span>
               <h1 className="mt-6 text-4xl md:text-6xl font-extrabold tracking-tight text-black leading-[1.08]">
-                Visit & Contact Kabul Sweets
+                Visit & Contact {STORE_NAME}
               </h1>
               <p className="mt-4 text-sm md:text-base text-gray-500 max-w-2xl mx-auto leading-relaxed">
                 Find our location, get directions, and reach us directly from one
@@ -66,6 +67,13 @@ export default function ContactPage() {
               <ul className="space-y-4 text-gray-600">
                 <li>
                   <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">
+                    Business
+                  </p>
+                  <p className="text-black font-semibold">Kabul Sweets Bakery</p>
+                  <p className="text-sm">4.5 (224 Google reviews)</p>
+                </li>
+                <li>
+                  <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">
                     Address
                   </p>
                   <p className="text-black font-semibold">{STORE_ADDRESS}</p>
@@ -75,21 +83,10 @@ export default function ContactPage() {
                     Phone
                   </p>
                   <a
-                    href="tel:+93700000000"
+                    href="tel:+61731627444"
                     className="text-black font-semibold hover:text-accent transition"
                   >
-                    +93 700 000 000
-                  </a>
-                </li>
-                <li>
-                  <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">
-                    Email
-                  </p>
-                  <a
-                    href="mailto:hello@kabulsweets.com"
-                    className="text-black font-semibold hover:text-accent transition"
-                  >
-                    hello@kabulsweets.com
+                    (07) 3162 7444
                   </a>
                 </li>
                 <li>
@@ -97,7 +94,7 @@ export default function ContactPage() {
                     Hours
                   </p>
                   <p className="text-black font-semibold">
-                    Open daily, 8:00 AM - 9:00 PM
+                    Open • Closes 6:00 PM
                   </p>
                 </li>
               </ul>
