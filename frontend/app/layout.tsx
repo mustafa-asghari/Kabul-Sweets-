@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import AppProviders from "@/components/AppProviders";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,7 +25,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://lh3.googleusercontent.com" />
       </head>
       <body className={`${inter.className} min-h-screen flex flex-col bg-cream text-[#111]`}>
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

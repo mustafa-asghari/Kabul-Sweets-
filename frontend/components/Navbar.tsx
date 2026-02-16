@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { getCartCount, readCart } from "@/lib/cart";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import AuthModal from "@/components/AuthModal";
 
 const CartDrawer = dynamic(() => import("@/components/CartDrawer"), {
   ssr: false,
@@ -18,13 +20,17 @@ const navLinks = [
 
 export default function Navbar() {
   const [shrink, setShrink] = useState(false);
-  const [cartCount, setCartCount] = useState(0);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
   const router = useRouter();
+
+  const { user, isAuthenticated, logout, loading } = useAuth();
+  const { cartCount } = useCart();
 
   useEffect(() => {
     const onScroll = () => {
@@ -39,21 +45,6 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const syncCartCount = () => {
-      setCartCount(getCartCount(readCart()));
-    };
-
-    syncCartCount();
-    window.addEventListener("cart-updated", syncCartCount);
-    window.addEventListener("storage", syncCartCount);
-
-    return () => {
-      window.removeEventListener("cart-updated", syncCartCount);
-      window.removeEventListener("storage", syncCartCount);
-    };
-  }, []);
-
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -63,6 +54,8 @@ export default function Navbar() {
       if (event.key === "Escape") {
         setSearchOpen(false);
         setCartOpen(false);
+        setAuthOpen(false);
+        setProfileOpen(false);
       }
     };
 
@@ -73,7 +66,15 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (!searchOpen && !cartOpen) {
+    const openAuth = () => setAuthOpen(true);
+    window.addEventListener("open-auth-modal", openAuth);
+    return () => {
+      window.removeEventListener("open-auth-modal", openAuth);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen && !cartOpen && !authOpen) {
       return;
     }
     const previousOverflow = document.body.style.overflow;
@@ -90,7 +91,7 @@ export default function Navbar() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [searchOpen, cartOpen]);
+  }, [searchOpen, cartOpen, authOpen]);
 
   const closeSearch = () => {
     setSearchOpen(false);
@@ -132,6 +133,14 @@ export default function Navbar() {
     navigateFromSearch(`/shop?q=${encodeURIComponent(query)}`);
   };
 
+  const handleAuthClick = () => {
+    if (!isAuthenticated) {
+      setAuthOpen(true);
+      return;
+    }
+    setProfileOpen((current) => !current);
+  };
+
   return (
     <>
       <nav className="sticky top-0 z-50 bg-cream/80 backdrop-blur-lg">
@@ -159,8 +168,18 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            {isAuthenticated ? (
+              <Link
+                href="/orders"
+                className={`text-sm transition ${
+                  pathname === "/orders" ? "text-black font-semibold" : "text-gray-600 hover:text-black"
+                }`}
+              >
+                Orders
+              </Link>
+            ) : null}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 relative">
             <button
               type="button"
               onClick={openSearch}
@@ -169,19 +188,70 @@ export default function Navbar() {
             >
               <span className="material-symbols-outlined text-[22px]">search</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleAuthClick}
+              className="text-gray-500 hover:text-black transition"
+              aria-label={isAuthenticated ? "Account menu" : "Login"}
+            >
+              <span className="material-symbols-outlined text-[22px]">account_circle</span>
+            </button>
+
             <button
               type="button"
               onClick={openCart}
               className="relative text-gray-500 hover:text-black transition"
               aria-label="Open cart"
             >
-              <span className="material-symbols-outlined text-[22px]">
-                shopping_bag
-              </span>
+              <span className="material-symbols-outlined text-[22px]">shopping_bag</span>
               <span className="absolute -top-1.5 -right-2 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-1 text-[10px] font-bold text-white">
                 {cartCount}
               </span>
             </button>
+
+            {profileOpen && isAuthenticated && user ? (
+              <div className="absolute top-11 right-0 z-[80] w-[220px] rounded-2xl border border-[#e6d9c5] bg-white p-3 shadow-lg">
+                <p className="text-sm font-semibold text-black truncate">{user.full_name}</p>
+                <p className="mt-0.5 text-xs text-gray-500 truncate">{user.email}</p>
+                <div className="mt-3 space-y-1">
+                  <Link
+                    href="/account"
+                    onClick={() => setProfileOpen(false)}
+                    className="block rounded-lg px-2.5 py-2 text-sm text-gray-700 hover:bg-[#f5f2eb]"
+                  >
+                    Account
+                  </Link>
+                  <Link
+                    href="/orders"
+                    onClick={() => setProfileOpen(false)}
+                    className="block rounded-lg px-2.5 py-2 text-sm text-gray-700 hover:bg-[#f5f2eb]"
+                  >
+                    My Orders
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setProfileOpen(false);
+                      await logout();
+                    }}
+                    className="w-full text-left rounded-lg px-2.5 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!loading && !isAuthenticated ? (
+              <button
+                type="button"
+                onClick={() => setAuthOpen(true)}
+                className="hidden md:inline-flex rounded-full bg-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#222] transition"
+              >
+                Login
+              </button>
+            ) : null}
           </div>
         </div>
       </nav>
@@ -214,6 +284,8 @@ export default function Navbar() {
           </div>
         </div>
       ) : null}
+
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <CartDrawer open={cartOpen} onClose={closeCart} />
     </>
   );

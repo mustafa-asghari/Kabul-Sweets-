@@ -1,0 +1,165 @@
+"use client";
+
+import { FormEvent, useMemo, useState } from "react";
+import { ApiError } from "@/lib/api-client";
+import { useAuth } from "@/context/AuthContext";
+
+interface AuthModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+type AuthMode = "login" | "register";
+
+export default function AuthModal({ open, onClose }: AuthModalProps) {
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const title = useMemo(
+    () => (mode === "login" ? "Customer Login" : "Create Account"),
+    [mode]
+  );
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      if (mode === "login") {
+        await login(email, password);
+      } else {
+        await register({
+          email,
+          password,
+          fullName,
+          phone,
+        });
+      }
+      onClose();
+      setPassword("");
+    } catch (submitError) {
+      if (submitError instanceof ApiError) {
+        setError(submitError.detail);
+      } else {
+        setError("Unable to complete authentication.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-sm px-4 py-10"
+      onClick={onClose}
+    >
+      <div
+        className="mx-auto w-full max-w-[460px] rounded-[1.5rem] bg-[#f8f2e8] border border-[#eadcc8] p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl font-extrabold tracking-tight text-black">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-500 hover:text-black transition"
+            aria-label="Close authentication modal"
+          >
+            <span className="material-symbols-outlined text-[22px]">close</span>
+          </button>
+        </div>
+
+        <form className="mt-5 space-y-4" onSubmit={onSubmit}>
+          {mode === "register" ? (
+            <label className="text-sm font-semibold text-black block">
+              Full Name
+              <input
+                type="text"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                required
+                className="mt-1.5 w-full rounded-xl border border-[#e7d8c2] bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+              />
+            </label>
+          ) : null}
+
+          <label className="text-sm font-semibold text-black block">
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              className="mt-1.5 w-full rounded-xl border border-[#e7d8c2] bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+            />
+          </label>
+
+          <label className="text-sm font-semibold text-black block">
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={8}
+              className="mt-1.5 w-full rounded-xl border border-[#e7d8c2] bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+            />
+          </label>
+
+          {mode === "register" ? (
+            <label className="text-sm font-semibold text-black block">
+              Phone (optional)
+              <input
+                type="text"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-[#e7d8c2] bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+              />
+            </label>
+          ) : null}
+
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-full bg-black py-3 text-sm font-semibold text-white hover:bg-[#222] disabled:opacity-60 transition"
+          >
+            {submitting ? "Please wait..." : mode === "login" ? "Login" : "Create Account"}
+          </button>
+        </form>
+
+        <div className="mt-4 text-sm text-gray-600">
+          {mode === "login" ? (
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              className="font-semibold text-black hover:text-accent transition"
+            >
+              New customer? Create your account
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className="font-semibold text-black hover:text-accent transition"
+            >
+              Already have an account? Login
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
