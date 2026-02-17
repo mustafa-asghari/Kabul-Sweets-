@@ -1,4 +1,5 @@
 import "server-only";
+import { headers } from "next/headers";
 
 import type {
   StorefrontCollection,
@@ -86,6 +87,22 @@ function getInternalApiBaseUrl() {
 
 function getPublicApiBaseUrl() {
   return PUBLIC_API_BASE_URL;
+}
+
+async function resolveStoreApiBaseUrl() {
+  try {
+    const requestHeaders = await headers();
+    const host =
+      requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+    if (host) {
+      const protocol = requestHeaders.get("x-forwarded-proto") || "http";
+      return `${protocol}://${host}`;
+    }
+  } catch {
+    // No request context (e.g. during build), use backend URL fallback.
+  }
+
+  return getInternalApiBaseUrl();
 }
 
 function toNumber(value: string | number | null | undefined) {
@@ -219,20 +236,30 @@ function createProductsUrl(params?: {
   return serialized ? `/api/v1/products/?${serialized}` : "/api/v1/products/";
 }
 
-async function fetchJson<T>(path: string, revalidateSeconds = 5): Promise<T | null> {
+async function fetchJson<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
+    const baseUrl = await resolveStoreApiBaseUrl();
+    const targetUrl = `${baseUrl}${path}`;
+    const response = await fetch(targetUrl, {
       method: "GET",
       headers: {
         Accept: "application/json",
       },
-      next: { revalidate: revalidateSeconds },
+      cache: "no-store",
     });
     if (!response.ok) {
+      console.error("[storefront-api] request failed", {
+        targetUrl,
+        status: response.status,
+      });
       return null;
     }
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    console.error("[storefront-api] request error", {
+      path,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     return null;
   }
 }
@@ -256,8 +283,7 @@ export async function fetchStoreProducts(params?: {
       search: params?.search,
       skip: params?.skip,
       limit: params?.limit ?? 100,
-    }),
-    5
+    })
   );
   if (!data) {
     return [] as StorefrontProduct[];
@@ -267,8 +293,7 @@ export async function fetchStoreProducts(params?: {
 
 export async function fetchStoreProductBySlug(slug: string) {
   const data = await fetchJson<ApiProductList>(
-    `/api/v1/products/slug/${encodeURIComponent(slug)}`,
-    5
+    `/api/v1/products/slug/${encodeURIComponent(slug)}`
   );
   if (!data) {
     return null;

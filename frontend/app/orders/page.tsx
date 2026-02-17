@@ -97,6 +97,9 @@ export default function OrdersPage() {
   const [customCakes, setCustomCakes] = useState<CustomCakeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [payingCakeId, setPayingCakeId] = useState<string | null>(null);
+  const [deletingCakeId, setDeletingCakeId] = useState<string | null>(null);
+  const [cakeActionErrors, setCakeActionErrors] = useState<Record<string, string>>({});
 
   const fetchOrders = useCallback(async (background = false) => {
     if (!accessToken || !isAuthenticated) {
@@ -159,6 +162,71 @@ export default function OrdersPage() {
 
     return () => window.clearInterval(interval);
   }, [authLoading, isAuthenticated, accessToken, fetchOrders]);
+
+  const handlePayNow = useCallback(async (cakeId: string) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setPayingCakeId(cakeId);
+    setCakeActionErrors((prev) => ({ ...prev, [cakeId]: "" }));
+
+    try {
+      const result = await apiRequest<{ checkout_url: string }>(
+        `/api/v1/custom-cakes/${cakeId}/checkout`,
+        {
+          method: "POST",
+          token: accessToken,
+        }
+      );
+
+      if (!result.checkout_url) {
+        throw new ApiError(400, "No checkout URL returned for this request.");
+      }
+      window.location.href = result.checkout_url;
+    } catch (actionError) {
+      const detail = actionError instanceof ApiError ? actionError.detail : "Unable to open checkout.";
+      setCakeActionErrors((prev) => ({ ...prev, [cakeId]: detail }));
+    } finally {
+      setPayingCakeId(null);
+    }
+  }, [accessToken]);
+
+  const handleDeleteCake = useCallback(
+    async (cakeId: string, flavor: string) => {
+      if (!accessToken) {
+        return;
+      }
+
+      const ok = window.confirm(
+        `Delete this custom cake request for ${flavor}? This cannot be undone.`
+      );
+      if (!ok) {
+        return;
+      }
+
+      setDeletingCakeId(cakeId);
+      setCakeActionErrors((prev) => ({ ...prev, [cakeId]: "" }));
+
+      try {
+        await apiRequest<{ message: string }>(`/api/v1/custom-cakes/${cakeId}/cancel`, {
+          method: "POST",
+          token: accessToken,
+          body: {
+            reason: "Customer deleted request from orders page.",
+          },
+        });
+        await fetchOrders(true);
+      } catch (actionError) {
+        const detail =
+          actionError instanceof ApiError ? actionError.detail : "Unable to delete this request.";
+        setCakeActionErrors((prev) => ({ ...prev, [cakeId]: detail }));
+      } finally {
+        setDeletingCakeId(null);
+      }
+    },
+    [accessToken, fetchOrders]
+  );
 
   return (
     <>
@@ -236,7 +304,10 @@ export default function OrdersPage() {
                   </div>
                 ) : (
                   customCakes.map((cake) => {
-                    const payable = cake.status === "approved_awaiting_payment" && Boolean(cake.checkout_url);
+                    const payable = cake.status === "approved_awaiting_payment";
+                    const deletable = ["pending_review", "approved_awaiting_payment", "rejected"].includes(
+                      cake.status
+                    );
                     const displayPrice = cake.final_price ?? cake.predicted_price;
 
                     return (
@@ -270,15 +341,32 @@ export default function OrdersPage() {
                           </p>
                         </div>
 
-                        {payable ? (
-                          <div className="mt-4">
-                            <a
-                              href={cake.checkout_url || "#"}
-                              className="inline-flex rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#222] transition"
-                            >
-                              Pay Now
-                            </a>
+                        {payable || deletable ? (
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                            {payable ? (
+                              <button
+                                type="button"
+                                disabled={payingCakeId === cake.id || deletingCakeId === cake.id}
+                                onClick={() => handlePayNow(cake.id)}
+                                className="inline-flex rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#222] transition disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {payingCakeId === cake.id ? "Opening checkout..." : "Pay Now"}
+                              </button>
+                            ) : null}
+                            {deletable ? (
+                              <button
+                                type="button"
+                                disabled={deletingCakeId === cake.id || payingCakeId === cake.id}
+                                onClick={() => handleDeleteCake(cake.id, cake.flavor)}
+                                className="inline-flex rounded-full border border-red-300 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {deletingCakeId === cake.id ? "Deleting..." : "Delete Request"}
+                              </button>
+                            ) : null}
                           </div>
+                        ) : null}
+                        {cakeActionErrors[cake.id] ? (
+                          <p className="mt-3 text-xs font-medium text-red-600">{cakeActionErrors[cake.id]}</p>
                         ) : null}
                       </article>
                     );

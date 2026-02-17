@@ -362,6 +362,12 @@ async def publish_image_as_product(
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
+    if image.product_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This image has already been published as a product.",
+        )
+
     if image.admin_chosen not in ("original", "processed"):
         raise HTTPException(
             status_code=400,
@@ -413,6 +419,7 @@ async def publish_image_as_product(
     )
 
     image.product_id = product.id
+    image.processing_status = "published"
     await db.flush()
 
     return {
@@ -479,6 +486,7 @@ async def list_images(
     product_id: uuid.UUID | None = Query(None),
     custom_cake_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None),
+    include_published: bool = Query(False),
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -488,6 +496,7 @@ async def list_images(
         product_id=product_id,
         custom_cake_id=custom_cake_id,
         status=status,
+        include_published=include_published,
     )
 
 

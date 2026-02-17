@@ -11,6 +11,8 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { formatPrice, supportBenefits } from "@/data/storefront";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const allProducts = await fetchStoreProducts({ limit: 120 });
   const featuredProducts = (allProducts.filter((product) => product.isFeatured).length > 0

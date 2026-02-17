@@ -87,6 +87,10 @@ class AdminRejectRequest(BaseModel):
     rejection_reason: str = Field(..., min_length=10)
 
 
+class CustomerCancelCakeRequest(BaseModel):
+    reason: str | None = Field(None, max_length=300)
+
+
 # ── Price Prediction ─────────────────────────────────────────────────────────
 @router.post("/ml/predict-price")
 async def predict_cake_price(
@@ -261,6 +265,74 @@ async def get_my_custom_cakes(
         }
         for c in cakes
     ]
+
+
+@router.post("/custom-cakes/{cake_id}/checkout")
+async def regenerate_custom_cake_checkout(
+    cake_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a fresh checkout link for an approved custom cake."""
+    service = CustomCakeService(db)
+    result = await service.regenerate_checkout_link_for_customer(
+        cake_id=cake_id,
+        customer_id=current_user.id,
+    )
+    if "error" in result:
+        detail = result["error"]
+        if detail in {"Custom cake not found", "Not your custom cake"}:
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+    return result
+
+
+@router.post("/custom-cakes/{cake_id}/cancel")
+async def cancel_custom_cake_by_customer(
+    cake_id: uuid.UUID,
+    data: CustomerCancelCakeRequest = CustomerCancelCakeRequest(),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Customer cancels (deletes) a custom cake request before production."""
+    service = CustomCakeService(db)
+    result = await service.cancel_by_customer(
+        cake_id=cake_id,
+        customer_id=current_user.id,
+        reason=data.reason,
+    )
+    if "error" in result:
+        detail = result["error"]
+        if detail in {"Custom cake not found", "Not your custom cake"}:
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
+
+    try:
+        from app.workers.telegram_tasks import send_admin_custom_cake_cancelled_alert
+
+        send_admin_custom_cake_cancelled_alert.delay(
+            {
+                "id": result["custom_cake_id"],
+                "customer_name": current_user.full_name,
+                "customer_email": current_user.email,
+                "flavor": result.get("flavor"),
+                "diameter_inches": result.get("diameter_inches"),
+                "requested_date": result.get("requested_date"),
+                "time_slot": result.get("time_slot"),
+                "predicted_price": result.get("predicted_price"),
+                "final_price": result.get("final_price"),
+                "reason": result.get("reason"),
+                "reference_images": result.get("reference_images", []),
+            }
+        )
+    except Exception as exc:
+        logger.warning("Failed to queue Telegram custom cake cancel alert: %s", str(exc))
+
+    return {
+        "message": "Custom cake request deleted.",
+        "custom_cake_id": result["custom_cake_id"],
+        "status": result["status"],
+    }
 
 
 # ── Admin Custom Cake Management ─────────────────────────────────────────────

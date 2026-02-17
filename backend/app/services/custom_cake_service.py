@@ -16,6 +16,7 @@ from app.models.ml import CustomCake, CustomCakeStatus, DecorationComplexity
 from app.services.ml_service import CakePricingService, ServingEstimationService
 
 logger = get_logger("custom_cake_service")
+MIN_CUSTOM_CAKE_FINAL_PRICE = Decimal("35.00")
 
 
 class CustomCakeService:
@@ -51,6 +52,9 @@ class CustomCakeService:
             "generated_by": "template",
             "model": None,
         }
+
+    def _normalize_final_price(self, final_price: Decimal) -> Decimal:
+        return Decimal(str(final_price)).quantize(Decimal("0.01"))
 
     async def submit_custom_cake(
         self,
@@ -167,8 +171,17 @@ class CustomCakeService:
         if cake.status != CustomCakeStatus.PENDING_REVIEW:
             return {"error": f"Cannot approve cake in '{cake.status.value}' status"}
 
+        normalized_price = self._normalize_final_price(final_price)
+        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
+            return {
+                "error": (
+                    f"Final price must be at least ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f} "
+                    "for custom cakes."
+                )
+            }
+
         cake.status = CustomCakeStatus.APPROVED_AWAITING_PAYMENT
-        cake.final_price = final_price
+        cake.final_price = normalized_price
         cake.admin_notes = admin_notes
         cake.approved_at = datetime.now(timezone.utc)
         cake.approved_by = admin_id
@@ -183,7 +196,7 @@ class CustomCakeService:
         )
         prediction = pred_result.scalar_one_or_none()
         if prediction:
-            await pricing_service.record_final_price(prediction.id, final_price)
+            await pricing_service.record_final_price(prediction.id, normalized_price)
 
         await self.db.flush()
 
@@ -205,7 +218,7 @@ class CustomCakeService:
         payment_result = await StripeService.create_payment_link(
             custom_cake_id=str(cake_id),
             description=description,
-            amount=final_price,
+            amount=normalized_price,
             customer_email=customer_email,
         )
         cake.checkout_url = payment_result.get("checkout_url")
@@ -220,12 +233,12 @@ class CustomCakeService:
                 "customer_name": customer_user.full_name if customer_user else "Valued Customer",
                 "cake_description": description,
                 "predicted_price": str(cake.predicted_price) if cake.predicted_price is not None else None,
-                "final_price": str(final_price),
+                "final_price": str(normalized_price),
                 "payment_url": payment_result["checkout_url"],
                 "custom_cake_id": str(cake_id),
             })
 
-        logger.info("Custom cake %s approved at $%s — payment link sent", cake_id, final_price)
+        logger.info("Custom cake %s approved at $%s — payment link sent", cake_id, normalized_price)
 
         return {
             "custom_cake_id": str(cake_id),
@@ -254,7 +267,16 @@ class CustomCakeService:
                 )
             }
 
-        cake.final_price = final_price
+        normalized_price = self._normalize_final_price(final_price)
+        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
+            return {
+                "error": (
+                    f"Final price must be at least ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f} "
+                    "for custom cakes."
+                )
+            }
+
+        cake.final_price = normalized_price
         cake.approved_by = admin_id
         if admin_note:
             existing = (cake.admin_notes or "").strip()
@@ -266,6 +288,117 @@ class CustomCakeService:
             "status": cake.status.value,
             "predicted_price": cake.predicted_price,
             "final_price": cake.final_price,
+        }
+
+    async def regenerate_checkout_link_for_customer(
+        self,
+        cake_id: uuid.UUID,
+        customer_id: uuid.UUID,
+    ) -> dict:
+        """
+        Generate a fresh Stripe checkout session for an approved custom cake.
+        Useful when old sessions expire or links were created in fallback mode.
+        """
+        cake = await self._get_cake(cake_id)
+        if not cake:
+            return {"error": "Custom cake not found"}
+        if cake.customer_id != customer_id:
+            return {"error": "Not your custom cake"}
+        if cake.status != CustomCakeStatus.APPROVED_AWAITING_PAYMENT:
+            return {"error": f"Cannot pay cake in '{cake.status.value}' status"}
+
+        amount = cake.final_price or cake.predicted_price
+        if amount is None:
+            return {"error": "No price available for this custom cake"}
+
+        normalized_price = self._normalize_final_price(Decimal(str(amount)))
+        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
+            return {
+                "error": (
+                    f"Final price is too low (${normalized_price:.2f}). "
+                    f"Minimum is ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f}. Please contact admin."
+                )
+            }
+
+        from app.models.user import User
+        from app.services.stripe_service import StripeService
+
+        customer = await self.db.execute(select(User).where(User.id == cake.customer_id))
+        customer_user = customer.scalar_one_or_none()
+        customer_email = customer_user.email if customer_user else None
+
+        description = (
+            f'{cake.flavor} cake, {cake.diameter_inches}" {cake.shape}, '
+            f'{cake.layers} layer(s), {cake.decoration_complexity.value} decoration'
+        )
+        payment_result = await StripeService.create_payment_link(
+            custom_cake_id=str(cake.id),
+            description=description,
+            amount=normalized_price,
+            customer_email=customer_email,
+        )
+        cake.checkout_url = payment_result.get("checkout_url")
+        cake.payment_intent_id = payment_result.get("session_id")
+        await self.db.flush()
+
+        return {
+            "custom_cake_id": str(cake.id),
+            "status": cake.status.value,
+            "final_price": str(normalized_price),
+            "checkout_url": cake.checkout_url,
+            "checkout_session_id": cake.payment_intent_id,
+        }
+
+    async def cancel_by_customer(
+        self,
+        cake_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        reason: str | None = None,
+    ) -> dict:
+        """
+        Customer-initiated cancellation (delete from active flow).
+        We keep the record for audit/history but move to CANCELLED.
+        """
+        cake = await self._get_cake(cake_id)
+        if not cake:
+            return {"error": "Custom cake not found"}
+        if cake.customer_id != customer_id:
+            return {"error": "Not your custom cake"}
+
+        non_cancellable = {
+            CustomCakeStatus.PAID,
+            CustomCakeStatus.IN_PRODUCTION,
+            CustomCakeStatus.COMPLETED,
+        }
+        if cake.status in non_cancellable:
+            return {"error": f"Cannot delete cake in '{cake.status.value}' status"}
+        if cake.status == CustomCakeStatus.CANCELLED:
+            return {"error": "Custom cake is already cancelled"}
+
+        provided_reason = (reason or "").strip()
+        cancel_reason = "Cancelled by customer from orders page."
+        if provided_reason:
+            cancel_reason = f"{cancel_reason} Reason: {provided_reason}"
+
+        cake.status = CustomCakeStatus.CANCELLED
+        cake.rejection_reason = cancel_reason
+        cake.checkout_url = None
+        cake.payment_intent_id = None
+        await self.db.flush()
+
+        return {
+            "custom_cake_id": str(cake.id),
+            "status": cake.status.value,
+            "reason": cancel_reason,
+            "flavor": cake.flavor,
+            "diameter_inches": cake.diameter_inches,
+            "requested_date": cake.requested_date.isoformat() if cake.requested_date else None,
+            "time_slot": cake.time_slot,
+            "final_price": str(cake.final_price) if cake.final_price is not None else None,
+            "predicted_price": (
+                str(cake.predicted_price) if cake.predicted_price is not None else None
+            ),
+            "reference_images": cake.reference_images or [],
         }
 
     async def admin_reject(

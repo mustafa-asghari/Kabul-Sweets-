@@ -8,6 +8,8 @@ import {
   fetchStoreProductBySlug,
 } from "@/lib/storefront-api";
 
+export const dynamic = "force-dynamic";
+
 interface ProductPageProps {
   params: Promise<{
     slug: string;

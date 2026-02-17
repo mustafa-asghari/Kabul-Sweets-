@@ -121,6 +121,32 @@ def _build_custom_cake_markup(cake_id: str) -> dict:
     }
 
 
+def _build_custom_cake_cancelled_message(cake_data: dict) -> str:
+    requested_date = _format_date_only(cake_data.get("requested_date"))
+    time_slot = cake_data.get("time_slot") or "Not provided"
+    predicted_price = _as_money(cake_data.get("predicted_price"))
+    final_price = _as_money(cake_data.get("final_price"))
+    image_count = len(cake_data.get("reference_images") or [])
+
+    admin_link = f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/custom-cakes"
+
+    return (
+        "🗑️ <b>Custom Cake Deleted By Customer</b>\n"
+        f"Request ID: <b>{cake_data.get('id', 'N/A')}</b>\n"
+        f"Customer: {cake_data.get('customer_name', 'N/A')}\n"
+        f"Contact: {cake_data.get('customer_email', 'N/A')}\n"
+        f"Flavor: {cake_data.get('flavor', 'N/A')}\n"
+        f"Size: {cake_data.get('diameter_inches', 'N/A')} inch\n"
+        f"Predicted price: {predicted_price}\n"
+        f"Final price: {final_price}\n"
+        f"Requested date: {requested_date}\n"
+        f"Time slot: {time_slot}\n"
+        f"Reason: {cake_data.get('reason') or 'Not provided'}\n"
+        f"Reference images: {image_count}\n\n"
+        f"<a href=\"{admin_link}\">Open custom cakes in admin</a>"
+    )
+
+
 def _send_reference_image_if_possible(
     telegram: TelegramService,
     chat_id: int,
@@ -199,4 +225,30 @@ def send_admin_custom_cake_pending_alert(self, cake_data: dict):
 
     for chat_id in telegram.admin_chat_ids:
         telegram.send_text(chat_id, text, reply_markup=markup)
+        _send_reference_image_if_possible(telegram, chat_id, images)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    name="app.workers.telegram_tasks.send_admin_custom_cake_cancelled_alert",
+)
+def send_admin_custom_cake_cancelled_alert(self, cake_data: dict):
+    """Send admin alert when customer deletes/cancels a custom cake request."""
+    telegram = TelegramService()
+    if not telegram.is_configured():
+        logger.info("Telegram not configured — custom cake cancel alert skipped")
+        return
+
+    cake_id = cake_data.get("id")
+    if not cake_id:
+        logger.warning("Custom cake cancel alert missing id, skipping")
+        return
+
+    text = _build_custom_cake_cancelled_message(cake_data)
+    images = cake_data.get("reference_images") or []
+
+    for chat_id in telegram.admin_chat_ids:
+        telegram.send_text(chat_id, text)
         _send_reference_image_if_possible(telegram, chat_id, images)

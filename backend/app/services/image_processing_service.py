@@ -40,10 +40,12 @@ CATEGORY_PROMPTS = {
     ImageCategory.CAKE: (
         "Transform this cake into a professional e-commerce product photo. "
         "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Place the cake centered with balanced studio lighting and NO shadow on the background or under the cake. "
+        "The background must be a flat, uniform white from edge to edge with no gradients, no vignettes, and no gray tint. "
+        "Place the cake centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
         "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
         "A thin flat cake board under the cake is allowed, but no raised stand. "
         "Do NOT add any text, lettering, handwriting, logo, watermark, scribbles, or random lines on top of the cake. "
+        "Do NOT add any decorative script, edible pen writing, piped words, stamp marks, or artifact lines anywhere on the cake. "
         "Keep the top surface clean and natural with no artificial writing artifacts. "
         "Enhance details of the frosting texture and printed animal decorations. "
         "Keep proportions and colours accurate and realistic. "
@@ -375,12 +377,15 @@ class ImageProcessingService:
         product_id: uuid.UUID | None = None,
         custom_cake_id: uuid.UUID | None = None,
         status: str | None = None,
+        include_published: bool = False,
         limit: int = 50,
     ) -> list[dict]:
         """List images with optional filters."""
         from app.models.ml import ProcessedImage
 
         query = select(ProcessedImage).order_by(desc(ProcessedImage.created_at))
+        if not include_published:
+            query = query.where(ProcessedImage.product_id.is_(None))
         if product_id:
             query = query.where(ProcessedImage.product_id == product_id)
         if custom_cake_id:

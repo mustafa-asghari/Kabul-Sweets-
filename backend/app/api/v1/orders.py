@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, log_admin_action, require_admin
@@ -38,7 +39,14 @@ async def create_order(
     """Create a new order. Validates items, reserves inventory, calculates totals."""
     service = OrderService(db)
     try:
-        order = await service.create_order(data, customer_id=current_user.id)
+        customer_id = current_user.id
+        if current_user.is_admin:
+            matched_customer = await db.execute(
+                select(User.id).where(func.lower(User.email) == data.customer_email.strip().lower())
+            )
+            customer_id = matched_customer.scalar_one_or_none()
+
+        order = await service.create_order(data, customer_id=customer_id)
         return order
     except ValueError as e:
         raise HTTPException(
