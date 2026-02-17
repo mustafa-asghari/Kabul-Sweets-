@@ -722,7 +722,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                           className="mt-1 w-full rounded-lg border border-[#e8dcc9] px-3 py-2 text-sm"
                         />
                       </label>
-                    <label className="block text-xs text-gray-600">
+                      <label className="block text-xs text-gray-600">
                         Pickup Date
                         <ThemedDatePicker
                           className="mt-1"
@@ -818,7 +818,13 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={!isAuthenticated || lines.length === 0 || checkoutLoading}
+                  disabled={
+                    !isAuthenticated ||
+                    lines.length === 0 ||
+                    checkoutLoading ||
+                    !pickupDate ||
+                    !pickupTimeSlot
+                  }
                   className="mt-3 w-full rounded-full bg-black py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-60"
                 >
                   {checkoutLoading ? "Please wait..." : "Submit Order"}

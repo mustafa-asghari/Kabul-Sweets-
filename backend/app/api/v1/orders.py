@@ -81,6 +81,23 @@ async def get_my_order(
     return order
 
 
+@router.delete("/my-orders/{order_id}")
+async def delete_my_unpaid_order(
+    order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allow customer to permanently delete unpaid orders."""
+    service = OrderService(db)
+    result = await service.delete_customer_unpaid_order(order_id, current_user.id)
+    if "error" in result:
+        raise HTTPException(
+            status_code=result.get("status_code", status.HTTP_400_BAD_REQUEST),
+            detail=result["error"],
+        )
+    return {"message": "Order deleted.", **result}
+
+
 # ── Admin Endpoints ──────────────────────────────────────────────────────────
 @router.get(
     "/",

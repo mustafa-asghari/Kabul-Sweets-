@@ -105,12 +105,11 @@ class OrderService:
         self,
         pickup_date: datetime | None,
         pickup_time_slot: str | None,
-    ) -> tuple[datetime | None, str | None]:
-        if pickup_time_slot and not pickup_date:
-            raise ValueError("Pickup date is required when pickup time slot is selected.")
-
+    ) -> tuple[datetime, str]:
         if not pickup_date:
-            return None, None
+            raise ValueError("Pickup date is required.")
+        if not (pickup_time_slot or "").strip():
+            raise ValueError("Pickup time slot is required.")
 
         tz = self._business_timezone()
         now_local = datetime.now(tz)
@@ -132,10 +131,8 @@ class OrderService:
         )
         normalized_pickup_date_utc = normalized_pickup_date_local.astimezone(timezone.utc)
 
-        if not pickup_time_slot:
-            return normalized_pickup_date_utc, None
-
-        start_hour, end_hour = self._parse_pickup_slot_hours(pickup_time_slot)
+        normalized_input_slot = pickup_time_slot.strip()
+        start_hour, end_hour = self._parse_pickup_slot_hours(normalized_input_slot)
         open_hour, close_hour = BUSINESS_HOURS_BY_WEEKDAY.get(
             pickup_day.weekday(),
             BUSINESS_HOURS_BY_WEEKDAY[0],
@@ -161,6 +158,20 @@ class OrderService:
 
         normalized_slot = f"{start_hour:02d}:00-{end_hour:02d}:00"
         return normalized_pickup_date_utc, normalized_slot
+
+    async def _restore_inventory_for_order(self, order: Order) -> None:
+        """Put reserved variant stock back when an unpaid order is cancelled/deleted."""
+        for item in order.items:
+            if not item.variant_id:
+                continue
+
+            result = await self.db.execute(
+                select(ProductVariant).where(ProductVariant.id == item.variant_id)
+            )
+            variant = result.scalar_one_or_none()
+            if variant:
+                variant.stock_quantity += item.quantity
+                variant.is_in_stock = True
 
     # ── Order Creation ───────────────────────────────────────────────────
     async def create_order(
@@ -414,16 +425,7 @@ class OrderService:
         if new_status == OrderStatus.COMPLETED:
             order.completed_at = datetime.now(timezone.utc)
         elif new_status == OrderStatus.CANCELLED:
-            # Restore inventory for cancelled orders
-            for item in order.items:
-                if item.variant_id:
-                    result = await self.db.execute(
-                        select(ProductVariant).where(ProductVariant.id == item.variant_id)
-                    )
-                    variant = result.scalar_one_or_none()
-                    if variant:
-                        variant.stock_quantity += item.quantity
-                        variant.is_in_stock = True
+            await self._restore_inventory_for_order(order)
             logger.info("Inventory restored for cancelled order: %s", order.order_number)
 
     async def reject_order_after_authorization(
@@ -527,17 +529,51 @@ class OrderService:
             order.payment.failure_code = failure_code
             order.payment.failure_message = failure_message
 
-        # Restore inventory on failed payment
-        for item in order.items:
-            if item.variant_id:
-                result = await self.db.execute(
-                    select(ProductVariant).where(ProductVariant.id == item.variant_id)
-                )
-                variant = result.scalar_one_or_none()
-                if variant:
-                    variant.stock_quantity += item.quantity
-                    variant.is_in_stock = True
+        await self._restore_inventory_for_order(order)
 
         await self.db.flush()
         logger.warning("Payment failed for order %s: %s", order.order_number, failure_message)
         return order
+
+    async def delete_customer_unpaid_order(
+        self,
+        order_id: uuid.UUID,
+        customer_id: uuid.UUID,
+    ) -> dict:
+        """Hard-delete an unpaid customer order and release reserved inventory."""
+        order = await self.get_order(order_id)
+        if not order or order.customer_id != customer_id:
+            return {"error": "Order not found", "status_code": 404}
+
+        deletable_statuses = {OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL}
+        if order.status not in deletable_statuses:
+            return {"error": "Only unpaid orders can be deleted.", "status_code": 400}
+
+        if order.payment and order.payment.status == PaymentStatus.SUCCEEDED:
+            return {"error": "Paid orders cannot be deleted.", "status_code": 400}
+
+        payment_intent_id = order.payment.stripe_payment_intent_id if order.payment else None
+        if payment_intent_id and order.payment and order.payment.status == PaymentStatus.PENDING:
+            try:
+                from app.services.stripe_service import StripeService
+
+                await StripeService.cancel_payment_intent(payment_intent_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to cancel payment intent while deleting %s: %s",
+                    order.order_number,
+                    str(exc),
+                )
+
+        await self._restore_inventory_for_order(order)
+        order_number = order.order_number
+
+        await self.db.delete(order)
+        await self.db.flush()
+
+        logger.info("Customer %s deleted unpaid order %s", customer_id, order_number)
+        return {
+            "order_id": str(order_id),
+            "order_number": order_number,
+            "deleted": True,
+        }

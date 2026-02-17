@@ -7,14 +7,23 @@ import base64
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_admin
-from app.core.database import get_db
+from app.core.database import async_session_factory, get_db
 from app.core.logging import get_logger
 from app.models.ml import ProcessedImage
 from app.models.product import ProductCategory
@@ -29,6 +38,60 @@ logger = get_logger("image_routes")
 # Max 10MB per image
 MAX_IMAGE_SIZE = 10 * 1024 * 1024
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+async def _run_process_image_task(
+    image_id: uuid.UUID,
+    category_value: str,
+    custom_prompt: str | None,
+):
+    """Run image processing in an isolated DB session."""
+    async with async_session_factory() as session:
+        try:
+            category = ImageCategory(category_value)
+            service = ImageProcessingService(session)
+            result = await service.process_image(
+                image_id=image_id,
+                category=category,
+                custom_prompt=custom_prompt,
+            )
+            if "error" in result:
+                logger.error(
+                    "Background image processing failed for %s: %s",
+                    image_id,
+                    result["error"],
+                )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("Background image processing crashed for %s", image_id)
+
+
+async def _run_reprocess_image_task(
+    image_id: uuid.UUID,
+    custom_prompt: str,
+    category_value: str | None,
+):
+    """Run reject/reprocess in an isolated DB session."""
+    async with async_session_factory() as session:
+        try:
+            service = ImageProcessingService(session)
+            category = ImageCategory(category_value) if category_value else None
+            result = await service.reject_and_reprocess(
+                image_id=image_id,
+                custom_prompt=custom_prompt,
+                category=category,
+            )
+            if "error" in result:
+                logger.error(
+                    "Background image reprocess failed for %s: %s",
+                    image_id,
+                    result["error"],
+                )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("Background image reprocess crashed for %s", image_id)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -170,6 +233,7 @@ async def upload_multiple_images(
 @router.post("/process")
 async def process_image(
     data: ProcessImageRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -195,17 +259,37 @@ async def process_image(
             detail=f"Invalid category '{data.category}'. Must be: {', '.join(c.value for c in ImageCategory)}",
         )
 
-    service = ImageProcessingService(db)
-    result = await service.process_image(
-        image_id=data.image_id,
-        category=category,
-        custom_prompt=data.custom_prompt,
+    result = await db.execute(
+        select(ProcessedImage).where(ProcessedImage.id == data.image_id)
+    )
+    image = result.scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    if image.processing_status in {"processing", "reprocessing"}:
+        return {
+            "image_id": str(data.image_id),
+            "status": image.processing_status,
+            "message": "Image is already being processed in background.",
+        }
+
+    image.processing_status = "processing"
+    image.error_message = None
+    await db.flush()
+
+    background_tasks.add_task(
+        _run_process_image_task,
+        data.image_id,
+        category.value,
+        data.custom_prompt,
     )
 
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-
-    return result
+    return {
+        "image_id": str(data.image_id),
+        "status": "processing",
+        "message": "Image processing started in background.",
+        "queued": True,
+    }
 
 
 @router.post("/process-batch")
@@ -213,6 +297,7 @@ async def process_batch(
     image_ids: list[uuid.UUID],
     category: str = Query(...),
     custom_prompt: str | None = Query(None),
+    background_tasks: BackgroundTasks = None,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -225,25 +310,39 @@ async def process_batch(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
 
-    service = ImageProcessingService(db)
-    results = []
-
+    queued_ids: list[str] = []
+    missing_ids: list[str] = []
     for image_id in image_ids:
-        result = await service.process_image(
-            image_id=image_id,
-            category=cat,
-            custom_prompt=custom_prompt,
+        result = await db.execute(
+            select(ProcessedImage).where(ProcessedImage.id == image_id)
         )
-        results.append(result)
+        image = result.scalar_one_or_none()
+        if not image:
+            missing_ids.append(str(image_id))
+            continue
 
-    succeeded = [r for r in results if "error" not in r]
-    failed = [r for r in results if "error" in r]
+        if image.processing_status in {"processing", "reprocessing"}:
+            queued_ids.append(str(image_id))
+            continue
+
+        image.processing_status = "processing"
+        image.error_message = None
+        queued_ids.append(str(image_id))
+        background_tasks.add_task(
+            _run_process_image_task,
+            image_id,
+            cat.value,
+            custom_prompt,
+        )
+    await db.flush()
 
     return {
-        "total": len(results),
-        "succeeded": len(succeeded),
-        "failed": len(failed),
-        "results": results,
+        "total": len(image_ids),
+        "queued": len(queued_ids),
+        "missing": len(missing_ids),
+        "queued_image_ids": queued_ids,
+        "missing_image_ids": missing_ids,
+        "message": "Batch image processing queued in background.",
     }
 
 
@@ -251,6 +350,7 @@ async def process_batch(
 @router.post("/reject")
 async def reject_and_reprocess(
     data: RejectImageRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -270,17 +370,39 @@ async def reject_and_reprocess(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid category: {data.category}")
 
-    service = ImageProcessingService(db)
-    result = await service.reject_and_reprocess(
-        image_id=data.image_id,
-        custom_prompt=data.custom_prompt,
-        category=cat,
+    result = await db.execute(
+        select(ProcessedImage).where(ProcessedImage.id == data.image_id)
+    )
+    image = result.scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    if image.processing_status in {"processing", "reprocessing"}:
+        return {
+            "image_id": str(data.image_id),
+            "status": image.processing_status,
+            "message": "Image is already being processed in background.",
+        }
+
+    image.processing_status = "reprocessing"
+    image.admin_chosen = None
+    image.rejection_reason = data.custom_prompt
+    image.error_message = None
+    await db.flush()
+
+    background_tasks.add_task(
+        _run_reprocess_image_task,
+        data.image_id,
+        data.custom_prompt,
+        cat.value if cat else None,
     )
 
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-
-    return result
+    return {
+        "image_id": str(data.image_id),
+        "status": "reprocessing",
+        "message": "Image reprocessing started in background.",
+        "queued": True,
+    }
 
 
 # ── Admin Choose ─────────────────────────────────────────────────────────────

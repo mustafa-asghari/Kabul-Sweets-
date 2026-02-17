@@ -17,6 +17,7 @@ interface OrderSummary {
   has_cake: boolean;
   total: string | number;
   pickup_date: string | null;
+  pickup_time_slot: string | null;
   created_at: string;
   items?: OrderItemSummary[];
 }
@@ -99,15 +100,24 @@ function toNumber(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toReadableDate(value: string | null) {
-  if (!value) {
+function toReadablePickup(dateValue: string | null, timeSlot: string | null) {
+  if (!dateValue) {
     return "Not set";
   }
-  const parsed = new Date(value);
+  const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) {
     return "Not set";
   }
-  return parsed.toLocaleDateString();
+
+  const dateLabel = parsed.toLocaleDateString("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  if (!timeSlot) {
+    return dateLabel;
+  }
+  return `${dateLabel} (${timeSlot})`;
 }
 
 function OrdersPageContent() {
@@ -119,6 +129,7 @@ function OrdersPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [orderActionErrors, setOrderActionErrors] = useState<Record<string, string>>({});
   const [payingCakeId, setPayingCakeId] = useState<string | null>(null);
   const [deletingCakeId, setDeletingCakeId] = useState<string | null>(null);
@@ -274,6 +285,39 @@ function OrdersPageContent() {
     [accessToken]
   );
 
+  const handleDeleteOrder = useCallback(
+    async (orderId: string, orderNumber: string) => {
+      if (!accessToken) {
+        return;
+      }
+
+      const ok = window.confirm(
+        `Delete order ${orderNumber}? This is permanent and cannot be undone.`
+      );
+      if (!ok) {
+        return;
+      }
+
+      setDeletingOrderId(orderId);
+      setOrderActionErrors((prev) => ({ ...prev, [orderId]: "" }));
+
+      try {
+        await apiRequest<{ message: string }>(`/api/v1/orders/my-orders/${orderId}`, {
+          method: "DELETE",
+          token: accessToken,
+        });
+        setOrders((prev) => prev.filter((order) => order.id !== orderId));
+      } catch (actionError) {
+        const detail =
+          actionError instanceof ApiError ? actionError.detail : "Unable to delete this order.";
+        setOrderActionErrors((prev) => ({ ...prev, [orderId]: detail }));
+      } finally {
+        setDeletingOrderId(null);
+      }
+    },
+    [accessToken]
+  );
+
   const handlePayNow = useCallback(async (cakeId: string) => {
     if (!accessToken) {
       return;
@@ -382,7 +426,11 @@ function OrdersPageContent() {
                     <p className="text-black font-semibold">No product orders yet.</p>
                   </div>
                 ) : (
-                  orders.map((order) => (
+                  orders.map((order) => {
+                    const payable = order.status === "pending_approval";
+                    const deletable = order.status === "pending" || order.status === "pending_approval";
+
+                    return (
                     <article key={order.id} className="rounded-[1.5rem] bg-white border border-[#eadcc8] p-5">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
@@ -404,7 +452,7 @@ function OrdersPageContent() {
                         </p>
                         <p>
                           <span className="font-semibold text-black">Pickup:</span>{" "}
-                          {toReadableDate(order.pickup_date)}
+                          {toReadablePickup(order.pickup_date, order.pickup_time_slot)}
                         </p>
                       </div>
                       <div className="mt-4">
@@ -434,23 +482,36 @@ function OrdersPageContent() {
                           </ul>
                         )}
                       </div>
-                      {order.status === "pending_approval" ? (
+                      {payable || deletable ? (
                         <div className="mt-4 flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={payingOrderId === order.id}
-                            onClick={() => handleOrderPayNow(order.id)}
-                            className="inline-flex rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#222] transition disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            {payingOrderId === order.id ? "Opening checkout..." : "Pay Now"}
-                          </button>
+                          {payable ? (
+                            <button
+                              type="button"
+                              disabled={payingOrderId === order.id || deletingOrderId === order.id}
+                              onClick={() => handleOrderPayNow(order.id)}
+                              className="inline-flex rounded-full bg-black px-4 py-2 text-xs font-semibold text-white hover:bg-[#222] transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {payingOrderId === order.id ? "Opening checkout..." : "Pay Now"}
+                            </button>
+                          ) : null}
+                          {deletable ? (
+                            <button
+                              type="button"
+                              disabled={deletingOrderId === order.id || payingOrderId === order.id}
+                              onClick={() => handleDeleteOrder(order.id, order.order_number)}
+                              className="inline-flex rounded-full border border-red-300 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {deletingOrderId === order.id ? "Deleting..." : "Delete Order"}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
                       {orderActionErrors[order.id] ? (
                         <p className="mt-3 text-xs font-medium text-red-600">{orderActionErrors[order.id]}</p>
                       ) : null}
                     </article>
-                  ))
+                    );
+                  })
                 )}
               </section>
 
@@ -494,8 +555,7 @@ function OrdersPageContent() {
                           </p>
                           <p>
                             <span className="font-semibold text-black">Pickup:</span>{" "}
-                            {toReadableDate(cake.requested_date)}
-                            {cake.time_slot ? ` (${cake.time_slot})` : ""}
+                            {toReadablePickup(cake.requested_date, cake.time_slot)}
                           </p>
                           <p>
                             <span className="font-semibold text-black">Reference:</span>{" "}
