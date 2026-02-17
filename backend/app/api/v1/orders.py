@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, log_admin_action, require_admin
 from app.core.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.order import OrderStatus
 from app.schemas.order import (
     OrderCreate,
@@ -40,7 +40,7 @@ async def create_order(
     service = OrderService(db)
     try:
         customer_id = current_user.id
-        if current_user.is_admin:
+        if current_user.role in (UserRole.ADMIN, UserRole.STAFF):
             matched_customer = await db.execute(
                 select(User.id).where(func.lower(User.email) == data.customer_email.strip().lower())
             )

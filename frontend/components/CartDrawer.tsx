@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPrice } from "@/data/storefront";
 import { ApiError, apiRequest } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
@@ -23,6 +23,38 @@ interface CustomCakeCartSummary {
   final_price: string | null;
   checkout_url: string | null;
   created_at: string;
+}
+
+const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
+const BUSINESS_HOURS_BY_WEEKDAY: Record<number, { openHour: number; closeHour: number }> = {
+  0: { openHour: 9, closeHour: 18 }, // Sunday
+  1: { openHour: 9, closeHour: 18 }, // Monday
+  2: { openHour: 9, closeHour: 18 }, // Tuesday
+  3: { openHour: 9, closeHour: 18 }, // Wednesday
+  4: { openHour: 9, closeHour: 18 }, // Thursday
+  5: { openHour: 9, closeHour: 19 }, // Friday
+  6: { openHour: 9, closeHour: 19 }, // Saturday
+};
+const PICKUP_BUFFER_HOURS = 1;
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+interface ThemedSelectProps {
+  value: string;
+  onChange: (next: string) => void;
+  options: SelectOption[];
+  className?: string;
+  placeholder?: string;
+}
+
+interface ThemedDatePickerProps {
+  value: string;
+  onChange: (next: string) => void;
+  className?: string;
+  minDateValue?: string;
 }
 
 function cakeStatusLabel(status: string) {
@@ -54,6 +86,343 @@ function toNumber(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInputValue(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+function isSameDate(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatDateLabel(value: string) {
+  const parsed = parseDateInputValue(value);
+  if (!parsed) {
+    return "Select date";
+  }
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function formatTimeLabel(hour: number, minute = 0) {
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return new Intl.DateTimeFormat("en-AU", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function getBusinessHoursForDate(date: Date) {
+  return BUSINESS_HOURS_BY_WEEKDAY[date.getDay()] ?? BUSINESS_HOURS_BY_WEEKDAY[1];
+}
+
+function getPickupHoursForDate(date: Date, now = new Date()) {
+  const { openHour, closeHour } = getBusinessHoursForDate(date);
+  let startHour = Math.min(closeHour - 1, openHour + PICKUP_BUFFER_HOURS);
+
+  if (isSameDate(date, now)) {
+    const nextWholeHour =
+      now.getMinutes() > 0 || now.getSeconds() > 0 || now.getMilliseconds() > 0
+        ? now.getHours() + 1
+        : now.getHours();
+    startHour = Math.max(startHour, nextWholeHour);
+  }
+
+  return { startHour, closeHour };
+}
+
+function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
+  const { startHour, closeHour } = getPickupHoursForDate(date);
+  const options: SelectOption[] = [];
+  for (let hour = startHour; hour < closeHour; hour += 1) {
+    const fromValue = `${String(hour).padStart(2, "0")}:00`;
+    const toValue = `${String(hour + 1).padStart(2, "0")}:00`;
+    options.push({
+      value: `${fromValue}-${toValue}`,
+      label: `${formatTimeLabel(hour)} - ${formatTimeLabel(hour + 1)}`,
+    });
+  }
+  return options;
+}
+
+function formatBusinessHoursText(date: Date) {
+  const { openHour, closeHour } = getBusinessHoursForDate(date);
+  return `${formatTimeLabel(openHour)} - ${formatTimeLabel(closeHour)}`;
+}
+
+function ThemedSelect({
+  value,
+  onChange,
+  options,
+  className,
+  placeholder = "Select option",
+}: ThemedSelectProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (event.target instanceof Node && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, []);
+
+  return (
+    <div ref={rootRef} className={`relative ${className || ""}`}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="w-full rounded-lg border border-[#e8dcc9] bg-white px-3 py-2 text-left text-sm text-gray-700 outline-none transition hover:border-[#d8c6ad] focus:ring-2 focus:ring-accent/25"
+      >
+        <span>{selected?.label || placeholder}</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 material-symbols-outlined text-[18px]">
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="absolute z-40 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-[#e5d5bf] bg-[#fbf7f0] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
+          <button
+            type="button"
+            role="option"
+            aria-selected={value === ""}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+              value === "" ? "bg-[#f4e7d2] text-black font-semibold" : "text-gray-700 hover:bg-[#f1e4d0]"
+            }`}
+          >
+            <span>No preference</span>
+          </button>
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                  isSelected ? "bg-[#f4e7d2] text-black font-semibold" : "text-gray-700 hover:bg-[#f1e4d0]"
+                }`}
+              >
+                <span>{option.label}</span>
+                {isSelected ? (
+                  <span className="material-symbols-outlined text-[17px] text-[#ad751c]">check</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDatePickerProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const selectedDate = useMemo(() => parseDateInputValue(value), [value]);
+  const minimumDate = useMemo(() => {
+    if (!minDateValue) return null;
+    return parseDateInputValue(minDateValue);
+  }, [minDateValue]);
+  const [viewMonth, setViewMonth] = useState(() => {
+    const initial = parseDateInputValue(value) || new Date();
+    return new Date(initial.getFullYear(), initial.getMonth(), 1);
+  });
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (event.target instanceof Node && !rootRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    setViewMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }, [selectedDate]);
+
+  const calendarDays = useMemo(() => {
+    const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    const firstWeekdayMonday = (firstOfMonth.getDay() + 6) % 7;
+    const gridStart = new Date(firstOfMonth);
+    gridStart.setDate(firstOfMonth.getDate() - firstWeekdayMonday);
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const day = new Date(gridStart);
+      day.setDate(gridStart.getDate() + index);
+      return {
+        date: day,
+        isCurrentMonth: day.getMonth() === viewMonth.getMonth(),
+      };
+    });
+  }, [viewMonth]);
+
+  const monthLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-AU", {
+        month: "long",
+        year: "numeric",
+      }).format(viewMonth),
+    [viewMonth]
+  );
+
+  return (
+    <div ref={rootRef} className={`relative ${className || ""}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="w-full rounded-lg border border-[#e8dcc9] bg-white px-3 py-2 text-left text-sm text-gray-700 outline-none transition hover:border-[#d8c6ad] focus:ring-2 focus:ring-accent/25"
+      >
+        <span>{formatDateLabel(value)}</span>
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 material-symbols-outlined text-[18px]">
+          calendar_month
+        </span>
+      </button>
+
+      {open ? (
+        <div className="absolute z-40 mt-2 w-[310px] rounded-2xl border border-[#e5d5bf] bg-[#fbf7f0] p-4 shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
+          <div className="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() =>
+                setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
+              }
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 transition hover:bg-[#f4e7d2]"
+              aria-label="Previous month"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+            </button>
+
+            <p className="text-sm font-bold text-black">{monthLabel}</p>
+
+            <button
+              type="button"
+              onClick={() =>
+                setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
+              }
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 transition hover:bg-[#f4e7d2]"
+              aria-label="Next month"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-gray-500">
+            {WEEKDAY_LABELS.map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
+            ))}
+          </div>
+
+          <div className="mt-2 grid grid-cols-7 gap-1">
+            {calendarDays.map((entry) => {
+              const entryValue = toDateInputValue(entry.date);
+              const isSelected = value === entryValue;
+              const isDisabled = minimumDate ? entry.date < minimumDate : false;
+              return (
+                <button
+                  key={entryValue}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    onChange(entryValue);
+                    setOpen(false);
+                  }}
+                  className={`h-9 rounded-lg text-sm transition ${
+                    isSelected
+                      ? "bg-[#ad751c] font-semibold text-white"
+                      : isDisabled
+                        ? "cursor-not-allowed text-gray-300"
+                        : entry.isCurrentMonth
+                          ? "text-gray-800 hover:bg-[#f4e7d2]"
+                          : "text-gray-400 hover:bg-[#f4e7d2]"
+                  }`}
+                >
+                  {entry.date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="text-xs font-semibold text-gray-600 transition hover:text-black"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                onChange(toDateInputValue(today));
+                setOpen(false);
+              }}
+              className="text-xs font-semibold text-[#ad751c] transition hover:text-[#8f5f13]"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const { accessToken, isAuthenticated, user } = useAuth();
   const {
@@ -75,6 +444,25 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [customCakes, setCustomCakes] = useState<CustomCakeCartSummary[]>([]);
   const [loadingCustomCakes, setLoadingCustomCakes] = useState(false);
+  const minimumPickupDate = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return toDateInputValue(today);
+  }, []);
+  const selectedPickupDate = useMemo(() => parseDateInputValue(pickupDate), [pickupDate]);
+  const pickupTimeSlotOptions = useMemo(
+    () => (selectedPickupDate ? buildTimeSlotOptionsForDate(selectedPickupDate) : []),
+    [selectedPickupDate]
+  );
+  const pickupHoursHint = useMemo(() => {
+    if (!selectedPickupDate) {
+      return "Select a date to see available pickup hours.";
+    }
+    if (pickupTimeSlotOptions.length === 0) {
+      return "No pickup slots left for this date. Please choose another day.";
+    }
+    return `Available pickup hours: ${formatBusinessHoursText(selectedPickupDate)}`;
+  }, [pickupTimeSlotOptions.length, selectedPickupDate]);
 
   const openAuthPrompt = () => {
     window.dispatchEvent(new Event("open-auth-modal"));
@@ -119,13 +507,52 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
     };
   }, [open, isAuthenticated, accessToken]);
 
+  useEffect(() => {
+    if (!pickupTimeSlot) {
+      return;
+    }
+    const stillValid = pickupTimeSlotOptions.some((option) => option.value === pickupTimeSlot);
+    if (!stillValid) {
+      setPickupTimeSlot("");
+    }
+  }, [pickupTimeSlot, pickupTimeSlotOptions]);
+
   const handleCheckout = async () => {
     setCheckoutError(null);
+    const selectedDate = parseDateInputValue(pickupDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectedDate && selectedDate < today) {
+      setCheckoutError("Pickup date cannot be in the past.");
+      return;
+    }
+
+    if (pickupTimeSlot && !selectedDate) {
+      setCheckoutError("Please select a pickup date before choosing a pickup time slot.");
+      return;
+    }
+
+    if (selectedDate) {
+      const validSlots = buildTimeSlotOptionsForDate(selectedDate);
+      if (validSlots.length === 0 && pickupTimeSlot) {
+        setCheckoutError("No pickup slots left for the selected date. Please choose another date.");
+        return;
+      }
+      if (pickupTimeSlot && !validSlots.some((slot) => slot.value === pickupTimeSlot)) {
+        setCheckoutError("The selected pickup time is no longer available. Please choose a new slot.");
+        return;
+      }
+    }
+
+    const selectedTimeSlotLabel =
+      pickupTimeSlotOptions.find((option) => option.value === pickupTimeSlot)?.label || pickupTimeSlot;
+
     try {
       const result = await checkout({
         customerPhone,
         pickupDate,
-        pickupTimeSlot,
+        pickupTimeSlot: selectedTimeSlotLabel,
         specialInstructions,
       });
       onClose();
@@ -282,22 +709,23 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                       </label>
                       <label className="block text-xs text-gray-600">
                         Pickup Date (optional)
-                        <input
-                          type="date"
+                        <ThemedDatePicker
+                          className="mt-1"
                           value={pickupDate}
-                          onChange={(event) => setPickupDate(event.target.value)}
-                          className="mt-1 w-full rounded-lg border border-[#e8dcc9] px-3 py-2 text-sm"
+                          onChange={(next) => setPickupDate(next)}
+                          minDateValue={minimumPickupDate}
                         />
                       </label>
                       <label className="block text-xs text-gray-600">
                         Pickup Time Slot (optional)
-                        <input
-                          type="text"
+                        <ThemedSelect
+                          className="mt-1"
                           value={pickupTimeSlot}
-                          onChange={(event) => setPickupTimeSlot(event.target.value)}
-                          placeholder="e.g. 3:00 PM - 4:00 PM"
-                          className="mt-1 w-full rounded-lg border border-[#e8dcc9] px-3 py-2 text-sm"
+                          onChange={(next) => setPickupTimeSlot(next)}
+                          options={pickupTimeSlotOptions}
+                          placeholder={selectedPickupDate ? "Select pickup time" : "Select date first"}
                         />
+                        <span className="mt-1 block text-[11px] text-gray-500">{pickupHoursHint}</span>
                       </label>
                       <label className="block text-xs text-gray-600">
                         Special Instructions
