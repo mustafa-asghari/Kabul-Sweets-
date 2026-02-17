@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -50,8 +50,10 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new customer account."""
+    normalized_email = user_data.email.strip().lower()
+
     # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     if result.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -60,7 +62,7 @@ async def register(
 
     # Create user
     user = User(
-        email=user_data.email,
+        email=normalized_email,
         hashed_password=hash_password(user_data.password),
         full_name=user_data.full_name,
         phone=user_data.phone,
@@ -88,7 +90,8 @@ async def login(
     await check_rate_limit(request, limit=10, window=60)
 
     # Find user
-    result = await db.execute(select(User).where(User.email == login_data.email))
+    normalized_email = login_data.email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(login_data.password, user.hashed_password):
@@ -217,7 +220,8 @@ async def forgot_password(
         "If an account exists for this email, a password reset link has been sent."
     )
 
-    result = await db.execute(select(User).where(User.email == payload.email))
+    normalized_email = payload.email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         return MessageResponse(message=generic_message)
