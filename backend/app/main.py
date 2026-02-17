@@ -61,11 +61,15 @@ async def lifespan(app: FastAPI):
             CakePricePrediction, ServingEstimate, CustomCake, ProcessedImage, MLModelVersion,
         )
 
-        # Create tables if they don't exist
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-            await conn.execute(text(ORDER_STATUS_ENUM_SYNC_SQL))
-        logger.info("✅ Database tables verified")
+        # In production, rely on Alembic migrations exclusively.
+        # In dev/test, auto-create tables for convenience.
+        if settings.is_production:
+            logger.info("🔒 Production mode — using Alembic migrations only (skipping create_all)")
+        else:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                await conn.execute(text(ORDER_STATUS_ENUM_SYNC_SQL))
+            logger.info("✅ Database tables verified (dev mode — create_all)")
 
         # Check if database needs seeding (no users = empty DB)
         # Auto-seeding is disabled in production for security.

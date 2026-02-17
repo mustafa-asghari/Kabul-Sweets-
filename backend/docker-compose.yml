@@ -45,8 +45,8 @@ services:
     environment:
       DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
       REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
-      APP_ENV: ${APP_ENV:-development}
-      DEBUG: ${DEBUG:-true}
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
       CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     depends_on:
@@ -54,9 +54,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   # ── Celery Worker (Background Jobs) ─────────────────────────────────
   celery_worker:
@@ -71,14 +69,12 @@ services:
       CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       APP_ENV: ${APP_ENV:-development}
-      DEBUG: ${DEBUG:-true}
+      DEBUG: ${DEBUG:-false}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
     command:
       [
         "celery",
@@ -102,14 +98,12 @@ services:
       CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       APP_ENV: ${APP_ENV:-development}
-      DEBUG: ${DEBUG:-true}
+      DEBUG: ${DEBUG:-false}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
     command:
       [
         "celery",

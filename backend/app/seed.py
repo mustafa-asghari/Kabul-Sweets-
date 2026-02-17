@@ -376,4 +376,10 @@ async def seed_database():
 
 
 if __name__ == "__main__":
+    import os
+
+    if os.getenv("APP_ENV") == "production":
+        print("❌ Seeding is disabled in production. Set APP_ENV to 'development' to seed.")
+        raise SystemExit(1)
+
     asyncio.run(seed_database())
