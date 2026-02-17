@@ -3,14 +3,15 @@ LLM Description Service — Phase ML-3.
 Auto-generates marketing descriptions, short descriptions, and SEO meta.
 """
 
+import json
 import os
 
 from app.core.logging import get_logger
 
 logger = get_logger("llm_service")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
 
 
 class DescriptionService:
@@ -38,7 +39,7 @@ class DescriptionService:
         - long (2-3 paragraphs, for product page)
         - seo (meta description, 155 chars max)
         """
-        if not OPENAI_API_KEY:
+        if not GEMINI_API_KEY:
             return self._generate_fallback(flavor, ingredients, decoration_style, event_type)
 
         try:
@@ -57,41 +58,59 @@ PRODUCT DETAILS:
 
 TONE: {tone_instruction}
 
-BRAND: Kabul Sweets — an authentic Afghan bakery in Australia
+BRAND: Kabul Sweets - an authentic Afghan bakery in Australia
 
 Respond ONLY in this exact JSON format (no markdown, no code blocks):
 {{"short": "One to two sentence description for product cards.", "long": "Two to three paragraph marketing description for the product page. Include sensory details about taste, texture, and the experience.", "seo": "Meta description under 155 characters for search engines."}}"""
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENAI_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_TEXT_MODEL}:generateContent",
+                    params={"key": GEMINI_API_KEY},
                     json={
-                        "model": AI_MODEL,
-                        "messages": [
-                            {"role": "system", "content": "You are a premium bakery marketing copywriter. Respond only with valid JSON."},
-                            {"role": "user", "content": prompt},
+                        "contents": [
+                            {
+                                "parts": [
+                                    {
+                                        "text": (
+                                            "You are a premium bakery marketing copywriter. "
+                                            "Respond only with valid JSON.\n\n"
+                                            f"{prompt}"
+                                        )
+                                    }
+                                ]
+                            }
                         ],
-                        "temperature": 0.7,
-                        "max_tokens": 500,
+                        "generationConfig": {
+                            "temperature": 0.7,
+                            "maxOutputTokens": 700,
+                            "responseMimeType": "application/json",
+                        },
                     },
                     timeout=30.0,
                 )
                 response.raise_for_status()
                 data = response.json()
-                text = data["choices"][0]["message"]["content"]
+                text = (
+                    data.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "")
+                )
 
-                import json
-                result = json.loads(text)
+                parsed_text = text.strip()
+                if parsed_text.startswith("```"):
+                    parsed_text = parsed_text.strip("`")
+                    if parsed_text.lower().startswith("json"):
+                        parsed_text = parsed_text[4:].strip()
+
+                result = json.loads(parsed_text)
                 return {
                     "short": result.get("short", ""),
                     "long": result.get("long", ""),
                     "seo": result.get("seo", "")[:155],
-                    "generated_by": "ai",
-                    "model": AI_MODEL,
+                    "generated_by": "gemini",
+                    "model": GEMINI_TEXT_MODEL,
                 }
 
         except Exception as e:

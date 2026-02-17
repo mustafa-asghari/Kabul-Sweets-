@@ -6,6 +6,7 @@ Falls back to synchronous tasks when Celery is unavailable.
 
 import os
 from types import SimpleNamespace
+from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -24,6 +25,77 @@ try:
     from celery import Celery
 except ModuleNotFoundError:
     Celery = None
+
+
+def _build_redis_url(base_url: str, db: int) -> str:
+    """
+    Build a Redis URL that reuses host/auth/query from base_url
+    but switches to the requested DB index.
+    """
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"redis", "rediss"}:
+        return base_url
+    return urlunparse(parsed._replace(path=f"/{db}"))
+
+
+def _is_local_redis_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _resolve_redis_base_url() -> str:
+    redis_url = os.getenv("REDIS_URL")
+    docker_redis_url = os.getenv("DOCKER_REDIS_URL")
+
+    # Safety: prefer docker/non-local URL if REDIS_URL is localhost.
+    if redis_url and docker_redis_url:
+        if _is_local_redis_url(redis_url) and not _is_local_redis_url(docker_redis_url):
+            return docker_redis_url
+        return redis_url
+
+    if redis_url:
+        return redis_url
+    if docker_redis_url:
+        return docker_redis_url
+    return "redis://localhost:6379/0"
+
+
+def _resolve_celery_url(primary_env: str, fallback_env: str, db: int) -> str:
+    """
+    Resolve Celery URLs in this order:
+    1) explicit env (CELERY_*)
+    2) docker-specific env (DOCKER_CELERY_*)
+    3) derived from REDIS_URL / DOCKER_REDIS_URL by DB index
+    4) localhost fallback
+    """
+    redis_base = _resolve_redis_base_url()
+    explicit = os.getenv(primary_env)
+    if explicit:
+        # Safety: if Celery URL points to localhost but REDIS_URL points to
+        # a remote/service host, follow REDIS_URL to avoid localhost failures.
+        if _is_local_redis_url(explicit) and not _is_local_redis_url(redis_base):
+            return _build_redis_url(redis_base, db)
+        return explicit
+
+    fallback = os.getenv(fallback_env)
+    if fallback:
+        if _is_local_redis_url(fallback) and not _is_local_redis_url(redis_base):
+            return _build_redis_url(redis_base, db)
+        return fallback
+
+    return _build_redis_url(redis_base, db)
+
+
+CELERY_BROKER_URL = _resolve_celery_url(
+    "CELERY_BROKER_URL",
+    "DOCKER_CELERY_BROKER_URL",
+    db=1,
+)
+CELERY_RESULT_BACKEND = _resolve_celery_url(
+    "CELERY_RESULT_BACKEND",
+    "DOCKER_CELERY_RESULT_BACKEND",
+    db=2,
+)
 
 
 class _SyncBoundTask:
@@ -71,8 +143,8 @@ class _SyncCeleryApp:
 if Celery is not None:
     celery_app = Celery(
         "kabul_sweets",
-        broker=os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1"),
-        backend=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2"),
+        broker=CELERY_BROKER_URL,
+        backend=CELERY_RESULT_BACKEND,
     )
 else:
     celery_app = _SyncCeleryApp()
