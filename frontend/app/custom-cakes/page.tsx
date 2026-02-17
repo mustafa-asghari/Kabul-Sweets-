@@ -559,22 +559,28 @@ export default function CustomCakesPage() {
     });
   }, [timeSlotOptions]);
 
-  const loadMyRequests = useCallback(async () => {
+  const loadMyRequests = useCallback(async (background = false) => {
     if (!accessToken || !isAuthenticated) {
       setMyRequests([]);
       return;
     }
 
-    setLoadingRequests(true);
+    if (!background) {
+      setLoadingRequests(true);
+    }
     try {
       const data = await apiRequest<MyCakeSummary[]>("/api/v1/custom-cakes/my-cakes", {
         token: accessToken,
       });
       setMyRequests(data);
     } catch {
-      setMyRequests([]);
+      if (!background) {
+        setMyRequests([]);
+      }
     } finally {
-      setLoadingRequests(false);
+      if (!background) {
+        setLoadingRequests(false);
+      }
     }
   }, [accessToken, isAuthenticated]);
 
@@ -582,8 +588,22 @@ export default function CustomCakesPage() {
     if (authLoading) {
       return;
     }
-    loadMyRequests();
+    loadMyRequests(false);
   }, [authLoading, loadMyRequests]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !accessToken) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadMyRequests(true);
+      }
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, [authLoading, isAuthenticated, accessToken, loadMyRequests]);
 
   useEffect(() => {
     if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
@@ -1039,7 +1059,7 @@ export default function CustomCakesPage() {
                 <h3 className="text-xl font-extrabold tracking-tight text-black">My custom cake requests</h3>
                 <button
                   type="button"
-                  onClick={loadMyRequests}
+                  onClick={() => loadMyRequests(false)}
                   className="rounded-full border border-[#eadcc8] px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-cream-dark transition"
                 >
                   Refresh

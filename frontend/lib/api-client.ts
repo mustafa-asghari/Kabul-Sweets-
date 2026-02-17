@@ -61,6 +61,7 @@ export async function apiRequest<T>(
   try {
     response = await fetch(endpoint, {
       method,
+      cache: "no-store",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

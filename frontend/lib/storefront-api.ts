@@ -31,29 +31,21 @@ interface ApiProductList {
 }
 
 const INTERNAL_API_BASE_URL = (() => {
+  const fallback = "http://localhost:8000";
   const fromEnv =
     process.env.INTERNAL_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.API_BASE_URL;
-  if (!fromEnv) {
-    throw new Error(
-      "Missing API base URL. Set INTERNAL_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL."
-    );
-  }
-  return fromEnv.replace(/\/+$/, "");
+  return (fromEnv || fallback).replace(/\/+$/, "");
 })();
 
 const PUBLIC_API_BASE_URL = (() => {
+  const fallback = "http://localhost:8000";
   const fromEnv =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.INTERNAL_API_BASE_URL ||
     process.env.API_BASE_URL;
-  if (!fromEnv) {
-    throw new Error(
-      "Missing public API base URL. Set NEXT_PUBLIC_API_BASE_URL."
-    );
-  }
-  return fromEnv.replace(/\/+$/, "");
+  return (fromEnv || fallback).replace(/\/+$/, "");
 })();
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -227,7 +219,7 @@ function createProductsUrl(params?: {
   return serialized ? `/api/v1/products/?${serialized}` : "/api/v1/products/";
 }
 
-async function fetchJson<T>(path: string, revalidateSeconds = 60): Promise<T | null> {
+async function fetchJson<T>(path: string, revalidateSeconds = 5): Promise<T | null> {
   try {
     const response = await fetch(`${getInternalApiBaseUrl()}${path}`, {
       method: "GET",
@@ -265,7 +257,7 @@ export async function fetchStoreProducts(params?: {
       skip: params?.skip,
       limit: params?.limit ?? 100,
     }),
-    30
+    5
   );
   if (!data) {
     return [] as StorefrontProduct[];
@@ -276,7 +268,7 @@ export async function fetchStoreProducts(params?: {
 export async function fetchStoreProductBySlug(slug: string) {
   const data = await fetchJson<ApiProductList>(
     `/api/v1/products/slug/${encodeURIComponent(slug)}`,
-    30
+    5
   );
   if (!data) {
     return null;

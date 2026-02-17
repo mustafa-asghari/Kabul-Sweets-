@@ -39,6 +39,11 @@ class AdminOrderDecisionRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
+class ConfirmCustomCakePaymentRequest(BaseModel):
+    custom_cake_id: uuid.UUID
+    session_id: str = Field(..., min_length=1, max_length=255)
+
+
 def _order_to_email_payload(order, rejection_reason: str | None = None) -> dict:
     return {
         "order_id": str(order.id),
@@ -153,6 +158,69 @@ async def create_checkout_session(
         order_id=order.id,
         order_number=order.order_number,
     )
+
+
+@router.post("/custom-cakes/confirm")
+async def confirm_custom_cake_payment(
+    data: ConfirmCustomCakePaymentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Confirm custom cake payment from checkout success redirect.
+    This provides a fallback when webhook delivery is delayed/unavailable.
+    """
+    from app.models.ml import CustomCakeStatus
+    from app.services.custom_cake_service import CustomCakeService
+
+    cake_service = CustomCakeService(db)
+    cake = await cake_service.get_custom_cake(data.custom_cake_id)
+    if not cake:
+        raise HTTPException(status_code=404, detail="Custom cake not found")
+
+    if cake.status in {
+        CustomCakeStatus.PAID,
+        CustomCakeStatus.IN_PRODUCTION,
+        CustomCakeStatus.COMPLETED,
+    }:
+        return {
+            "custom_cake_id": str(cake.id),
+            "status": cake.status.value,
+            "source": "already_marked",
+        }
+
+    session_id = data.session_id.strip()
+
+    if session_id.startswith("test_cake_"):
+        expected = f"test_cake_{data.custom_cake_id}"
+        if session_id != expected:
+            raise HTTPException(status_code=400, detail="Session does not match this custom cake")
+    else:
+        try:
+            session = await StripeService.retrieve_checkout_session(session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Stripe checkout session lookup failed (%s): %s", session_id, str(exc))
+            raise HTTPException(status_code=502, detail="Unable to verify payment with Stripe") from exc
+
+        metadata = session.get("metadata", {}) or {}
+        if str(metadata.get("custom_cake_id", "")).strip() != str(data.custom_cake_id):
+            raise HTTPException(status_code=400, detail="Stripe session does not belong to this custom cake")
+
+        payment_status = str(session.get("payment_status", "") or "").lower()
+        session_status = str(session.get("status", "") or "").lower()
+        if payment_status != "paid" and session_status != "complete":
+            raise HTTPException(status_code=400, detail="Stripe session is not paid yet")
+
+    result = await cake_service.mark_paid(data.custom_cake_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return {
+        "custom_cake_id": str(data.custom_cake_id),
+        "status": result["status"],
+        "source": "success_fallback",
+    }
 
 
 # ── Deposit Endpoints ────────────────────────────────────────────────────────

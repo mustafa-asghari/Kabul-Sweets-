@@ -7,6 +7,7 @@ Category-specific prompts for different product types.
 Admin can reject results and add custom prompts for re-processing.
 """
 
+import asyncio
 import base64
 import uuid
 from datetime import datetime, timezone
@@ -422,41 +423,64 @@ class ImageProcessingService:
             logger.warning("Gemini API key not configured — returning mock result")
             return None, "Gemini API key not configured. Set GEMINI_API_KEY in .env"
 
-        try:
-            import httpx
+        import httpx
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-            # Build request — each image is a SEPARATE, ISOLATED call
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "inlineData": {
-                                    "mimeType": mime_type,
-                                    "data": image_b64,
-                                }
-                            },
-                            {
-                                "text": prompt,
-                            },
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "responseModalities": ["image", "text"],
-                    "temperature": 0.2,
-                },
-            }
+        # Build request — each image is a SEPARATE, ISOLATED call
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": mime_type,
+                                "data": image_b64,
+                            }
+                        },
+                        {
+                            "text": prompt,
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseModalities": ["image", "text"],
+                "temperature": 0.2,
+            },
+        }
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url,
-                    params={"key": GEMINI_API_KEY},
-                    json=payload,
-                    timeout=120.0,  # Image processing can take time
-                )
+        max_attempts = 3
+        timeout = httpx.Timeout(120.0, connect=20.0)
+        last_error: str | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout, http2=False) as client:
+                    response = await client.post(
+                        url,
+                        params={"key": GEMINI_API_KEY},
+                        json=payload,
+                    )
+
+                # Retry transient upstream statuses
+                if response.status_code in (429, 500, 502, 503, 504):
+                    error_body = response.text[:500] if response.text else "Unknown"
+                    last_error = f"Gemini API error ({response.status_code}): {error_body}"
+                    if attempt < max_attempts:
+                        wait_seconds = 1.5 * (2 ** (attempt - 1))
+                        logger.warning(
+                            "Gemini transient HTTP %d (attempt %d/%d). Retrying in %.1fs",
+                            response.status_code,
+                            attempt,
+                            max_attempts,
+                            wait_seconds,
+                        )
+                        await asyncio.sleep(wait_seconds)
+                        continue
+                    logger.error("Gemini API error (%d): %s", response.status_code, error_body)
+                    return None, last_error
+
                 response.raise_for_status()
                 data = response.json()
 
@@ -479,10 +503,35 @@ class ImageProcessingService:
 
                 return None, "Gemini response contained no image data"
 
-        except httpx.HTTPStatusError as e:
-            error_body = e.response.text[:500] if e.response else "Unknown"
-            logger.error("Gemini API error (%d): %s", e.response.status_code, error_body)
-            return None, f"Gemini API error ({e.response.status_code}): {error_body}"
-        except Exception as e:
-            logger.error("Gemini API call failed: %s", str(e))
-            return None, f"Gemini API call failed: {str(e)}"
+            except httpx.HTTPStatusError as e:
+                error_body = e.response.text[:500] if e.response else "Unknown"
+                last_error = f"Gemini API error ({e.response.status_code}): {error_body}"
+                logger.error("Gemini API error (%d): %s", e.response.status_code, error_body)
+                return None, last_error
+            except (
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.ReadTimeout,
+                httpx.ConnectError,
+                httpx.WriteError,
+            ) as e:
+                last_error = f"Gemini API call failed: {str(e)}"
+                if attempt < max_attempts:
+                    wait_seconds = 1.5 * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Gemini transport error on attempt %d/%d: %s. Retrying in %.1fs",
+                        attempt,
+                        max_attempts,
+                        str(e),
+                        wait_seconds,
+                    )
+                    await asyncio.sleep(wait_seconds)
+                    continue
+                logger.error("Gemini API call failed after %d attempts: %s", max_attempts, str(e))
+                return None, last_error
+            except Exception as e:
+                last_error = f"Gemini API call failed: {str(e)}"
+                logger.error("Gemini API call failed: %s", str(e))
+                return None, last_error
+
+        return None, last_error or "Gemini API call failed for unknown reason"

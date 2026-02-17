@@ -242,3 +242,25 @@ class StripeService:
         except Exception as e:
             logger.error("Webhook processing error: %s", str(e))
             return None
+
+    @staticmethod
+    async def retrieve_checkout_session(session_id: str) -> dict:
+        """Retrieve a Checkout Session by ID."""
+        if not STRIPE_AVAILABLE:
+            if session_id.startswith("test_"):
+                return {
+                    "id": session_id,
+                    "status": "complete",
+                    "payment_status": "paid",
+                    "metadata": {},
+                }
+            raise ValueError("Stripe is not configured")
+
+        session = stripe.checkout.Session.retrieve(session_id)
+        return {
+            "id": session.id,
+            "status": getattr(session, "status", None),
+            "payment_status": getattr(session, "payment_status", None),
+            "metadata": dict(getattr(session, "metadata", {}) or {}),
+            "customer_email": getattr(session, "customer_email", None),
+        }

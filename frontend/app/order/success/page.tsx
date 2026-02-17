@@ -1,10 +1,13 @@
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import CustomCakePaymentConfirm from "@/components/CustomCakePaymentConfirm";
 
 interface OrderSuccessPageProps {
   searchParams: Promise<{
     payment_type?: string;
+    session_id?: string;
+    custom_cake_id?: string;
   }>;
 }
 
@@ -12,6 +15,8 @@ export default async function OrderSuccessPage({ searchParams }: OrderSuccessPag
   const params = await searchParams;
   const paymentType = (params.payment_type || "").toLowerCase();
   const isCustomCakePayment = paymentType === "custom_cake";
+  const sessionId = params.session_id;
+  const customCakeId = params.custom_cake_id;
 
   const title = isCustomCakePayment ? "Payment Received" : "Payment Authorized";
   const description = isCustomCakePayment
@@ -30,6 +35,9 @@ export default async function OrderSuccessPage({ searchParams }: OrderSuccessPag
             <p className="mt-3 text-sm text-gray-600">
               {description}
             </p>
+            {isCustomCakePayment ? (
+              <CustomCakePaymentConfirm customCakeId={customCakeId} sessionId={sessionId} />
+            ) : null}
             <div className="mt-6 flex items-center justify-center gap-3">
               <Link
                 href="/orders"

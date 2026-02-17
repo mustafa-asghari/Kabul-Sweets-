@@ -2,6 +2,7 @@
 Telegram background tasks for admin alerts and triage actions.
 """
 
+from datetime import date, datetime
 from decimal import Decimal
 
 from app.celery_app import celery_app
@@ -18,6 +19,26 @@ def _as_money(value: str | int | float | Decimal | None) -> str:
         return "$0.00"
     amount = Decimal(str(value))
     return f"${amount:.2f}"
+
+
+def _format_date_only(value: str | date | datetime | None) -> str:
+    if value is None:
+        return "Not provided"
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+
+    text = str(value).strip()
+    if not text:
+        return "Not provided"
+
+    # Prefer YYYY-MM-DD for ISO-like date-time strings.
+    if "T" in text:
+        return text.split("T", 1)[0]
+    if " " in text and len(text.split(" ", 1)[0]) == 10:
+        return text.split(" ", 1)[0]
+    return text
 
 
 def _build_order_message(order_data: dict) -> str:
@@ -60,7 +81,7 @@ def _build_order_markup(order_id: str) -> dict:
 
 
 def _build_custom_cake_message(cake_data: dict) -> str:
-    requested_date = cake_data.get("requested_date") or "Not provided"
+    requested_date = _format_date_only(cake_data.get("requested_date"))
     time_slot = cake_data.get("time_slot") or "Not provided"
     servings = cake_data.get("predicted_servings") or "N/A"
     predicted_price = _as_money(cake_data.get("predicted_price"))
@@ -92,7 +113,10 @@ def _build_custom_cake_markup(cake_id: str) -> dict:
             [
                 {"text": "✅ Approve", "callback_data": f"cake:approve:{cake_id}"},
                 {"text": "❌ Reject", "callback_data": f"cake:reject:{cake_id}"},
-            ]
+            ],
+            [
+                {"text": "💵 Edit Final Price", "callback_data": f"cake:editprice:{cake_id}"},
+            ],
         ]
     }
 

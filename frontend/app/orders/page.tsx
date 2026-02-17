@@ -98,7 +98,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (background = false) => {
     if (!accessToken || !isAuthenticated) {
       setOrders([]);
       setCustomCakes([]);
@@ -106,8 +106,10 @@ export default function OrdersPage() {
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [ordersData, cakesData] = await Promise.all([
         apiRequest<OrderSummary[]>("/api/v1/orders/my-orders", {
@@ -121,15 +123,19 @@ export default function OrdersPage() {
       setOrders(ordersData);
       setCustomCakes(cakesData);
     } catch (fetchError) {
-      if (fetchError instanceof ApiError) {
-        setError(fetchError.detail);
-      } else {
-        setError("Unable to load orders.");
+      if (!background) {
+        if (fetchError instanceof ApiError) {
+          setError(fetchError.detail);
+        } else {
+          setError("Unable to load orders.");
+        }
+        setOrders([]);
+        setCustomCakes([]);
       }
-      setOrders([]);
-      setCustomCakes([]);
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, [accessToken, isAuthenticated]);
 
@@ -137,8 +143,22 @@ export default function OrdersPage() {
     if (authLoading) {
       return;
     }
-    fetchOrders();
+    fetchOrders(false);
   }, [authLoading, fetchOrders]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !accessToken) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchOrders(true);
+      }
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, [authLoading, isAuthenticated, accessToken, fetchOrders]);
 
   return (
     <>

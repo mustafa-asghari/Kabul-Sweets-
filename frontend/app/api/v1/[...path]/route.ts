@@ -3,16 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 const backendBaseUrl = (() => {
+  const fallback = "http://localhost:8000";
   const url =
     process.env.INTERNAL_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.API_BASE_URL;
-  if (!url) {
-    throw new Error(
-      "Missing API base URL. Set INTERNAL_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL."
-    );
-  }
-  return url.replace(/\/+$/, "");
+  return (url || fallback).replace(/\/+$/, "");
 })();
 
 function buildTargetUrl(pathSegments: string[], query: string) {
