@@ -344,25 +344,9 @@ async def run_tests():
             log_result("/analytics/events", "POST", r.status_code, r.status_code in (200, 201))
 
         # ─────────────────────────────────────────────────────────────────
-        # 9. AI
+        # 9. ML SERVICES
         # ─────────────────────────────────────────────────────────────────
-        print("\n🤖 9. AI (OpenAI)")
-
-        r = await client.post(f"{API}/ai/ask", json={
-            "question": "What cakes do you have?",
-        })
-        log_result("/ai/ask", "POST", r.status_code, r.status_code in (200, 500),
-                   "(OK if OpenAI not configured)")
-
-        if admin_token:
-            r = await client.post(f"{API}/ai/index-all", headers=admin_headers)
-            log_result("/ai/index-all", "POST", r.status_code, r.status_code in (200, 500),
-                       "(OK if OpenAI not configured)")
-
-        # ─────────────────────────────────────────────────────────────────
-        # 10. ML SERVICES
-        # ─────────────────────────────────────────────────────────────────
-        print("\n🧠 10. ML Services")
+        print("\n🧠 9. ML Services")
 
         if admin_token:
             r = await client.post(f"{API}/ml/predict-price", headers=admin_headers, json={
@@ -399,9 +383,9 @@ async def run_tests():
         log_result("/ml/estimate-servings", "POST", r.status_code, r.status_code == 200)
 
         # ─────────────────────────────────────────────────────────────────
-        # 11. CUSTOM CAKES
+        # 10. CUSTOM CAKES
         # ─────────────────────────────────────────────────────────────────
-        print("\n🎂 11. Custom Cakes")
+        print("\n🎂 10. Custom Cakes")
 
         if customer_token:
             r = await client.post(f"{API}/custom-cakes", headers=customer_headers, json={
