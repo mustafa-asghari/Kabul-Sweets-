@@ -68,15 +68,19 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Database tables verified")
 
         # Check if database needs seeding (no users = empty DB)
-        async with async_session_factory() as session:
-            result = await session.execute(text("SELECT COUNT(*) FROM users"))
-            user_count = result.scalar()
-            if user_count == 0:
-                logger.info("🌱 Empty database detected — auto-seeding...")
-                from app.seed import seed_database
-                await seed_database()
-            else:
-                logger.info("📦 Database has %d users — skipping seed", user_count)
+        # Auto-seeding is disabled in production for security.
+        if settings.is_production:
+            logger.info("🔒 Production mode — auto-seeding disabled")
+        else:
+            async with async_session_factory() as session:
+                result = await session.execute(text("SELECT COUNT(*) FROM users"))
+                user_count = result.scalar()
+                if user_count == 0:
+                    logger.info("🌱 Empty database detected — auto-seeding...")
+                    from app.seed import seed_database
+                    await seed_database()
+                else:
+                    logger.info("📦 Database has %d users — skipping seed", user_count)
     except Exception as e:
         logger.error("Database setup error: %s", str(e))
         logger.info("💡 Make sure PostgreSQL is running: docker compose up -d")
