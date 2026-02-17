@@ -224,10 +224,10 @@ class OrderService:
             if inventory_warning:
                 inventory_warnings.append(inventory_warning)
 
-            # Reserve inventory numerically (can go below zero).
-            # Negative stock indicates shortage for admin review.
+            # Reserve inventory while keeping stock non-negative.
+            # Any shortage is captured in admin notes for manual review.
             if variant:
-                variant.stock_quantity = variant.stock_quantity - item_data.quantity
+                variant.stock_quantity = max(0, variant.stock_quantity - item_data.quantity)
                 variant.is_in_stock = variant.stock_quantity > 0
 
         # Calculate totals

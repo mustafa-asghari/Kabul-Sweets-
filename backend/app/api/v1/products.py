@@ -28,6 +28,28 @@ from app.services.product_service import ProductService
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
+async def _sanitize_negative_stock(product, db: AsyncSession) -> None:
+    """
+    Guard API responses from legacy negative stock values.
+    This keeps response validation stable and heals bad data in place.
+    """
+    if not product:
+        return
+
+    changed = False
+    for variant in getattr(product, "variants", []) or []:
+        if variant.stock_quantity < 0:
+            variant.stock_quantity = 0
+            changed = True
+        next_in_stock = variant.stock_quantity > 0
+        if variant.is_in_stock != next_in_stock:
+            variant.is_in_stock = next_in_stock
+            changed = True
+
+    if changed:
+        await db.flush()
+
+
 # ── Public Endpoints ─────────────────────────────────────────────────────────
 @router.get("/", response_model=list[ProductListResponse])
 async def list_products(
@@ -41,7 +63,7 @@ async def list_products(
 ):
     """Browse products (public). Only shows active products."""
     service = ProductService(db)
-    return await service.list_products(
+    products = await service.list_products(
         category=category,
         is_active=True,
         is_featured=is_featured,
@@ -50,6 +72,9 @@ async def list_products(
         skip=skip,
         limit=limit,
     )
+    for product in products:
+        await _sanitize_negative_stock(product, db)
+    return products
 
 
 @router.get("/count")
@@ -69,6 +94,7 @@ async def get_product_by_slug(
     product = await service.get_product_by_slug(slug)
     if not product or not product.is_active:
         raise HTTPException(status_code=404, detail="Product not found")
+    await _sanitize_negative_stock(product, db)
     return product
 
 
@@ -82,6 +108,7 @@ async def get_product(
     product = await service.get_product(product_id)
     if not product or not product.is_active:
         raise HTTPException(status_code=404, detail="Product not found")
+    await _sanitize_negative_stock(product, db)
     return product
 
 
@@ -152,13 +179,16 @@ async def list_all_products_admin(
 ):
     """[Admin] List all products including inactive ones."""
     service = ProductService(db)
-    return await service.list_products(
+    products = await service.list_products(
         category=category,
         is_active=is_active,
         search=search,
         skip=skip,
         limit=limit,
     )
+    for product in products:
+        await _sanitize_negative_stock(product, db)
+    return products
 
 
 # ── Variant Management ──────────────────────────────────────────────────────
