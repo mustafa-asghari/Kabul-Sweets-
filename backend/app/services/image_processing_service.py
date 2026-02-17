@@ -38,10 +38,12 @@ class ImageCategory(str, Enum):
 CATEGORY_PROMPTS = {
     ImageCategory.CAKE: (
         "Transform this cake into a professional e-commerce product photo. "
-                "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
+        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
         "Place the cake centered with balanced studio lighting and NO shadow on the background or under the cake. "
         "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
         "A thin flat cake board under the cake is allowed, but no raised stand. "
+        "Do NOT add any text, lettering, handwriting, logo, watermark, scribbles, or random lines on top of the cake. "
+        "Keep the top surface clean and natural with no artificial writing artifacts. "
         "Enhance details of the frosting texture and printed animal decorations. "
         "Keep proportions and colours accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, luxury bakery advertisement style."
@@ -343,6 +345,29 @@ class ImageProcessingService:
             "has_processed": bool(image.processed_url),
             "created_at": image.created_at.isoformat(),
         }
+
+    async def delete_image(self, image_id: uuid.UUID) -> bool:
+        """Delete an uploaded/processed image record."""
+        from app.models.ml import ProcessedImage
+
+        result = await self.db.execute(
+            select(ProcessedImage).where(ProcessedImage.id == image_id)
+        )
+        image = result.scalar_one_or_none()
+        if not image:
+            return False
+
+        await self.db.delete(image)
+        await self.db.flush()
+        logger.info("Image deleted: %s", image_id)
+        return True
+
+    @staticmethod
+    def resolve_selected_image_url(image) -> tuple[str | None, str]:
+        """Return selected image data URL and selected source."""
+        if image.admin_chosen == "processed" and image.processed_url:
+            return image.processed_url, "processed"
+        return image.original_url, "original"
 
     async def list_images(
         self,
