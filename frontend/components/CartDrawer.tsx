@@ -561,7 +561,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
       if (error instanceof ApiError) {
         setCheckoutError(error.detail);
       } else {
-        setCheckoutError("Checkout failed. Please try again.");
+        setCheckoutError("Order submission failed. Please try again.");
       }
     }
   };
@@ -737,8 +737,8 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                         />
                       </label>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
-                        Your payment is authorized first and marked as awaiting confirmation.
-                        The card is charged only after admin approval.
+                        Your order is submitted for admin review first.
+                        After approval, you can pay from the Orders page.
                       </p>
                     </div>
                   </>
@@ -806,7 +806,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                   disabled={!isAuthenticated || lines.length === 0 || checkoutLoading}
                   className="mt-3 w-full rounded-full bg-black py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-60"
                 >
-                  {checkoutLoading ? "Please wait..." : "Authorize Payment"}
+                  {checkoutLoading ? "Please wait..." : "Submit Order"}
                 </button>
                 <button
                   type="button"

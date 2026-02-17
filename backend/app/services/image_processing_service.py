@@ -40,6 +40,12 @@ STRICT_WHITE_BG_APPEND = (
     "shift, and no shadow on the background. If background purity is not met, regenerate "
     "before returning the image."
 )
+FRAME_BG_MIN_CHANNEL = 246
+FRAME_BG_ROW_RATIO = 0.997
+FRAME_BG_BORDER_MIN_RATIO = 0.9
+FRAME_MAX_TRIM_RATIO = 0.22
+FRAME_TARGET_OCCUPANCY = 0.84
+FRAME_MAX_OUTPUT_SIDE = 1600
 
 
 # ── Category Prompts ─────────────────────────────────────────────────────────
@@ -273,6 +279,12 @@ class ImageProcessingService:
                     processed_b64 = retry_b64
                     image.prompt_used = strict_prompt
 
+            # Normalize subject framing so published cards stay visually consistent.
+            processed_b64, mime_type, framing_changed = self._normalize_image_framing(
+                processed_b64,
+                mime_type,
+            )
+
             # Store processed result
             image.processed_url = f"data:{mime_type};base64,{processed_b64}"
             image.processed_size_bytes = len(base64.b64decode(processed_b64))
@@ -298,6 +310,7 @@ class ImageProcessingService:
                 "white_background_retries": (
                     white_bg_retries if category == ImageCategory.CAKE else 0
                 ),
+                "framing_normalized": framing_changed,
             }
 
         except Exception as e:
@@ -597,6 +610,192 @@ class ImageProcessingService:
                 return None, last_error
 
         return None, last_error or "Gemini API call failed for unknown reason"
+
+    @staticmethod
+    def normalize_public_data_url(data_url: str) -> tuple[str, bool]:
+        """
+        Normalize a data URL image into a consistent product frame.
+        Returns (possibly_updated_data_url, changed).
+        """
+        if not data_url.startswith("data:"):
+            return data_url, False
+
+        try:
+            header, image_b64 = data_url.split(",", 1)
+            mime_type = header.split(";")[0].split(":")[1]
+        except Exception:
+            return data_url, False
+
+        normalized_b64, normalized_mime, changed = ImageProcessingService._normalize_image_framing(
+            image_b64,
+            mime_type,
+        )
+        if not changed:
+            return data_url, False
+        return f"data:{normalized_mime};base64,{normalized_b64}", True
+
+    @staticmethod
+    def _normalize_image_framing(
+        image_b64: str,
+        mime_type: str,
+    ) -> tuple[str, str, bool]:
+        """
+        Trim excessive near-white borders and place the subject onto a square frame
+        with consistent occupancy. Keeps originals unchanged when normalization is unsafe.
+        """
+        if Image is None:
+            return image_b64, mime_type, False
+
+        try:
+            image_bytes = base64.b64decode(image_b64)
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                rgba = img.convert("RGBA")
+
+            white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+            white_bg.paste(rgba, mask=rgba)
+            rgb = white_bg.convert("RGB")
+
+            width, height = rgb.size
+            if width < 16 or height < 16:
+                return image_b64, mime_type, False
+
+            pixels = rgb.load()
+
+            def is_bg(px: tuple[int, int, int]) -> bool:
+                return (
+                    px[0] >= FRAME_BG_MIN_CHANNEL
+                    and px[1] >= FRAME_BG_MIN_CHANNEL
+                    and px[2] >= FRAME_BG_MIN_CHANNEL
+                )
+
+            def row_bg_ratio(y: int) -> float:
+                bg = 0
+                for x in range(width):
+                    if is_bg(pixels[x, y]):
+                        bg += 1
+                return bg / width
+
+            def col_bg_ratio(x: int) -> float:
+                bg = 0
+                for y in range(height):
+                    if is_bg(pixels[x, y]):
+                        bg += 1
+                return bg / height
+
+            border_strip = max(2, int(min(width, height) * 0.05))
+            border_bg = 0
+            border_total = 0
+            for y in range(border_strip):
+                for x in range(width):
+                    border_total += 1
+                    if is_bg(pixels[x, y]):
+                        border_bg += 1
+            for y in range(height - border_strip, height):
+                for x in range(width):
+                    border_total += 1
+                    if is_bg(pixels[x, y]):
+                        border_bg += 1
+            for y in range(border_strip, height - border_strip):
+                for x in range(border_strip):
+                    border_total += 1
+                    if is_bg(pixels[x, y]):
+                        border_bg += 1
+                for x in range(width - border_strip, width):
+                    border_total += 1
+                    if is_bg(pixels[x, y]):
+                        border_bg += 1
+
+            if border_total == 0 or (border_bg / border_total) < FRAME_BG_BORDER_MIN_RATIO:
+                return image_b64, mime_type, False
+
+            top = 0
+            while top < height and row_bg_ratio(top) >= FRAME_BG_ROW_RATIO:
+                top += 1
+
+            bottom = height - 1
+            while bottom >= 0 and row_bg_ratio(bottom) >= FRAME_BG_ROW_RATIO:
+                bottom -= 1
+
+            left = 0
+            while left < width and col_bg_ratio(left) >= FRAME_BG_ROW_RATIO:
+                left += 1
+
+            right = width - 1
+            while right >= 0 and col_bg_ratio(right) >= FRAME_BG_ROW_RATIO:
+                right -= 1
+
+            if top >= bottom or left >= right:
+                return image_b64, mime_type, False
+
+            max_trim_x = int(width * FRAME_MAX_TRIM_RATIO)
+            max_trim_y = int(height * FRAME_MAX_TRIM_RATIO)
+
+            trim_top = min(top, max_trim_y)
+            trim_bottom = min(height - 1 - bottom, max_trim_y)
+            trim_left = min(left, max_trim_x)
+            trim_right = min(width - 1 - right, max_trim_x)
+
+            crop_left = trim_left
+            crop_top = trim_top
+            crop_right = width - trim_right
+            crop_bottom = height - trim_bottom
+
+            if crop_right <= crop_left or crop_bottom <= crop_top:
+                return image_b64, mime_type, False
+
+            cropped = rgb.crop((crop_left, crop_top, crop_right, crop_bottom))
+            crop_w, crop_h = cropped.size
+            if crop_w < 2 or crop_h < 2:
+                return image_b64, mime_type, False
+
+            output_side = min(max(width, height), FRAME_MAX_OUTPUT_SIDE)
+            target_subject = max(1, int(output_side * FRAME_TARGET_OCCUPANCY))
+            scale = min(target_subject / crop_w, target_subject / crop_h)
+            resized_w = max(1, int(round(crop_w * scale)))
+            resized_h = max(1, int(round(crop_h * scale)))
+
+            resampling = getattr(Image, "Resampling", Image)
+            resized = cropped.resize((resized_w, resized_h), resampling.LANCZOS)
+
+            canvas = Image.new("RGB", (output_side, output_side), (255, 255, 255))
+            paste_x = (output_side - resized_w) // 2
+            paste_y = (output_side - resized_h) // 2
+            canvas.paste(resized, (paste_x, paste_y))
+
+            output_buffer = io.BytesIO()
+            target_mime = mime_type.lower()
+            if "png" in target_mime:
+                canvas.save(output_buffer, format="PNG", optimize=True)
+                output_mime = "image/png"
+            elif "webp" in target_mime:
+                canvas.save(output_buffer, format="WEBP", quality=95, method=6)
+                output_mime = "image/webp"
+            else:
+                canvas.save(
+                    output_buffer,
+                    format="JPEG",
+                    quality=95,
+                    optimize=True,
+                    progressive=True,
+                )
+                output_mime = "image/jpeg"
+
+            changed = (
+                trim_top > 0
+                or trim_bottom > 0
+                or trim_left > 0
+                or trim_right > 0
+                or width != height
+                or abs(scale - 1.0) > 0.02
+            )
+            if not changed:
+                return image_b64, mime_type, False
+
+            normalized_b64 = base64.b64encode(output_buffer.getvalue()).decode("utf-8")
+            return normalized_b64, output_mime, True
+        except Exception as exc:
+            logger.warning("Image framing normalization skipped: %s", str(exc))
+            return image_b64, mime_type, False
 
     def _background_is_pure_white(self, image_b64: str) -> tuple[bool, dict]:
         """

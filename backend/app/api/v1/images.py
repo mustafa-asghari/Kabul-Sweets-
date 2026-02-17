@@ -3,10 +3,12 @@ Image Processing API endpoints.
 Upload, process with Gemini AI, reject/re-process, and manage product images.
 """
 
+import base64
 import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.models.product import ProductCategory
 from app.models.ml import ProcessedImage
+from app.models.product import ProductCategory
 from app.schemas.product import ProductCreate, VariantCreate
 from app.models.user import User
 from app.services.image_processing_service import ImageCategory, ImageProcessingService
@@ -65,9 +67,6 @@ class PublishProductFromImageRequest(BaseModel):
 
 
 def _decode_data_url_to_response(data_url: str):
-    from fastapi.responses import Response
-    import base64
-
     if data_url.startswith("data:"):
         b64_data = data_url.split(",", 1)[1]
         mime = data_url.split(";")[0].split(":")[1]
@@ -337,11 +336,16 @@ async def get_public_selected_image(
     if not image or image.admin_chosen not in ("original", "processed"):
         raise HTTPException(status_code=404, detail="Approved image not found")
 
-    selected_url, _ = ImageProcessingService.resolve_selected_image_url(image)
+    selected_url, selected_source = ImageProcessingService.resolve_selected_image_url(image)
     if not selected_url:
         raise HTTPException(status_code=404, detail="Approved image source missing")
 
-    return _decode_data_url_to_response(selected_url)
+    normalized_url, changed = ImageProcessingService.normalize_public_data_url(selected_url)
+    if changed and selected_source == "processed":
+        image.processed_url = normalized_url
+        await db.flush()
+
+    return _decode_data_url_to_response(normalized_url)
 
 
 @router.post("/{image_id}/publish-product")

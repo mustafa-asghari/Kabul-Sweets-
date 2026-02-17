@@ -196,18 +196,27 @@ async def approve_order(
     order = await service.get_order(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    if order.status == OrderStatus.PENDING:
+        order.status = OrderStatus.PENDING_APPROVAL
+        await db.flush()
+        await db.refresh(order)
+        return {"success": True, "message": "Order approved and awaiting customer payment"}
+
     if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(status_code=400, detail=f"Cannot approve order in status '{order.status.value}'")
     if not order.payment:
         raise HTTPException(status_code=400, detail="No payment record found")
 
     from app.services.stripe_service import StripeService
-    if order.payment.stripe_payment_intent_id:
-        await StripeService.capture_payment_intent(order.payment.stripe_payment_intent_id)
+    payment_intent_id = order.payment.stripe_payment_intent_id
+    if not payment_intent_id:
+        return {"success": True, "message": "Order approved and awaiting customer payment"}
+
+    await StripeService.capture_payment_intent(payment_intent_id)
 
     updated = await service.mark_order_paid(
         order_id=order.id,
-        stripe_payment_intent_id=order.payment.stripe_payment_intent_id or f"manual_{order.id}",
+        stripe_payment_intent_id=payment_intent_id or f"manual_{order.id}",
         stripe_checkout_session_id=order.payment.stripe_checkout_session_id,
         webhook_data={"approved_by_admin_id": str(admin.id)},
     )
@@ -228,7 +237,7 @@ async def reject_order(
     order = await service.get_order(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.status != OrderStatus.PENDING_APPROVAL:
+    if order.status not in (OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL):
         raise HTTPException(status_code=400, detail=f"Cannot reject order in status '{order.status.value}'")
 
     if order.payment and order.payment.stripe_payment_intent_id:

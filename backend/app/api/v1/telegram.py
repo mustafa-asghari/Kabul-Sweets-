@@ -1313,19 +1313,28 @@ async def _handle_pending_orders_command(
     limit: int = DEFAULT_PENDING_LIMIT,
 ):
     service = OrderService(db)
-    orders = await service.list_orders(
+    pending_review = await service.list_orders(
+        status=OrderStatus.PENDING.value,
+        limit=limit,
+    )
+    pending_payment = await service.list_orders(
         status=OrderStatus.PENDING_APPROVAL.value,
         limit=limit,
     )
+    orders = sorted(
+        [*pending_review, *pending_payment],
+        key=lambda order: order.created_at,
+        reverse=True,
+    )[:limit]
 
     if not orders:
-        await _send_text(telegram, chat_id, "No pending approval orders right now.")
+        await _send_text(telegram, chat_id, "No pending orders right now.")
         return
 
     await _send_text(
         telegram,
         chat_id,
-        f"Found {len(orders)} pending approval order(s).",
+        f"Found {len(orders)} pending order(s).",
     )
     for order in orders:
         await _send_text(telegram, chat_id, _order_message(order), _order_markup(order.id))
@@ -1448,6 +1457,12 @@ async def _approve_order_via_telegram(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    if order.status == OrderStatus.PENDING:
+        order.status = OrderStatus.PENDING_APPROVAL
+        await db.flush()
+        await db.refresh(order)
+        return order, f"Order {order.order_number} approved and awaiting customer payment."
+
     if order.status != OrderStatus.PENDING_APPROVAL:
         return order, f"Order is already {order.status.value}."
 
@@ -1455,6 +1470,9 @@ async def _approve_order_via_telegram(
         raise HTTPException(status_code=400, detail="Order has no payment record")
 
     payment_intent_id = order.payment.stripe_payment_intent_id
+    if not payment_intent_id:
+        return order, f"Order {order.order_number} is awaiting customer payment."
+
     if payment_intent_id:
         captured = await StripeService.capture_payment_intent(payment_intent_id)
         if captured.get("status") not in ("succeeded", "requires_capture"):
@@ -1487,7 +1505,7 @@ async def _reject_order_via_telegram(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.status != OrderStatus.PENDING_APPROVAL:
+    if order.status not in (OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL):
         return order, f"Order is already {order.status.value}."
 
     if order.payment and order.payment.stripe_payment_intent_id:

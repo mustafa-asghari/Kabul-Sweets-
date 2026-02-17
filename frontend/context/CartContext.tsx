@@ -310,22 +310,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
-        const checkoutSession = await apiRequest<{
-          checkout_url: string;
-          session_id: string;
-          order_id: string;
-          order_number: string;
-        }>(`/api/v1/payments/${order.id}/checkout`, {
-          method: "POST",
-          token: accessToken,
-        });
-
         await clearAll();
 
         return {
-          checkoutUrl: checkoutSession.checkout_url,
-          orderId: checkoutSession.order_id,
-          orderNumber: checkoutSession.order_number,
+          checkoutUrl: `/orders?submitted=1&order=${encodeURIComponent(order.order_number)}`,
+          orderId: order.id,
+          orderNumber: order.order_number,
         };
       } finally {
         setCheckoutLoading(false);

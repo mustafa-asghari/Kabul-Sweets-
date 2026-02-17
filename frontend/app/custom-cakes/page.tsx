@@ -1071,7 +1071,7 @@ export default function CustomCakesPage() {
                 <p className="mt-4 text-sm text-gray-500">No custom cake requests yet.</p>
               ) : (
                 <div className="mt-4 space-y-3">
-                  {myRequests.slice(0, 6).map((request) => (
+                  {myRequests.map((request) => (
                     <article
                       id={`request-${request.id}`}
                       key={request.id}

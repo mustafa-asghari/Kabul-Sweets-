@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.models.order import OrderStatus
+from app.models.order import OrderStatus, PaymentStatus
 from app.models.user import User
 from app.schemas.order import CheckoutSessionResponse
 from app.schemas.user import MessageResponse
@@ -110,10 +110,24 @@ async def create_checkout_session(
     if order.customer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your order")
 
-    if order.status.value != "pending":
+    if order.status != OrderStatus.PENDING_APPROVAL:
+        if order.status == OrderStatus.PENDING:
+            detail = "Order is under review. Payment opens after admin approval."
+        else:
+            detail = f"Order is already {order.status.value}"
         raise HTTPException(
             status_code=400,
-            detail=f"Order is already {order.status.value}",
+            detail=detail,
+        )
+
+    if (
+        order.payment
+        and order.payment.stripe_payment_intent_id
+        and order.payment.status == PaymentStatus.PENDING
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment is already authorized for this order.",
         )
 
     # Build item description
@@ -130,7 +144,7 @@ async def create_checkout_session(
         amount=order.total,
         currency="aud",
         customer_email=order.customer_email,
-        authorize_only=True,
+        authorize_only=False,
         line_items_description=description,
     )
 
@@ -139,16 +153,28 @@ async def create_checkout_session(
         order.payment.stripe_checkout_session_id = result["session_id"]
         order.payment.stripe_payment_intent_id = result.get("payment_intent_id")
 
-    # In local test mode (no Stripe webhooks), move directly to pending approval.
+    # In local test mode (no Stripe webhooks), mark as paid immediately.
     if result["session_id"].startswith("test_session_"):
-        pending_order = await service.mark_order_pending_approval(
+        paid_order = await service.mark_order_paid(
             order_id=order.id,
             stripe_payment_intent_id=result.get("payment_intent_id"),
             stripe_checkout_session_id=result["session_id"],
             webhook_data={"source": "test_checkout_fallback"},
+            status_after_payment=OrderStatus.CONFIRMED,
         )
-        if pending_order:
-            _queue_telegram_order_alert(pending_order)
+        if paid_order:
+            try:
+                from app.workers.email_tasks import send_order_confirmation, send_payment_receipt
+
+                payload = _order_to_email_payload(paid_order)
+                send_order_confirmation.delay(payload)
+                send_payment_receipt.delay(payload)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to queue checkout fallback emails for order %s: %s",
+                    order.order_number,
+                    str(exc),
+                )
 
     await db.flush()
 
@@ -297,6 +323,15 @@ async def admin_approve_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    if order.status == OrderStatus.PENDING:
+        order.status = OrderStatus.PENDING_APPROVAL
+        await db.flush()
+        await db.refresh(order)
+        return MessageResponse(
+            message="Order approved. Customer can now pay from the Orders page.",
+            detail=order.order_number,
+        )
+
     if order.status != OrderStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
@@ -307,6 +342,12 @@ async def admin_approve_order(
         raise HTTPException(status_code=400, detail="No payment record found for this order")
 
     payment_intent_id = order.payment.stripe_payment_intent_id
+    if not payment_intent_id:
+        return MessageResponse(
+            message="Order is approved and awaiting customer payment.",
+            detail=order.order_number,
+        )
+
     if payment_intent_id:
         captured = await StripeService.capture_payment_intent(payment_intent_id)
         if captured.get("status") not in ("succeeded", "requires_capture"):
@@ -352,7 +393,7 @@ async def admin_reject_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.status != OrderStatus.PENDING_APPROVAL:
+    if order.status not in (OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL):
         raise HTTPException(
             status_code=400,
             detail=f"Order cannot be rejected from status '{order.status.value}'",

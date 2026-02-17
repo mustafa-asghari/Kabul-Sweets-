@@ -53,9 +53,9 @@ interface ProductLookupResponse {
 function statusLabel(status: string) {
   switch (status) {
     case "pending_approval":
-      return "Awaiting Admin Confirmation";
+      return "Approved - Awaiting Payment";
     case "pending":
-      return "Pending Payment";
+      return "Under Review";
     case "confirmed":
       return "Confirmed";
     case "paid":
@@ -425,7 +425,7 @@ export default function OrdersPage() {
                           </ul>
                         )}
                       </div>
-                      {order.status === "pending" ? (
+                      {order.status === "pending_approval" ? (
                         <div className="mt-4 flex items-center gap-2">
                           <button
                             type="button"
