@@ -17,10 +17,10 @@ Production-ready FastAPI backend for the Kabul Sweets Afghan bakery e-commerce p
 
 ## Quick Start
 
-### 1. Start Infrastructure (PostgreSQL + Redis)
+### 1. Start Infrastructure (PostgreSQL + Redis + Workers)
 
 ```bash
-docker compose up -d db redis
+docker compose up -d db redis api celery_worker celery_beat
 ```
 
 ### Optional: Connect Frontends to Docker (Not Started by Default)
