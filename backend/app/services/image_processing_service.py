@@ -11,6 +11,7 @@ import asyncio
 import base64
 import io
 import uuid
+from collections import deque
 from enum import Enum
 
 from sqlalchemy import desc, select
@@ -33,19 +34,13 @@ except Exception:  # pragma: no cover - optional fallback
 PURE_WHITE_BG_MIN_CHANNEL = 250
 PURE_WHITE_BG_MIN_RATIO = 0.995
 PURE_WHITE_BG_BORDER_RATIO = 0.06
-PURE_WHITE_BG_MAX_RETRIES = 2
-STRICT_WHITE_BG_APPEND = (
-    "CRITICAL OUTPUT REQUIREMENT: The background must be EXACT pure white (#FFFFFF) "
-    "on every edge and corner. No gray, no gradient, no vignette, no backdrop tone "
-    "shift, and no shadow on the background. If background purity is not met, regenerate "
-    "before returning the image."
-)
-FRAME_BG_MIN_CHANNEL = 246
-FRAME_BG_ROW_RATIO = 0.997
-FRAME_BG_BORDER_MIN_RATIO = 0.9
-FRAME_MAX_TRIM_RATIO = 0.22
-FRAME_TARGET_OCCUPANCY = 0.84
-FRAME_MAX_OUTPUT_SIDE = 1600
+BG_SEED_MIN_CHANNEL = 220
+BG_EXPAND_MIN_CHANNEL = 236
+SUBJECT_DETECT_MAX_CHANNEL = 248
+FRAME_TARGET_OCCUPANCY = 0.68
+FRAME_SUBJECT_MARGIN_RATIO = 0.03
+FRAME_MIN_OUTPUT_SIDE = 1000
+FRAME_MAX_OUTPUT_SIDE = 1400
 
 
 # ── Category Prompts ─────────────────────────────────────────────────────────
@@ -64,6 +59,7 @@ CATEGORY_PROMPTS = {
         "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
         "The background must be a flat, uniform white from edge to edge with no gradients, no vignettes, and no gray tint. "
         "Place the cake centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: cake + cake board must be fully visible, with generous white space around the subject (roughly 65-70% frame occupancy). "
         "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
         "A thin flat cake board under the cake is allowed, but no raised stand. "
         "Do NOT add any text, lettering, handwriting, logo, watermark, scribbles, or random lines on top of the cake. "
@@ -241,44 +237,6 @@ class ImageProcessingService:
                 await self.db.flush()
                 return {"error": error, "image_id": str(image_id)}
 
-            # Enforce pure-white background for cake photos.
-            # If output is not white enough on borders, retry with stricter prompt.
-            white_bg_retries = 0
-            if category == ImageCategory.CAKE:
-                while True:
-                    is_white, metrics = self._background_is_pure_white(processed_b64)
-                    if is_white:
-                        break
-
-                    if white_bg_retries >= PURE_WHITE_BG_MAX_RETRIES:
-                        image.processing_status = "failed"
-                        image.error_message = (
-                            "Generated image background was not pure white after retries. "
-                            "Please reprocess with a stricter custom prompt."
-                        )
-                        await self.db.flush()
-                        return {
-                            "error": image.error_message,
-                            "image_id": str(image_id),
-                            "background_metrics": metrics,
-                        }
-
-                    white_bg_retries += 1
-                    strict_prompt = f"{full_prompt}\n\n{STRICT_WHITE_BG_APPEND}"
-                    retry_b64, retry_error = await self._call_gemini(
-                        image_b64=b64_data,
-                        mime_type=mime_type,
-                        prompt=strict_prompt,
-                    )
-                    if retry_error or not retry_b64:
-                        image.processing_status = "failed"
-                        image.error_message = retry_error or "Retry failed"
-                        await self.db.flush()
-                        return {"error": image.error_message, "image_id": str(image_id)}
-
-                    processed_b64 = retry_b64
-                    image.prompt_used = strict_prompt
-
             # Normalize subject framing so published cards stay visually consistent.
             processed_b64, mime_type, framing_changed = self._normalize_image_framing(
                 processed_b64,
@@ -307,9 +265,7 @@ class ImageProcessingService:
                 "processed_size": image.processed_size_bytes,
                 "category": category.value,
                 "custom_prompt_used": bool(custom_prompt),
-                "white_background_retries": (
-                    white_bg_retries if category == ImageCategory.CAKE else 0
-                ),
+                "white_background_retries": 0,
                 "framing_normalized": framing_changed,
             }
 
@@ -640,8 +596,8 @@ class ImageProcessingService:
         mime_type: str,
     ) -> tuple[str, str, bool]:
         """
-        Trim excessive near-white borders and place the subject onto a square frame
-        with consistent occupancy. Keeps originals unchanged when normalization is unsafe.
+        Enforce a pure-white background and place the subject onto a square frame
+        with consistent "farther" occupancy for visual consistency across cards.
         """
         if Image is None:
             return image_b64, mime_type, False
@@ -651,111 +607,118 @@ class ImageProcessingService:
             with Image.open(io.BytesIO(image_bytes)) as img:
                 rgba = img.convert("RGBA")
 
-            white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
-            white_bg.paste(rgba, mask=rgba)
-            rgb = white_bg.convert("RGB")
+            flattened = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+            flattened.paste(rgba, mask=rgba)
+            rgb = flattened.convert("RGB")
 
             width, height = rgb.size
             if width < 16 or height < 16:
                 return image_b64, mime_type, False
 
             pixels = rgb.load()
+            total_pixels = width * height
+            visited = bytearray(total_pixels)
+            queue: deque[tuple[int, int]] = deque()
 
-            def is_bg(px: tuple[int, int, int]) -> bool:
+            def to_index(x: int, y: int) -> int:
+                return y * width + x
+
+            def is_seed_bg(px: tuple[int, int, int]) -> bool:
                 return (
-                    px[0] >= FRAME_BG_MIN_CHANNEL
-                    and px[1] >= FRAME_BG_MIN_CHANNEL
-                    and px[2] >= FRAME_BG_MIN_CHANNEL
+                    px[0] >= BG_SEED_MIN_CHANNEL
+                    and px[1] >= BG_SEED_MIN_CHANNEL
+                    and px[2] >= BG_SEED_MIN_CHANNEL
                 )
 
-            def row_bg_ratio(y: int) -> float:
-                bg = 0
-                for x in range(width):
-                    if is_bg(pixels[x, y]):
-                        bg += 1
-                return bg / width
+            def is_expand_bg(px: tuple[int, int, int]) -> bool:
+                return (
+                    px[0] >= BG_EXPAND_MIN_CHANNEL
+                    and px[1] >= BG_EXPAND_MIN_CHANNEL
+                    and px[2] >= BG_EXPAND_MIN_CHANNEL
+                )
 
-            def col_bg_ratio(x: int) -> float:
-                bg = 0
+            for x in range(width):
+                if is_seed_bg(pixels[x, 0]):
+                    queue.append((x, 0))
+                if is_seed_bg(pixels[x, height - 1]):
+                    queue.append((x, height - 1))
+            for y in range(height):
+                if is_seed_bg(pixels[0, y]):
+                    queue.append((0, y))
+                if is_seed_bg(pixels[width - 1, y]):
+                    queue.append((width - 1, y))
+
+            background_count = 0
+            while queue:
+                x, y = queue.popleft()
+                idx = to_index(x, y)
+                if visited[idx]:
+                    continue
+                if not is_expand_bg(pixels[x, y]):
+                    continue
+                visited[idx] = 1
+                background_count += 1
+
+                if x > 0:
+                    queue.append((x - 1, y))
+                if x < width - 1:
+                    queue.append((x + 1, y))
+                if y > 0:
+                    queue.append((x, y - 1))
+                if y < height - 1:
+                    queue.append((x, y + 1))
+
+            if background_count > 0:
                 for y in range(height):
-                    if is_bg(pixels[x, y]):
-                        bg += 1
-                return bg / height
+                    row_start = y * width
+                    for x in range(width):
+                        if visited[row_start + x]:
+                            pixels[x, y] = (255, 255, 255)
 
-            border_strip = max(2, int(min(width, height) * 0.05))
-            border_bg = 0
-            border_total = 0
-            for y in range(border_strip):
+            left = width
+            top = height
+            right = -1
+            bottom = -1
+
+            for y in range(height):
                 for x in range(width):
-                    border_total += 1
-                    if is_bg(pixels[x, y]):
-                        border_bg += 1
-            for y in range(height - border_strip, height):
-                for x in range(width):
-                    border_total += 1
-                    if is_bg(pixels[x, y]):
-                        border_bg += 1
-            for y in range(border_strip, height - border_strip):
-                for x in range(border_strip):
-                    border_total += 1
-                    if is_bg(pixels[x, y]):
-                        border_bg += 1
-                for x in range(width - border_strip, width):
-                    border_total += 1
-                    if is_bg(pixels[x, y]):
-                        border_bg += 1
+                    r, g, b = pixels[x, y]
+                    if (
+                        r < SUBJECT_DETECT_MAX_CHANNEL
+                        or g < SUBJECT_DETECT_MAX_CHANNEL
+                        or b < SUBJECT_DETECT_MAX_CHANNEL
+                    ):
+                        if x < left:
+                            left = x
+                        if x > right:
+                            right = x
+                        if y < top:
+                            top = y
+                        if y > bottom:
+                            bottom = y
 
-            if border_total == 0 or (border_bg / border_total) < FRAME_BG_BORDER_MIN_RATIO:
-                return image_b64, mime_type, False
+            if right < left or bottom < top:
+                subject_crop = rgb
+            else:
+                margin = max(2, int(min(width, height) * FRAME_SUBJECT_MARGIN_RATIO))
+                crop_left = max(0, left - margin)
+                crop_top = max(0, top - margin)
+                crop_right = min(width, right + margin + 1)
+                crop_bottom = min(height, bottom + margin + 1)
+                subject_crop = rgb.crop((crop_left, crop_top, crop_right, crop_bottom))
 
-            top = 0
-            while top < height and row_bg_ratio(top) >= FRAME_BG_ROW_RATIO:
-                top += 1
-
-            bottom = height - 1
-            while bottom >= 0 and row_bg_ratio(bottom) >= FRAME_BG_ROW_RATIO:
-                bottom -= 1
-
-            left = 0
-            while left < width and col_bg_ratio(left) >= FRAME_BG_ROW_RATIO:
-                left += 1
-
-            right = width - 1
-            while right >= 0 and col_bg_ratio(right) >= FRAME_BG_ROW_RATIO:
-                right -= 1
-
-            if top >= bottom or left >= right:
-                return image_b64, mime_type, False
-
-            max_trim_x = int(width * FRAME_MAX_TRIM_RATIO)
-            max_trim_y = int(height * FRAME_MAX_TRIM_RATIO)
-
-            trim_top = min(top, max_trim_y)
-            trim_bottom = min(height - 1 - bottom, max_trim_y)
-            trim_left = min(left, max_trim_x)
-            trim_right = min(width - 1 - right, max_trim_x)
-
-            crop_left = trim_left
-            crop_top = trim_top
-            crop_right = width - trim_right
-            crop_bottom = height - trim_bottom
-
-            if crop_right <= crop_left or crop_bottom <= crop_top:
-                return image_b64, mime_type, False
-
-            cropped = rgb.crop((crop_left, crop_top, crop_right, crop_bottom))
-            crop_w, crop_h = cropped.size
+            crop_w, crop_h = subject_crop.size
             if crop_w < 2 or crop_h < 2:
                 return image_b64, mime_type, False
 
-            output_side = min(max(width, height), FRAME_MAX_OUTPUT_SIDE)
+            output_side = min(max(max(width, height), FRAME_MIN_OUTPUT_SIDE), FRAME_MAX_OUTPUT_SIDE)
             target_subject = max(1, int(output_side * FRAME_TARGET_OCCUPANCY))
             scale = min(target_subject / crop_w, target_subject / crop_h)
             resized_w = max(1, int(round(crop_w * scale)))
             resized_h = max(1, int(round(crop_h * scale)))
 
             resampling = getattr(Image, "Resampling", Image)
-            resized = cropped.resize((resized_w, resized_h), resampling.LANCZOS)
+            resized = subject_crop.resize((resized_w, resized_h), resampling.LANCZOS)
 
             canvas = Image.new("RGB", (output_side, output_side), (255, 255, 255))
             paste_x = (output_side - resized_w) // 2
@@ -781,11 +744,9 @@ class ImageProcessingService:
                 output_mime = "image/jpeg"
 
             changed = (
-                trim_top > 0
-                or trim_bottom > 0
-                or trim_left > 0
-                or trim_right > 0
-                or width != height
+                background_count > 0
+                or width != output_side
+                or height != output_side
                 or abs(scale - 1.0) > 0.02
             )
             if not changed:

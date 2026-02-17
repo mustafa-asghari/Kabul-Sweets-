@@ -157,7 +157,7 @@ async def create_checkout_session(
     if result["session_id"].startswith("test_session_"):
         paid_order = await service.mark_order_paid(
             order_id=order.id,
-            stripe_payment_intent_id=result.get("payment_intent_id"),
+            stripe_payment_intent_id=result.get("payment_intent_id") or f"test_intent_{order.id}",
             stripe_checkout_session_id=result["session_id"],
             webhook_data={"source": "test_checkout_fallback"},
             status_after_payment=OrderStatus.CONFIRMED,

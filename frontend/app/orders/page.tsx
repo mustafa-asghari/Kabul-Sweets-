@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { ApiError, apiRequest } from "@/lib/api-client";
@@ -110,6 +111,7 @@ function toReadableDate(value: string | null) {
 }
 
 export default function OrdersPage() {
+  const searchParams = useSearchParams();
   const { accessToken, isAuthenticated, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [customCakes, setCustomCakes] = useState<CustomCakeSummary[]>([]);
@@ -121,6 +123,8 @@ export default function OrdersPage() {
   const [payingCakeId, setPayingCakeId] = useState<string | null>(null);
   const [deletingCakeId, setDeletingCakeId] = useState<string | null>(null);
   const [cakeActionErrors, setCakeActionErrors] = useState<Record<string, string>>({});
+  const submittedOrderNumber = searchParams.get("order");
+  const showSubmittedBanner = searchParams.get("submitted") === "1";
 
   const fetchOrders = useCallback(async (background = false) => {
     if (!accessToken || !isAuthenticated) {
@@ -349,6 +353,11 @@ export default function OrdersPage() {
         </section>
 
         <section className="max-w-[980px] mx-auto px-6 pt-8 space-y-6">
+          {showSubmittedBanner ? (
+            <div className="rounded-[1.5rem] border border-[#e6d6bf] bg-[#fff7ea] p-4 text-sm text-[#7a5a1f]">
+              Order request submitted{submittedOrderNumber ? ` (${submittedOrderNumber})` : ""}. We will review it first. Once approved, you can pay from this page.
+            </div>
+          ) : null}
           {!authLoading && !isAuthenticated ? (
             <div className="rounded-[1.5rem] bg-white border border-[#eadcc8] p-6">
               <p className="text-black font-semibold">Please login to view your orders.</p>

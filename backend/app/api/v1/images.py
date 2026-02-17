@@ -18,8 +18,8 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.models.ml import ProcessedImage
 from app.models.product import ProductCategory
-from app.schemas.product import ProductCreate, VariantCreate
 from app.models.user import User
+from app.schemas.product import ProductCreate, VariantCreate
 from app.services.image_processing_service import ImageCategory, ImageProcessingService
 from app.services.product_service import ProductService
 
