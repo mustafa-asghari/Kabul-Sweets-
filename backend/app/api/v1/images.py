@@ -295,9 +295,9 @@ async def process_image(
 @router.post("/process-batch")
 async def process_batch(
     image_ids: list[uuid.UUID],
+    background_tasks: BackgroundTasks,
     category: str = Query(...),
     custom_prompt: str | None = Query(None),
-    background_tasks: BackgroundTasks = None,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
