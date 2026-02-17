@@ -17,7 +17,15 @@ Production-ready FastAPI backend for the Kabul Sweets Afghan bakery e-commerce p
 
 ## Quick Start
 
-### 1. Start Infrastructure (PostgreSQL + Redis + Workers)
+### 1. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Fill all required values in `.env` (database, Redis, JWT secrets, URLs, etc.).
+
+### 2. Start Infrastructure (PostgreSQL + Redis + Workers)
 
 ```bash
 docker compose up -d db redis api celery_worker celery_beat
@@ -40,7 +48,7 @@ docker compose --profile frontend up frontend
 docker compose --profile admin up admin_frontend
 ```
 
-### 2. Install Python Dependencies
+### 3. Install Python Dependencies
 
 ```bash
 cd backend
@@ -49,30 +57,26 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 3. Seed Database
+### 4. Seed Database
 
 ```bash
 python -m app.seed
 ```
 
-### 4. Run the API
+Note: user seeding now comes from env vars (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`,
+`SEED_DEMO_CUSTOMERS_JSON`, etc.) rather than hardcoded credentials.
+
+### 5. Run the API
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 5. Open the Docs
+### 6. Open the Docs
 
 - **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 - **Health Check**: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
-
-## Default Credentials
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | `admin@kabulsweets.com.au` | `Admin@2024!` |
-| Customer | `customer@example.com` | `Customer@2024!` |
 
 ## Project Structure
 
