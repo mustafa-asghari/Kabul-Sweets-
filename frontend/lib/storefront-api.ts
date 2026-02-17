@@ -259,10 +259,6 @@ async function fetchJson<T>(path: string): Promise<T | null> {
     }
   }
 
-  console.error("[storefront-api] all request attempts failed", {
-    path,
-    baseCandidates,
-  });
   return null;
 }
 
@@ -317,7 +313,7 @@ export async function fetchRelatedStoreProducts(
     return filteredSameCategory.slice(0, limit);
   }
 
-  const allProducts = await fetchStoreProducts({ limit: 120 });
+  const allProducts = await fetchStoreProducts({ limit: 100 });
   return allProducts.filter((item) => item.slug !== product.slug).slice(0, limit);
 }
 

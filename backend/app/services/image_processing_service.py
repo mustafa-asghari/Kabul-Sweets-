@@ -9,11 +9,11 @@ Admin can reject results and add custom prompts for re-processing.
 
 import asyncio
 import base64
+import io
 import uuid
-from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -24,6 +24,22 @@ settings = get_settings()
 
 GEMINI_API_KEY = settings.GEMINI_API_KEY.strip()
 GEMINI_MODEL = (settings.GEMINI_IMAGE_MODEL or "gemini-3-pro-image-preview").strip()
+
+try:
+    from PIL import Image
+except Exception:  # pragma: no cover - optional fallback
+    Image = None
+
+PURE_WHITE_BG_MIN_CHANNEL = 245
+PURE_WHITE_BG_MIN_RATIO = 0.985
+PURE_WHITE_BG_BORDER_RATIO = 0.06
+PURE_WHITE_BG_MAX_RETRIES = 2
+STRICT_WHITE_BG_APPEND = (
+    "CRITICAL OUTPUT REQUIREMENT: The background must be EXACT pure white (#FFFFFF) "
+    "on every edge and corner. No gray, no gradient, no vignette, no backdrop tone "
+    "shift, and no shadow on the background. If background purity is not met, regenerate "
+    "before returning the image."
+)
 
 
 # ── Category Prompts ─────────────────────────────────────────────────────────
@@ -219,6 +235,44 @@ class ImageProcessingService:
                 await self.db.flush()
                 return {"error": error, "image_id": str(image_id)}
 
+            # Enforce pure-white background for cake photos.
+            # If output is not white enough on borders, retry with stricter prompt.
+            white_bg_retries = 0
+            if category == ImageCategory.CAKE:
+                while True:
+                    is_white, metrics = self._background_is_pure_white(processed_b64)
+                    if is_white:
+                        break
+
+                    if white_bg_retries >= PURE_WHITE_BG_MAX_RETRIES:
+                        image.processing_status = "failed"
+                        image.error_message = (
+                            "Generated image background was not pure white after retries. "
+                            "Please reprocess with a stricter custom prompt."
+                        )
+                        await self.db.flush()
+                        return {
+                            "error": image.error_message,
+                            "image_id": str(image_id),
+                            "background_metrics": metrics,
+                        }
+
+                    white_bg_retries += 1
+                    strict_prompt = f"{full_prompt}\n\n{STRICT_WHITE_BG_APPEND}"
+                    retry_b64, retry_error = await self._call_gemini(
+                        image_b64=b64_data,
+                        mime_type=mime_type,
+                        prompt=strict_prompt,
+                    )
+                    if retry_error or not retry_b64:
+                        image.processing_status = "failed"
+                        image.error_message = retry_error or "Retry failed"
+                        await self.db.flush()
+                        return {"error": image.error_message, "image_id": str(image_id)}
+
+                    processed_b64 = retry_b64
+                    image.prompt_used = strict_prompt
+
             # Store processed result
             image.processed_url = f"data:{mime_type};base64,{processed_b64}"
             image.processed_size_bytes = len(base64.b64decode(processed_b64))
@@ -241,6 +295,9 @@ class ImageProcessingService:
                 "processed_size": image.processed_size_bytes,
                 "category": category.value,
                 "custom_prompt_used": bool(custom_prompt),
+                "white_background_retries": (
+                    white_bg_retries if category == ImageCategory.CAKE else 0
+                ),
             }
 
         except Exception as e:
@@ -451,7 +508,7 @@ class ImageProcessingService:
             ],
             "generationConfig": {
                 "responseModalities": ["image", "text"],
-                "temperature": 0.2,
+                "temperature": 0.0,
             },
         }
 
@@ -540,3 +597,68 @@ class ImageProcessingService:
                 return None, last_error
 
         return None, last_error or "Gemini API call failed for unknown reason"
+
+    def _background_is_pure_white(self, image_b64: str) -> tuple[bool, dict]:
+        """
+        Check border pixels to verify if the generated background is pure white.
+        Uses only border strips to avoid evaluating the cake itself.
+        """
+        if Image is None:
+            return True, {"check_skipped": True, "reason": "Pillow unavailable"}
+
+        try:
+            image_bytes = base64.b64decode(image_b64)
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                rgb = img.convert("RGB")
+                width, height = rgb.size
+                pixels = rgb.load()
+
+            strip = max(2, int(min(width, height) * PURE_WHITE_BG_BORDER_RATIO))
+            white_count = 0
+            total_count = 0
+
+            def is_white(px: tuple[int, int, int]) -> bool:
+                return (
+                    px[0] >= PURE_WHITE_BG_MIN_CHANNEL
+                    and px[1] >= PURE_WHITE_BG_MIN_CHANNEL
+                    and px[2] >= PURE_WHITE_BG_MIN_CHANNEL
+                )
+
+            # Top and bottom strips
+            for y in range(strip):
+                for x in range(width):
+                    total_count += 1
+                    if is_white(pixels[x, y]):
+                        white_count += 1
+
+            for y in range(height - strip, height):
+                for x in range(width):
+                    total_count += 1
+                    if is_white(pixels[x, y]):
+                        white_count += 1
+
+            # Left and right strips (excluding already-counted corners)
+            for y in range(strip, height - strip):
+                for x in range(strip):
+                    total_count += 1
+                    if is_white(pixels[x, y]):
+                        white_count += 1
+
+                for x in range(width - strip, width):
+                    total_count += 1
+                    if is_white(pixels[x, y]):
+                        white_count += 1
+
+            ratio = (white_count / total_count) if total_count else 0.0
+            metrics = {
+                "white_ratio": round(ratio, 4),
+                "threshold": PURE_WHITE_BG_MIN_RATIO,
+                "min_channel": PURE_WHITE_BG_MIN_CHANNEL,
+                "strip_px": strip,
+                "image_size": f"{width}x{height}",
+            }
+            return ratio >= PURE_WHITE_BG_MIN_RATIO, metrics
+
+        except Exception as exc:
+            logger.warning("White background check failed: %s", str(exc))
+            return True, {"check_skipped": True, "reason": "check_error"}

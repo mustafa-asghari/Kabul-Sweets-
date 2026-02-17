@@ -9,7 +9,7 @@ import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront
 export const dynamic = "force-dynamic";
 
 export default async function CollectionsPage() {
-  const products = await fetchStoreProducts({ limit: 120 });
+  const products = await fetchStoreProducts({ limit: 100 });
   const collections = getCollectionsFromProducts(products);
 
   return (

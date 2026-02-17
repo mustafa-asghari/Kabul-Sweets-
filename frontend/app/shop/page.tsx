@@ -23,7 +23,7 @@ interface ShopPageProps {
 
 export default async function ShopPage({ searchParams }: ShopPageProps) {
   const params = await searchParams;
-  const allProducts = await fetchStoreProducts({ limit: 120 });
+  const allProducts = await fetchStoreProducts({ limit: 100 });
   const productCategories = getProductCategoriesFromProducts(allProducts);
   const selectedCategory = params.category ?? "All";
   const safeCategory = productCategories.includes(selectedCategory) ? selectedCategory : "All";

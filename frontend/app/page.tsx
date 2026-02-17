@@ -14,7 +14,7 @@ import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const allProducts = await fetchStoreProducts({ limit: 120 });
+  const allProducts = await fetchStoreProducts({ limit: 100 });
   const featuredProducts = (allProducts.filter((product) => product.isFeatured).length > 0
     ? allProducts.filter((product) => product.isFeatured)
     : allProducts
