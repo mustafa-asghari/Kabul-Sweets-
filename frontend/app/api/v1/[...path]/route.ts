@@ -7,12 +7,12 @@ const backendBaseUrl = (() => {
     process.env.INTERNAL_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     process.env.API_BASE_URL;
-  if (!url && process.env.NODE_ENV === "production") {
+  if (!url) {
     throw new Error(
       "Missing API base URL. Set INTERNAL_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL."
     );
   }
-  return (url || "http://localhost:8000").replace(/\/+$/, "");
+  return url.replace(/\/+$/, "");
 })();
 
 function buildTargetUrl(pathSegments: string[], query: string) {

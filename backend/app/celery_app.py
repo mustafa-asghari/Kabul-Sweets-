@@ -57,7 +57,9 @@ def _resolve_redis_base_url() -> str:
         return redis_url
     if docker_redis_url:
         return docker_redis_url
-    return "redis://localhost:6379/0"
+    raise RuntimeError(
+        "Missing Redis configuration. Set REDIS_URL or DOCKER_REDIS_URL."
+    )
 
 
 def _resolve_celery_url(primary_env: str, fallback_env: str, db: int) -> str:
@@ -66,7 +68,6 @@ def _resolve_celery_url(primary_env: str, fallback_env: str, db: int) -> str:
     1) explicit env (CELERY_*)
     2) docker-specific env (DOCKER_CELERY_*)
     3) derived from REDIS_URL / DOCKER_REDIS_URL by DB index
-    4) localhost fallback
     """
     redis_base = _resolve_redis_base_url()
     explicit = os.getenv(primary_env)

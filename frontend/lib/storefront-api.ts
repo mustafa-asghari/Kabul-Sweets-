@@ -30,7 +30,31 @@ interface ApiProductList {
   tags?: string[] | null;
 }
 
-const API_FALLBACK_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
+const INTERNAL_API_BASE_URL = (() => {
+  const fromEnv =
+    process.env.INTERNAL_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.API_BASE_URL;
+  if (!fromEnv) {
+    throw new Error(
+      "Missing API base URL. Set INTERNAL_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL."
+    );
+  }
+  return fromEnv.replace(/\/+$/, "");
+})();
+
+const PUBLIC_API_BASE_URL = (() => {
+  const fromEnv =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.INTERNAL_API_BASE_URL ||
+    process.env.API_BASE_URL;
+  if (!fromEnv) {
+    throw new Error(
+      "Missing public API base URL. Set NEXT_PUBLIC_API_BASE_URL."
+    );
+  }
+  return fromEnv.replace(/\/+$/, "");
+})();
 
 const CATEGORY_LABELS: Record<string, string> = {
   cake: "Cakes",
@@ -65,13 +89,11 @@ const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
 };
 
 function getInternalApiBaseUrl() {
-  const fromEnv = process.env.INTERNAL_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
-  return (fromEnv || API_FALLBACK_BASE_URL).replace(/\/+$/, "");
+  return INTERNAL_API_BASE_URL;
 }
 
 function getPublicApiBaseUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
-  return (fromEnv || API_FALLBACK_BASE_URL).replace(/\/+$/, "");
+  return PUBLIC_API_BASE_URL;
 }
 
 function toNumber(value: string | number | null | undefined) {
@@ -91,10 +113,16 @@ function normalizeCategoryKey(value: string | null | undefined) {
 
 function normalizeImageSrc(value: string, categoryKey: string) {
   const trimmed = value.trim();
-  if (trimmed.startsWith("http://api:8000")) {
-    return `${getPublicApiBaseUrl()}${trimmed.replace("http://api:8000", "")}`;
-  }
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const source = new URL(trimmed);
+      const internal = new URL(getInternalApiBaseUrl());
+      if (source.origin === internal.origin) {
+        return `${getPublicApiBaseUrl()}${source.pathname}${source.search}${source.hash}`;
+      }
+    } catch {
+      // Keep original URL when parsing fails.
+    }
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
