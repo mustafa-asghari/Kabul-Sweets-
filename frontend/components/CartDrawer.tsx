@@ -26,6 +26,7 @@ interface CustomCakeCartSummary {
 }
 
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"] as const;
+const BUSINESS_TIMEZONE = process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE || "Australia/Brisbane";
 const BUSINESS_HOURS_BY_WEEKDAY: Record<number, { openHour: number; closeHour: number }> = {
   0: { openHour: 9, closeHour: 18 }, // Sunday
   1: { openHour: 9, closeHour: 18 }, // Monday
@@ -105,14 +106,6 @@ function parseDateInputValue(value: string) {
   return date;
 }
 
-function isSameDate(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
 function formatDateLabel(value: string) {
   const parsed = parseDateInputValue(value);
   if (!parsed) {
@@ -136,27 +129,66 @@ function formatTimeLabel(hour: number, minute = 0) {
   }).format(date);
 }
 
-function getBusinessHoursForDate(date: Date) {
-  return BUSINESS_HOURS_BY_WEEKDAY[date.getDay()] ?? BUSINESS_HOURS_BY_WEEKDAY[1];
+function getDateValueFromInput(dateInput: Date | string) {
+  if (typeof dateInput === "string") {
+    return dateInput;
+  }
+  return toDateInputValue(dateInput);
 }
 
-function getPickupHoursForDate(date: Date, now = new Date()) {
-  const { openHour, closeHour } = getBusinessHoursForDate(date);
+function getWeekdayForDateValue(dateValue: string) {
+  const parsed = new Date(`${dateValue}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().getDay();
+  }
+  return parsed.getUTCDay();
+}
+
+function getBusinessNowParts(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+
+  const lookup = (type: string) => parts.find((entry) => entry.type === type)?.value || "";
+  return {
+    dateValue: `${lookup("year")}-${lookup("month")}-${lookup("day")}`,
+    hour: Number.parseInt(lookup("hour"), 10) || 0,
+    minute: Number.parseInt(lookup("minute"), 10) || 0,
+    second: Number.parseInt(lookup("second"), 10) || 0,
+  };
+}
+
+function getBusinessHoursForDate(dateInput: Date | string) {
+  const weekday = getWeekdayForDateValue(getDateValueFromInput(dateInput));
+  return BUSINESS_HOURS_BY_WEEKDAY[weekday] ?? BUSINESS_HOURS_BY_WEEKDAY[1];
+}
+
+function getPickupHoursForDate(dateInput: Date | string, now = new Date()) {
+  const dateValue = getDateValueFromInput(dateInput);
+  const { openHour, closeHour } = getBusinessHoursForDate(dateValue);
   let startHour = Math.min(closeHour - 1, openHour + PICKUP_BUFFER_HOURS);
 
-  if (isSameDate(date, now)) {
+  const businessNow = getBusinessNowParts(now);
+  if (dateValue === businessNow.dateValue) {
     const nextWholeHour =
-      now.getMinutes() > 0 || now.getSeconds() > 0 || now.getMilliseconds() > 0
-        ? now.getHours() + 1
-        : now.getHours();
+      businessNow.minute > 0 || businessNow.second > 0
+        ? businessNow.hour + 1
+        : businessNow.hour;
     startHour = Math.max(startHour, nextWholeHour);
   }
 
   return { startHour, closeHour };
 }
 
-function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
-  const { startHour, closeHour } = getPickupHoursForDate(date);
+function buildTimeSlotOptionsForDate(dateInput: Date | string): SelectOption[] {
+  const { startHour, closeHour } = getPickupHoursForDate(dateInput);
   const options: SelectOption[] = [];
   for (let hour = startHour; hour < closeHour; hour += 1) {
     const fromValue = `${String(hour).padStart(2, "0")}:00`;
@@ -169,8 +201,8 @@ function buildTimeSlotOptionsForDate(date: Date): SelectOption[] {
   return options;
 }
 
-function formatBusinessHoursText(date: Date) {
-  const { openHour, closeHour } = getBusinessHoursForDate(date);
+function formatBusinessHoursText(dateInput: Date | string) {
+  const { openHour, closeHour } = getBusinessHoursForDate(dateInput);
   return `${formatTimeLabel(openHour)} - ${formatTimeLabel(closeHour)}`;
 }
 
@@ -217,20 +249,6 @@ function ThemedSelect({
 
       {open ? (
         <div className="absolute z-40 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-[#e5d5bf] bg-[#fbf7f0] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.12)]">
-          <button
-            type="button"
-            role="option"
-            aria-selected={value === ""}
-            onClick={() => {
-              onChange("");
-              setOpen(false);
-            }}
-            className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-              value === "" ? "bg-[#f4e7d2] text-black font-semibold" : "text-gray-700 hover:bg-[#f1e4d0]"
-            }`}
-          >
-            <span>No preference</span>
-          </button>
           {options.map((option) => {
             const isSelected = option.value === value;
             return (
@@ -407,9 +425,7 @@ function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDa
             <button
               type="button"
               onClick={() => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                onChange(toDateInputValue(today));
+                onChange(getBusinessNowParts().dateValue);
                 setOpen(false);
               }}
               className="text-xs font-semibold text-[#ad751c] transition hover:text-[#8f5f13]"
@@ -445,24 +461,22 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const [customCakes, setCustomCakes] = useState<CustomCakeCartSummary[]>([]);
   const [loadingCustomCakes, setLoadingCustomCakes] = useState(false);
   const minimumPickupDate = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return toDateInputValue(today);
+    return getBusinessNowParts().dateValue;
   }, []);
   const selectedPickupDate = useMemo(() => parseDateInputValue(pickupDate), [pickupDate]);
   const pickupTimeSlotOptions = useMemo(
-    () => (selectedPickupDate ? buildTimeSlotOptionsForDate(selectedPickupDate) : []),
-    [selectedPickupDate]
+    () => (pickupDate ? buildTimeSlotOptionsForDate(pickupDate) : []),
+    [pickupDate]
   );
   const pickupHoursHint = useMemo(() => {
-    if (!selectedPickupDate) {
+    if (!pickupDate) {
       return "Select a date to see available pickup hours.";
     }
     if (pickupTimeSlotOptions.length === 0) {
       return "No pickup slots left for this date. Please choose another day.";
     }
-    return `Available pickup hours: ${formatBusinessHoursText(selectedPickupDate)}`;
-  }, [pickupTimeSlotOptions.length, selectedPickupDate]);
+    return `Available pickup hours: ${formatBusinessHoursText(pickupDate)}`;
+  }, [pickupDate, pickupTimeSlotOptions.length]);
 
   const openAuthPrompt = () => {
     window.dispatchEvent(new Event("open-auth-modal"));
@@ -519,11 +533,22 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
 
   const handleCheckout = async () => {
     setCheckoutError(null);
-    const selectedDate = parseDateInputValue(pickupDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    if (!pickupDate) {
+      setCheckoutError("Please select a pickup date.");
+      return;
+    }
+    if (!pickupTimeSlot) {
+      setCheckoutError("Please select a pickup time slot.");
+      return;
+    }
 
-    if (selectedDate && selectedDate < today) {
+    const selectedDate = parseDateInputValue(pickupDate);
+    if (!selectedDate) {
+      setCheckoutError("Please select a valid pickup date.");
+      return;
+    }
+
+    if (pickupDate && pickupDate < minimumPickupDate) {
       setCheckoutError("Pickup date cannot be in the past.");
       return;
     }
@@ -534,7 +559,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
     }
 
     if (selectedDate) {
-      const validSlots = buildTimeSlotOptionsForDate(selectedDate);
+      const validSlots = buildTimeSlotOptionsForDate(pickupDate);
       if (validSlots.length === 0 && pickupTimeSlot) {
         setCheckoutError("No pickup slots left for the selected date. Please choose another date.");
         return;
@@ -545,14 +570,11 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
       }
     }
 
-    const selectedTimeSlotLabel =
-      pickupTimeSlotOptions.find((option) => option.value === pickupTimeSlot)?.label || pickupTimeSlot;
-
     try {
       const result = await checkout({
         customerPhone,
         pickupDate,
-        pickupTimeSlot: selectedTimeSlotLabel,
+        pickupTimeSlot,
         specialInstructions,
       });
       onClose();
@@ -707,8 +729,8 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                           className="mt-1 w-full rounded-lg border border-[#e8dcc9] px-3 py-2 text-sm"
                         />
                       </label>
-                      <label className="block text-xs text-gray-600">
-                        Pickup Date (optional)
+                    <label className="block text-xs text-gray-600">
+                        Pickup Date
                         <ThemedDatePicker
                           className="mt-1"
                           value={pickupDate}
@@ -717,7 +739,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                         />
                       </label>
                       <label className="block text-xs text-gray-600">
-                        Pickup Time Slot (optional)
+                        Pickup Time Slot
                         <ThemedSelect
                           className="mt-1"
                           value={pickupTimeSlot}

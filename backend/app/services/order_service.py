@@ -3,24 +3,42 @@ Order service — handles order lifecycle, validation, and inventory reservation
 """
 
 import random
+import re
 import string
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
+from app.core.config import get_settings
 from app.models.order import Order, OrderItem, OrderStatus, Payment, PaymentStatus
 from app.models.product import Product, ProductVariant
 from app.schemas.order import OrderCreate, OrderUpdateAdmin
 
 logger = get_logger("order_service")
+settings = get_settings()
 
 # Australian GST rate
 GST_RATE = Decimal("0.10")
+PICKUP_BUFFER_HOURS = 1
+BUSINESS_HOURS_BY_WEEKDAY: dict[int, tuple[int, int]] = {
+    0: (9, 18),  # Monday
+    1: (9, 18),  # Tuesday
+    2: (9, 18),  # Wednesday
+    3: (9, 18),  # Thursday
+    4: (9, 19),  # Friday
+    5: (9, 19),  # Saturday
+    6: (9, 18),  # Sunday
+}
+TIME_SLOT_24H_REGEX = re.compile(r"^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$")
+TIME_SLOT_12H_REGEX = re.compile(
+    r"^\s*(\d{1,2}):(\d{2})\s*([aApP][mM])\s*-\s*(\d{1,2}):(\d{2})\s*([aApP][mM])\s*$"
+)
 
 
 def _generate_order_number() -> str:
@@ -36,6 +54,114 @@ class OrderService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _business_timezone():
+        tz_name = (settings.BUSINESS_TIMEZONE or "Australia/Sydney").strip()
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            logger.warning("Invalid BUSINESS_TIMEZONE '%s'. Falling back to UTC.", tz_name)
+            return timezone.utc
+
+    @staticmethod
+    def _to_24h(hour_12: int, am_pm: str) -> int:
+        suffix = am_pm.lower()
+        hour = hour_12 % 12
+        if suffix == "pm":
+            hour += 12
+        return hour
+
+    @classmethod
+    def _parse_pickup_slot_hours(cls, time_slot: str) -> tuple[int, int]:
+        slot = (time_slot or "").strip()
+        if not slot:
+            raise ValueError("Pickup time slot cannot be empty.")
+
+        m24 = TIME_SLOT_24H_REGEX.match(slot)
+        if m24:
+            start_hour = int(m24.group(1))
+            start_minute = int(m24.group(2))
+            end_hour = int(m24.group(3))
+            end_minute = int(m24.group(4))
+        else:
+            m12 = TIME_SLOT_12H_REGEX.match(slot)
+            if not m12:
+                raise ValueError("Pickup time slot must be in format HH:00-HH:00.")
+            start_hour = cls._to_24h(int(m12.group(1)), m12.group(3))
+            start_minute = int(m12.group(2))
+            end_hour = cls._to_24h(int(m12.group(4)), m12.group(6))
+            end_minute = int(m12.group(5))
+
+        if not (0 <= start_hour <= 23 and 0 <= end_hour <= 24):
+            raise ValueError("Pickup time slot hour is invalid.")
+        if start_minute != 0 or end_minute != 0:
+            raise ValueError("Pickup time slot must start/end exactly on the hour.")
+        if end_hour - start_hour != 1:
+            raise ValueError("Pickup time slot must be exactly 1 hour.")
+
+        return start_hour, end_hour
+
+    def _validate_pickup_schedule(
+        self,
+        pickup_date: datetime | None,
+        pickup_time_slot: str | None,
+    ) -> tuple[datetime | None, str | None]:
+        if pickup_time_slot and not pickup_date:
+            raise ValueError("Pickup date is required when pickup time slot is selected.")
+
+        if not pickup_date:
+            return None, None
+
+        tz = self._business_timezone()
+        now_local = datetime.now(tz)
+        pickup_local = (
+            pickup_date.replace(tzinfo=tz)
+            if pickup_date.tzinfo is None
+            else pickup_date.astimezone(tz)
+        )
+        pickup_day = pickup_local.date()
+        today_local = now_local.date()
+
+        if pickup_day < today_local:
+            raise ValueError("Pickup date cannot be in the past.")
+
+        normalized_pickup_date_local = datetime.combine(
+            pickup_day,
+            time(hour=12, minute=0),
+            tzinfo=tz,
+        )
+        normalized_pickup_date_utc = normalized_pickup_date_local.astimezone(timezone.utc)
+
+        if not pickup_time_slot:
+            return normalized_pickup_date_utc, None
+
+        start_hour, end_hour = self._parse_pickup_slot_hours(pickup_time_slot)
+        open_hour, close_hour = BUSINESS_HOURS_BY_WEEKDAY.get(
+            pickup_day.weekday(),
+            BUSINESS_HOURS_BY_WEEKDAY[0],
+        )
+
+        earliest_pickup_hour = max(open_hour + PICKUP_BUFFER_HOURS, start_hour)
+        if pickup_day == today_local:
+            next_whole_hour = now_local.hour
+            if now_local.minute > 0 or now_local.second > 0 or now_local.microsecond > 0:
+                next_whole_hour += 1
+            earliest_pickup_hour = max(earliest_pickup_hour, next_whole_hour)
+
+        if start_hour < (open_hour + PICKUP_BUFFER_HOURS):
+            raise ValueError(
+                f"Pickup starts at {open_hour + PICKUP_BUFFER_HOURS:02d}:00 for this day."
+            )
+        if start_hour < earliest_pickup_hour:
+            raise ValueError("Pickup time slot is in the past. Please choose a future slot.")
+        if end_hour > close_hour:
+            raise ValueError(
+                f"Pickup time must be within business hours and end by {close_hour:02d}:00."
+            )
+
+        normalized_slot = f"{start_hour:02d}:00-{end_hour:02d}:00"
+        return normalized_pickup_date_utc, normalized_slot
+
     # ── Order Creation ───────────────────────────────────────────────────
     async def create_order(
         self,
@@ -49,6 +175,11 @@ class OrderService:
         order_number = _generate_order_number()
         while await self._order_number_exists(order_number):
             order_number = _generate_order_number()
+
+        pickup_date, pickup_time_slot = self._validate_pickup_schedule(
+            data.pickup_date,
+            data.pickup_time_slot,
+        )
 
         # Validate items and calculate pricing
         order_items = []
@@ -93,8 +224,8 @@ class OrderService:
             customer_name=data.customer_name,
             customer_email=data.customer_email,
             customer_phone=data.customer_phone,
-            pickup_date=data.pickup_date,
-            pickup_time_slot=data.pickup_time_slot,
+            pickup_date=pickup_date,
+            pickup_time_slot=pickup_time_slot,
             cake_message=data.cake_message,
             has_cake=has_cake,
             special_instructions=data.special_instructions,
@@ -255,6 +386,16 @@ class OrderService:
             return None
 
         update_fields = data.model_dump(exclude_unset=True)
+        if "pickup_date" in update_fields or "pickup_time_slot" in update_fields:
+            next_pickup_date = update_fields.get("pickup_date", order.pickup_date)
+            next_pickup_slot = update_fields.get("pickup_time_slot", order.pickup_time_slot)
+            validated_date, validated_slot = self._validate_pickup_schedule(
+                next_pickup_date,
+                next_pickup_slot,
+            )
+            update_fields["pickup_date"] = validated_date
+            update_fields["pickup_time_slot"] = validated_slot
+
         for field, value in update_fields.items():
             if field == "status" and value is not None:
                 new_status = OrderStatus(value)

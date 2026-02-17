@@ -61,5 +61,11 @@ export const supportBenefits: SupportBenefit[] = [
 ];
 
 export function formatPrice(value: number) {
-  return `USD $${value.toFixed(2)}`;
+  const formatted = new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  return `AUD ${formatted}`;
 }

@@ -69,6 +69,34 @@ def _build_order_message(order_data: dict) -> str:
     )
 
 
+def _build_order_status_update_message(order_data: dict) -> str:
+    status_raw = str(order_data.get("status") or "unknown")
+    status_label = status_raw.replace("_", " ").title()
+    pickup = order_data.get("pickup_date") or "Not provided"
+    pickup_slot = order_data.get("pickup_time_slot") or "Anytime"
+    status_note = order_data.get("status_note")
+    rejection_reason = order_data.get("rejection_reason")
+
+    admin_link = f"{settings.ADMIN_FRONTEND_URL.rstrip('/')}/apps/orders"
+
+    lines = [
+        "📦 <b>Order Status Updated</b>",
+        f"Order: <b>{order_data.get('order_number', 'N/A')}</b>",
+        f"Status: <b>{status_label}</b>",
+        f"Customer: {order_data.get('customer_name', 'N/A')}",
+        f"Total: <b>{_as_money(order_data.get('total'))}</b>",
+        f"Pickup: {pickup}",
+        f"Slot: {pickup_slot}",
+    ]
+    if status_note:
+        lines.append(f"Note: {status_note}")
+    if rejection_reason:
+        lines.append(f"Reason: {rejection_reason}")
+    lines.append("")
+    lines.append(f"<a href=\"{admin_link}\">Open admin orders</a>")
+    return "\n".join(lines)
+
+
 def _build_order_markup(order_id: str) -> dict:
     return {
         "inline_keyboard": [
@@ -199,6 +227,24 @@ def send_admin_order_pending_alert(self, order_data: dict):
 
     for chat_id in telegram.admin_chat_ids:
         telegram.send_text(chat_id, text, reply_markup=markup)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    name="app.workers.telegram_tasks.send_admin_order_status_alert",
+)
+def send_admin_order_status_alert(self, order_data: dict):
+    """Send status update alert when order state changes in admin tools."""
+    telegram = TelegramService()
+    if not telegram.is_configured():
+        logger.info("Telegram not configured — order status alert skipped")
+        return
+
+    text = _build_order_status_update_message(order_data)
+    for chat_id in telegram.admin_chat_ids:
+        telegram.send_text(chat_id, text)
 
 
 @celery_app.task(

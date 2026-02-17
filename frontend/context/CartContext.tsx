@@ -282,6 +282,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (rawItems.length === 0) {
         throw new ApiError(400, "Your cart is empty.");
       }
+      if (!payload.pickupDate) {
+        throw new ApiError(400, "Pickup date is required.");
+      }
+      if (!payload.pickupTimeSlot) {
+        throw new ApiError(400, "Pickup time slot is required.");
+      }
 
       setCheckoutLoading(true);
       setCartError(null);
@@ -301,10 +307,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             customer_name: user.full_name,
             customer_email: user.email,
             customer_phone: payload.customerPhone || user.phone || null,
-            pickup_date: payload.pickupDate
-              ? new Date(`${payload.pickupDate}T09:00:00`).toISOString()
-              : null,
-            pickup_time_slot: payload.pickupTimeSlot || null,
+            pickup_date: `${payload.pickupDate}T12:00:00`,
+            pickup_time_slot: payload.pickupTimeSlot,
             cake_message: payload.cakeMessage || null,
             special_instructions: payload.specialInstructions || null,
           },

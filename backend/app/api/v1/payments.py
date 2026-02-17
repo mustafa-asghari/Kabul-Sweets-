@@ -90,6 +90,27 @@ def _queue_telegram_order_alert(order) -> None:
         )
 
 
+def _queue_telegram_order_status_alert(
+    order,
+    status_note: str | None = None,
+    rejection_reason: str | None = None,
+) -> None:
+    """Queue Telegram status update so admin frontend and Telegram stay in sync."""
+    try:
+        from app.workers.telegram_tasks import send_admin_order_status_alert
+
+        payload = _order_to_email_payload(order, rejection_reason)
+        if status_note:
+            payload["status_note"] = status_note
+        send_admin_order_status_alert.delay(payload)
+    except Exception as exc:
+        logger.warning(
+            "Failed to queue Telegram order status alert for %s: %s",
+            order.order_number,
+            str(exc),
+        )
+
+
 # ── Create Checkout Session ──────────────────────────────────────────────────
 @router.post("/{order_id}/checkout", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
@@ -327,6 +348,10 @@ async def admin_approve_order(
         order.status = OrderStatus.PENDING_APPROVAL
         await db.flush()
         await db.refresh(order)
+        _queue_telegram_order_status_alert(
+            order,
+            "Approved in admin. Waiting for customer payment.",
+        )
         return MessageResponse(
             message="Order approved. Customer can now pay from the Orders page.",
             detail=order.order_number,
@@ -343,6 +368,10 @@ async def admin_approve_order(
 
     payment_intent_id = order.payment.stripe_payment_intent_id
     if not payment_intent_id:
+        _queue_telegram_order_status_alert(
+            order,
+            "Approved in admin. Waiting for customer payment.",
+        )
         return MessageResponse(
             message="Order is approved and awaiting customer payment.",
             detail=order.order_number,
@@ -362,6 +391,10 @@ async def admin_approve_order(
     )
     if not updated_order:
         raise HTTPException(status_code=404, detail="Order not found after update")
+    _queue_telegram_order_status_alert(
+        updated_order,
+        "Payment captured by admin approval.",
+    )
 
     try:
         from app.workers.email_tasks import send_order_confirmation, send_payment_receipt
@@ -412,6 +445,11 @@ async def admin_reject_order(
     updated_order = await service.reject_order_after_authorization(order.id, data.reason)
     if not updated_order:
         raise HTTPException(status_code=404, detail="Order not found after update")
+    _queue_telegram_order_status_alert(
+        updated_order,
+        "Rejected by admin.",
+        data.reason,
+    )
 
     try:
         from app.workers.email_tasks import send_order_rejection_email

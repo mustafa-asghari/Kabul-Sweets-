@@ -179,7 +179,13 @@ async def update_order(
 ):
     """[Admin] Update order status, pickup time, or notes."""
     service = OrderService(db)
-    order = await service.update_order_admin(order_id, data)
+    try:
+        order = await service.update_order_admin(order_id, data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
