@@ -30,7 +30,7 @@ interface ApiProductList {
   tags?: string[] | null;
 }
 
-const API_FALLBACK_BASE_URL = "http://localhost:8000";
+const API_FALLBACK_BASE_URL = process.env.NODE_ENV === "production" ? "" : "http://localhost:8000";
 
 const CATEGORY_LABELS: Record<string, string> = {
   cake: "Cakes",
