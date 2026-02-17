@@ -520,6 +520,7 @@ export default function CustomCakesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CustomCakeSubmissionResponse | null>(null);
+  const [showSubmitNotice, setShowSubmitNotice] = useState(false);
 
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
@@ -732,6 +733,7 @@ export default function CustomCakesPage() {
       });
 
       setSubmitResult(submission);
+      setShowSubmitNotice(true);
       resetFormAfterSuccess();
       await loadMyRequests();
     } catch (error) {
@@ -1087,6 +1089,47 @@ export default function CustomCakesPage() {
           </ScrollReveal>
         </section>
       </main>
+      {showSubmitNotice ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-6 sm:justify-end">
+          <div
+            role="status"
+            aria-live="polite"
+            className="w-full max-w-md rounded-2xl border border-[#eadcc8] bg-white p-5 shadow-[0_18px_48px_rgba(0,0,0,0.2)]"
+          >
+            <h3 className="text-lg font-extrabold tracking-tight text-black">
+              Custom cake request submitted
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">
+              Your cake request is now under review. We will let you know as soon as our team
+              reviews it.
+            </p>
+            <p className="mt-2 text-sm text-gray-700">
+              You can also find and track this request from your Orders page.
+            </p>
+            {submitResult ? (
+              <p className="mt-3 text-xs text-gray-500">
+                Request ID: {submitResult.custom_cake_id}
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                href="/orders"
+                onClick={() => setShowSubmitNotice(false)}
+                className="inline-flex items-center justify-center rounded-full bg-black px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#222]"
+              >
+                Go to Orders
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowSubmitNotice(false)}
+                className="inline-flex items-center justify-center rounded-full border border-[#d8c8ae] px-4 py-2 text-xs font-semibold text-gray-700 transition hover:bg-[#f7efe3]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Footer />
     </>
   );

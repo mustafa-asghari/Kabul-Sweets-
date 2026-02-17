@@ -8,7 +8,6 @@ Admin can reject results and add custom prompts for re-processing.
 """
 
 import base64
-import os
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -16,12 +15,14 @@ from enum import Enum
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger("image_processing")
+settings = get_settings()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")
+GEMINI_API_KEY = settings.GEMINI_API_KEY.strip()
+GEMINI_MODEL = (settings.GEMINI_IMAGE_MODEL or "gemini-3-pro-image-preview").strip()
 
 
 # ── Category Prompts ─────────────────────────────────────────────────────────

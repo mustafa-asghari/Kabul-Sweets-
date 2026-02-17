@@ -309,6 +309,22 @@ def send_payment_receipt(self, order_data: dict):
 def send_custom_cake_payment_email(self, data: dict):
     """Send payment link email to customer after custom cake approval."""
     try:
+        predicted_price_raw = data.get("predicted_price")
+        final_price_raw = data.get("final_price", "0.00")
+        price_note_html = ""
+        if predicted_price_raw:
+            price_note_html = (
+                f"<p style=\"margin: 5px 0;\"><strong>Predicted estimate:</strong> "
+                f"${predicted_price_raw} AUD</p>"
+            )
+            if str(predicted_price_raw) != str(final_price_raw):
+                price_note_html += (
+                    "<p style=\"margin: 5px 0; color: #a56417;\">"
+                    "<strong>Note:</strong> The estimate was auto-predicted. "
+                    "This final approved price is the real amount to pay."
+                    "</p>"
+                )
+
         html = f"""
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
             <div style="text-align: center; margin-bottom: 30px;">
@@ -321,7 +337,8 @@ def send_custom_cake_payment_email(self, data: dict):
 
                 <div style="border-top: 1px solid #eee; margin: 20px 0; padding-top: 15px;">
                     <p style="margin: 5px 0;"><strong>Cake:</strong> {data.get('cake_description', '')}</p>
-                    <p style="margin: 5px 0; font-size: 20px;"><strong>Price:</strong> ${data.get('final_price', '0.00')} AUD</p>
+                    {price_note_html}
+                    <p style="margin: 5px 0; font-size: 20px;"><strong>Final approved price:</strong> ${final_price_raw} AUD</p>
                 </div>
 
                 <div style="text-align: center; margin-top: 25px;">

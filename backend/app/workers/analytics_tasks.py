@@ -21,7 +21,7 @@ logger = logging.getLogger("app.workers.analytics")
 settings = get_settings()
 
 # Sync DB URL for Celery (Celery doesn't use async)
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg2")
+DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg")
 _engine = None
 
 

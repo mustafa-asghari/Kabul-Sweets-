@@ -16,7 +16,7 @@ from app.models.user import User
 
 logger = logging.getLogger("app.workers.cart")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg2")
+DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg")
 _engine = None
 
 

@@ -219,6 +219,7 @@ class CustomCakeService:
                 "customer_email": customer_email,
                 "customer_name": customer_user.full_name if customer_user else "Valued Customer",
                 "cake_description": description,
+                "predicted_price": str(cake.predicted_price) if cake.predicted_price is not None else None,
                 "final_price": str(final_price),
                 "payment_url": payment_result["checkout_url"],
                 "custom_cake_id": str(cake_id),
@@ -232,6 +233,39 @@ class CustomCakeService:
             "final_price": cake.final_price,
             "predicted_price": cake.predicted_price,
             "payment_url": payment_result["checkout_url"],
+        }
+
+    async def set_final_price(
+        self,
+        cake_id: uuid.UUID,
+        admin_id: uuid.UUID,
+        final_price: Decimal,
+        admin_note: str | None = None,
+    ) -> dict:
+        """Set/adjust final price before approval."""
+        cake = await self._get_cake(cake_id)
+        if not cake:
+            return {"error": "Custom cake not found"}
+
+        if cake.status != CustomCakeStatus.PENDING_REVIEW:
+            return {
+                "error": (
+                    f"Cannot change price while cake is in '{cake.status.value}' status"
+                )
+            }
+
+        cake.final_price = final_price
+        cake.approved_by = admin_id
+        if admin_note:
+            existing = (cake.admin_notes or "").strip()
+            cake.admin_notes = f"{existing}\n{admin_note}".strip() if existing else admin_note
+
+        await self.db.flush()
+        return {
+            "custom_cake_id": str(cake_id),
+            "status": cake.status.value,
+            "predicted_price": cake.predicted_price,
+            "final_price": cake.final_price,
         }
 
     async def admin_reject(

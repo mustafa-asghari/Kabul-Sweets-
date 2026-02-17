@@ -2,7 +2,22 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
-export default function OrderSuccessPage() {
+interface OrderSuccessPageProps {
+  searchParams: Promise<{
+    payment_type?: string;
+  }>;
+}
+
+export default async function OrderSuccessPage({ searchParams }: OrderSuccessPageProps) {
+  const params = await searchParams;
+  const paymentType = (params.payment_type || "").toLowerCase();
+  const isCustomCakePayment = paymentType === "custom_cake";
+
+  const title = isCustomCakePayment ? "Payment Received" : "Payment Authorized";
+  const description = isCustomCakePayment
+    ? "Your custom cake payment was successful. Your request is marked paid and moved forward for preparation."
+    : "Your order is now awaiting admin confirmation. Your card is only charged after approval.";
+
   return (
     <>
       <Navbar />
@@ -10,11 +25,10 @@ export default function OrderSuccessPage() {
         <section className="max-w-[820px] mx-auto px-6 pt-12">
           <div className="rounded-[2rem] bg-cream-dark px-6 py-12 text-center">
             <h1 className="text-4xl font-extrabold tracking-tight text-black">
-              Payment Authorized
+              {title}
             </h1>
             <p className="mt-3 text-sm text-gray-600">
-              Your order is now awaiting admin confirmation. Your card is only charged
-              after approval.
+              {description}
             </p>
             <div className="mt-6 flex items-center justify-center gap-3">
               <Link

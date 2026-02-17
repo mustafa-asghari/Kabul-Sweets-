@@ -19,7 +19,7 @@ from app.models.order import Order, OrderItem, OrderStatus
 logger = logging.getLogger("app.workers.trends")
 settings = get_settings()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg2")
+DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg")
 _engine = None
 
 PAID_STATUSES = [OrderStatus.PAID, OrderStatus.CONFIRMED, OrderStatus.COMPLETED]

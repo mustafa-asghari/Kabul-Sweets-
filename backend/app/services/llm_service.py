@@ -4,14 +4,15 @@ Auto-generates marketing descriptions, short descriptions, and SEO meta.
 """
 
 import json
-import os
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger("llm_service")
+settings = get_settings()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-pro-preview")
+GEMINI_API_KEY = settings.GEMINI_API_KEY.strip()
+GEMINI_TEXT_MODEL = (settings.GEMINI_TEXT_MODEL or "gemini-3-pro-preview").strip()
 
 
 class DescriptionService:

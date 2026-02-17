@@ -4,6 +4,7 @@ Stripe payment service — handles Checkout Sessions and webhooks.
 
 import os
 from decimal import Decimal
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from app.core.logging import get_logger
 
@@ -44,6 +45,14 @@ def _resolve_checkout_urls(
         )
 
     return resolved_success, resolved_cancel
+
+
+def _append_query_params(url: str, extra_params: dict[str, str]) -> str:
+    """Append query params while preserving existing placeholders."""
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query.update(extra_params)
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
 
 class StripeService:
@@ -156,6 +165,10 @@ class StripeService:
         if not STRIPE_AVAILABLE:
             logger.warning("Stripe not configured — returning test payment link")
             success_url, _ = _resolve_checkout_urls()
+            success_url = _append_query_params(
+                success_url,
+                {"payment_type": "custom_cake", "custom_cake_id": custom_cake_id},
+            )
             return {
                 "checkout_url": success_url.replace(
                     "{CHECKOUT_SESSION_ID}",
@@ -165,6 +178,14 @@ class StripeService:
             }
 
         success_url, cancel_url = _resolve_checkout_urls()
+        success_url = _append_query_params(
+            success_url,
+            {"payment_type": "custom_cake", "custom_cake_id": custom_cake_id},
+        )
+        cancel_url = _append_query_params(
+            cancel_url,
+            {"payment_type": "custom_cake", "custom_cake_id": custom_cake_id},
+        )
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
