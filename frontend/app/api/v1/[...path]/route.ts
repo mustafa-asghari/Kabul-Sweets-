@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const backendBaseUrl = (
-  process.env.INTERNAL_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.API_BASE_URL ||
-  "http://localhost:8000"
-).replace(/\/+$/, "");
+const backendBaseUrl = (() => {
+  const url =
+    process.env.INTERNAL_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.API_BASE_URL;
+  if (!url && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Missing API base URL. Set INTERNAL_API_BASE_URL or NEXT_PUBLIC_API_BASE_URL."
+    );
+  }
+  return (url || "http://localhost:8000").replace(/\/+$/, "");
+})();
 
 function buildTargetUrl(pathSegments: string[], query: string) {
   const apiPath = pathSegments.map(encodeURIComponent).join("/");
