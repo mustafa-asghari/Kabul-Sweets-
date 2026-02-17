@@ -32,14 +32,15 @@ export default function ProductCard({
         className="relative bg-white rounded-[1.5rem] p-6 aspect-square flex items-center justify-center overflow-hidden hover:shadow-lg transition-shadow duration-300"
       >
         <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
-        <Image
-          src={imageSrc}
-          alt={imageAlt}
-          width={400}
-          height={400}
-          sizes="(max-width: 640px) 88vw, (max-width: 1280px) 42vw, 320px"
-          className="w-[80%] h-auto object-contain group-hover:scale-105 transition-transform duration-500"
-        />
+        <div className="relative h-full w-full overflow-hidden rounded-[1.1rem]">
+          <Image
+            src={imageSrc}
+            alt={imageAlt}
+            fill
+            sizes="(max-width: 640px) 88vw, (max-width: 1280px) 42vw, 320px"
+            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+          />
+        </div>
         <Link
           href={href}
           aria-label={`Open ${title}`}

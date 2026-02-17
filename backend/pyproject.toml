@@ -43,9 +43,6 @@ dependencies = [
     "reportlab>=4.0.0",
     # Image processing
     "pillow>=11.0.0",
-    # ML (cake pricing)
-    "numpy>=1.26.0,<3.0.0",
-    "xgboost>=2.1.0",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +53,11 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.6.0",
     "mypy>=1.11.0",
+]
+ml = [
+    # Optional ML stack (not required for core API runtime)
+    "numpy>=1.26.0,<3.0.0",
+    "xgboost>=2.1.0",
 ]
 
 [tool.ruff]
