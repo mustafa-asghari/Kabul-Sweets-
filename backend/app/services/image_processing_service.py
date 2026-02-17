@@ -441,10 +441,10 @@ class ImageProcessingService:
         from app.models.ml import ProcessedImage
 
         query = select(ProcessedImage).order_by(desc(ProcessedImage.created_at))
-        if not include_published:
-            query = query.where(ProcessedImage.product_id.is_(None))
         if product_id:
             query = query.where(ProcessedImage.product_id == product_id)
+        elif not include_published:
+            query = query.where(ProcessedImage.product_id.is_(None))
         if custom_cake_id:
             query = query.where(ProcessedImage.custom_cake_id == custom_cake_id)
         if status:
