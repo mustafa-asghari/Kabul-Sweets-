@@ -16,7 +16,6 @@ from app.models.ml import CustomCake, CustomCakeStatus, DecorationComplexity
 from app.services.ml_service import CakePricingService, ServingEstimationService
 
 logger = get_logger("custom_cake_service")
-MIN_CUSTOM_CAKE_FINAL_PRICE = Decimal("35.00")
 
 
 class CustomCakeService:
@@ -172,13 +171,6 @@ class CustomCakeService:
             return {"error": f"Cannot approve cake in '{cake.status.value}' status"}
 
         normalized_price = self._normalize_final_price(final_price)
-        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
-            return {
-                "error": (
-                    f"Final price must be at least ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f} "
-                    "for custom cakes."
-                )
-            }
 
         cake.status = CustomCakeStatus.APPROVED_AWAITING_PAYMENT
         cake.final_price = normalized_price
@@ -268,13 +260,6 @@ class CustomCakeService:
             }
 
         normalized_price = self._normalize_final_price(final_price)
-        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
-            return {
-                "error": (
-                    f"Final price must be at least ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f} "
-                    "for custom cakes."
-                )
-            }
 
         cake.final_price = normalized_price
         cake.approved_by = admin_id
@@ -307,18 +292,9 @@ class CustomCakeService:
         if cake.status != CustomCakeStatus.APPROVED_AWAITING_PAYMENT:
             return {"error": f"Cannot pay cake in '{cake.status.value}' status"}
 
-        amount = cake.final_price or cake.predicted_price
-        if amount is None:
-            return {"error": "No price available for this custom cake"}
-
-        normalized_price = self._normalize_final_price(Decimal(str(amount)))
-        if normalized_price < MIN_CUSTOM_CAKE_FINAL_PRICE:
-            return {
-                "error": (
-                    f"Final price is too low (${normalized_price:.2f}). "
-                    f"Minimum is ${MIN_CUSTOM_CAKE_FINAL_PRICE:.2f}. Please contact admin."
-                )
-            }
+        if cake.final_price is None:
+            return {"error": "Admin final price is missing for this custom cake"}
+        normalized_price = self._normalize_final_price(Decimal(str(cake.final_price)))
 
         from app.models.user import User
         from app.services.stripe_service import StripeService
