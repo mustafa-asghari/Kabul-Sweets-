@@ -1,0 +1,3 @@
+[submodule "admin_frontend/mantine-analytics-dashboard"]
+	path = admin_frontend/mantine-analytics-dashboard
+	url = git@github.com:design-sparx/mantine-analytics-dashboard.git
