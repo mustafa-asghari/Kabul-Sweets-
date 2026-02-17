@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { revealChild } from "./ScrollReveal";
 import Link from "next/link";
+import { useCallback, useState } from "react";
 
 interface ProductCardProps {
   slug?: string;
@@ -23,6 +24,83 @@ export default function ProductCard({
   imageAlt,
 }: ProductCardProps) {
   const href = slug ? `/products/${slug}` : "/shop";
+  const [autoScale, setAutoScale] = useState(1);
+
+  const handleImageLoad = useCallback((img: HTMLImageElement) => {
+    if (typeof document === "undefined" || !img.naturalWidth || !img.naturalHeight) {
+      return;
+    }
+
+    const sampleMax = 320;
+    const sampleWidth = Math.max(
+      24,
+      Math.round((img.naturalWidth / Math.max(img.naturalWidth, img.naturalHeight)) * sampleMax)
+    );
+    const sampleHeight = Math.max(
+      24,
+      Math.round((img.naturalHeight / Math.max(img.naturalWidth, img.naturalHeight)) * sampleMax)
+    );
+
+    const canvas = document.createElement("canvas");
+    canvas.width = sampleWidth;
+    canvas.height = sampleHeight;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      return;
+    }
+
+    try {
+      ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
+      const pixelData = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+
+      let minX = sampleWidth;
+      let minY = sampleHeight;
+      let maxX = -1;
+      let maxY = -1;
+
+      const nearWhite = 248;
+      const nearTransparent = 16;
+
+      for (let y = 0; y < sampleHeight; y += 1) {
+        for (let x = 0; x < sampleWidth; x += 1) {
+          const idx = (y * sampleWidth + x) * 4;
+          const r = pixelData[idx];
+          const g = pixelData[idx + 1];
+          const b = pixelData[idx + 2];
+          const a = pixelData[idx + 3];
+          const isBackground =
+            a <= nearTransparent || (r >= nearWhite && g >= nearWhite && b >= nearWhite);
+
+          if (isBackground) {
+            continue;
+          }
+
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+
+      if (maxX <= minX || maxY <= minY) {
+        return;
+      }
+
+      const subjectWidthRatio = (maxX - minX + 1) / sampleWidth;
+      const subjectHeightRatio = (maxY - minY + 1) / sampleHeight;
+      const occupancy = Math.max(subjectWidthRatio, subjectHeightRatio);
+      if (!Number.isFinite(occupancy) || occupancy <= 0) {
+        return;
+      }
+
+      const targetOccupancy = 0.84;
+      const scale = Math.min(1.28, Math.max(1, targetOccupancy / occupancy));
+      setAutoScale(scale);
+    } catch {
+      // Canvas reads can fail for some remote assets. Keep default framing.
+    }
+  }, []);
 
   return (
     <motion.div variants={revealChild} className="group">
@@ -33,13 +111,20 @@ export default function ProductCard({
       >
         <Link href={href} className="absolute inset-0 z-10" aria-label={title} />
         <div className="relative h-full w-full overflow-hidden rounded-[1.1rem]">
-          <Image
-            src={imageSrc}
-            alt={imageAlt}
-            fill
-            sizes="(max-width: 640px) 88vw, (max-width: 1280px) 42vw, 320px"
-            className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
-          />
+          <div className="relative h-full w-full transition-transform duration-500 group-hover:scale-105">
+            <Image
+              src={imageSrc}
+              alt={imageAlt}
+              fill
+              sizes="(max-width: 640px) 88vw, (max-width: 1280px) 42vw, 320px"
+              className="object-cover object-center transition-transform duration-300"
+              style={{
+                transform: `scale(${autoScale})`,
+                transformOrigin: "center",
+              }}
+              onLoad={(event) => handleImageLoad(event.currentTarget)}
+            />
+          </div>
         </div>
         <Link
           href={href}
