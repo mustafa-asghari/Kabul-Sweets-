@@ -332,8 +332,8 @@ class CustomCakeService:
         reason: str | None = None,
     ) -> dict:
         """
-        Customer-initiated cancellation (delete from active flow).
-        We keep the record for audit/history but move to CANCELLED.
+        Customer-initiated deletion before production.
+        Removes the row from active/history views instead of keeping a cancelled record.
         """
         cake = await self._get_cake(cake_id)
         if not cake:
@@ -348,23 +348,15 @@ class CustomCakeService:
         }
         if cake.status in non_cancellable:
             return {"error": f"Cannot delete cake in '{cake.status.value}' status"}
-        if cake.status == CustomCakeStatus.CANCELLED:
-            return {"error": "Custom cake is already cancelled"}
 
         provided_reason = (reason or "").strip()
-        cancel_reason = "Cancelled by customer from orders page."
+        cancel_reason = "Deleted by customer from orders page."
         if provided_reason:
-            cancel_reason = f"{cancel_reason} Reason: {provided_reason}"
+            cancel_reason = f"{cancel_reason} Note: {provided_reason}"
 
-        cake.status = CustomCakeStatus.CANCELLED
-        cake.rejection_reason = cancel_reason
-        cake.checkout_url = None
-        cake.payment_intent_id = None
-        await self.db.flush()
-
-        return {
+        payload = {
             "custom_cake_id": str(cake.id),
-            "status": cake.status.value,
+            "status": "deleted",
             "reason": cancel_reason,
             "flavor": cake.flavor,
             "diameter_inches": cake.diameter_inches,
@@ -376,6 +368,10 @@ class CustomCakeService:
             ),
             "reference_images": cake.reference_images or [],
         }
+
+        await self.db.delete(cake)
+        await self.db.flush()
+        return payload
 
     async def admin_reject(
         self,

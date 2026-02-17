@@ -54,56 +54,70 @@ export default function ProductCard({
       ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
       const pixelData = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
 
-      let minX = sampleWidth;
-      let minY = sampleHeight;
-      let maxX = -1;
-      let maxY = -1;
-
       const nearWhite = 246;
-      const neutralLightMin = 205;
-      const neutralLightMaxChroma = 20;
+      const neutralLightMin = 226;
+      const neutralLightMaxChroma = 14;
       const nearTransparent = 16;
+      const detectOccupancy = (ignoreNeutralLight: boolean) => {
+        let minX = sampleWidth;
+        let minY = sampleHeight;
+        let maxX = -1;
+        let maxY = -1;
 
-      for (let y = 0; y < sampleHeight; y += 1) {
-        for (let x = 0; x < sampleWidth; x += 1) {
-          const idx = (y * sampleWidth + x) * 4;
-          const r = pixelData[idx];
-          const g = pixelData[idx + 1];
-          const b = pixelData[idx + 2];
-          const a = pixelData[idx + 3];
-          const value = Math.max(r, g, b);
-          const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-          const isNeutralLightBackground =
-            value >= neutralLightMin && chroma <= neutralLightMaxChroma;
-          const isBackground =
-            a <= nearTransparent ||
-            (r >= nearWhite && g >= nearWhite && b >= nearWhite) ||
-            isNeutralLightBackground;
+        for (let y = 0; y < sampleHeight; y += 1) {
+          for (let x = 0; x < sampleWidth; x += 1) {
+            const idx = (y * sampleWidth + x) * 4;
+            const r = pixelData[idx];
+            const g = pixelData[idx + 1];
+            const b = pixelData[idx + 2];
+            const a = pixelData[idx + 3];
+            const value = Math.max(r, g, b);
+            const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+            const isNeutralLightBackground =
+              ignoreNeutralLight &&
+              value >= neutralLightMin &&
+              chroma <= neutralLightMaxChroma;
+            const isBackground =
+              a <= nearTransparent ||
+              (r >= nearWhite && g >= nearWhite && b >= nearWhite) ||
+              isNeutralLightBackground;
 
-          if (isBackground) {
-            continue;
+            if (isBackground) {
+              continue;
+            }
+
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
           }
-
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
         }
-      }
 
-      if (maxX <= minX || maxY <= minY) {
+        if (maxX <= minX || maxY <= minY) {
+          return 0;
+        }
+
+        const subjectWidthRatio = (maxX - minX + 1) / sampleWidth;
+        const subjectHeightRatio = (maxY - minY + 1) / sampleHeight;
+        return Math.max(subjectWidthRatio, subjectHeightRatio);
+      };
+
+      let occupancy = detectOccupancy(true);
+      if (!Number.isFinite(occupancy) || occupancy <= 0) {
         return;
       }
-
-      const subjectWidthRatio = (maxX - minX + 1) / sampleWidth;
-      const subjectHeightRatio = (maxY - minY + 1) / sampleHeight;
-      const occupancy = Math.max(subjectWidthRatio, subjectHeightRatio);
+      if (occupancy < 0.48) {
+        const relaxed = detectOccupancy(false);
+        if (Number.isFinite(relaxed) && relaxed > occupancy) {
+          occupancy = relaxed;
+        }
+      }
       if (!Number.isFinite(occupancy) || occupancy <= 0) {
         return;
       }
 
-      const targetOccupancy = 0.9;
-      const scale = Math.min(1.5, Math.max(1, targetOccupancy / occupancy));
+      const targetOccupancy = 0.88;
+      const scale = Math.min(1.4, Math.max(1, targetOccupancy / occupancy));
       setAutoScale(scale);
     } catch {
       // Canvas reads can fail for some remote assets. Keep default framing.

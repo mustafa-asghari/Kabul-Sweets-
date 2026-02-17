@@ -307,27 +307,6 @@ async def cancel_custom_cake_by_customer(
             raise HTTPException(status_code=404, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
 
-    try:
-        from app.workers.telegram_tasks import send_admin_custom_cake_cancelled_alert
-
-        send_admin_custom_cake_cancelled_alert.delay(
-            {
-                "id": result["custom_cake_id"],
-                "customer_name": current_user.full_name,
-                "customer_email": current_user.email,
-                "flavor": result.get("flavor"),
-                "diameter_inches": result.get("diameter_inches"),
-                "requested_date": result.get("requested_date"),
-                "time_slot": result.get("time_slot"),
-                "predicted_price": result.get("predicted_price"),
-                "final_price": result.get("final_price"),
-                "reason": result.get("reason"),
-                "reference_images": result.get("reference_images", []),
-            }
-        )
-    except Exception as exc:
-        logger.warning("Failed to queue Telegram custom cake cancel alert: %s", str(exc))
-
     return {
         "message": "Custom cake request deleted.",
         "custom_cake_id": result["custom_cake_id"],

@@ -39,9 +39,10 @@ BG_EXPAND_MIN_CHANNEL = 236
 BG_EXPAND_NEUTRAL_MIN_VALUE = 200
 BG_EXPAND_NEUTRAL_MAX_CHROMA = 16
 SUBJECT_DETECT_MAX_CHANNEL = 248
-SUBJECT_IGNORE_NEUTRAL_MIN_VALUE = 205
-SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA = 20
-SUBJECT_STRICT_MIN_AREA_RATIO = 0.035
+SUBJECT_IGNORE_NEUTRAL_MIN_VALUE = 226
+SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA = 14
+SUBJECT_STRICT_MIN_AREA_RATIO = 0.02
+SUBJECT_STRICT_MIN_BBOX_AREA_RATIO = 0.16
 FRAME_TARGET_OCCUPANCY = 0.82
 FRAME_SUBJECT_MARGIN_RATIO = 0.03
 FRAME_MIN_OUTPUT_SIDE = 1000
@@ -61,8 +62,9 @@ class ImageCategory(str, Enum):
 CATEGORY_PROMPTS = {
     ImageCategory.CAKE: (
         "Transform this cake into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "The background must be a flat, uniform white from edge to edge with no gradients, no vignettes, and no gray tint. "
+        "Preserve the original cake design exactly (shape, colors, decorations, texture, and details). "
+        "Do not redesign, simplify, or replace decorations. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
         "Place the cake centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
         "Use a consistent camera distance and framing: cake + cake board must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
         "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
@@ -689,13 +691,6 @@ class ImageProcessingService:
                 if y < height - 1:
                     queue.append((x, y + 1))
 
-            if background_count > 0:
-                for y in range(height):
-                    row_start = y * width
-                    for x in range(width):
-                        if visited[row_start + x]:
-                            pixels[x, y] = (255, 255, 255)
-
             def detect_subject_bounds(ignore_neutral_light: bool) -> tuple[int, int, int, int, int]:
                 left = width
                 top = height
@@ -704,6 +699,7 @@ class ImageProcessingService:
                 subject_pixels = 0
 
                 for y in range(height):
+                    row_start = y * width
                     for x in range(width):
                         r, g, b = pixels[x, y]
                         value = max(r, g, b)
@@ -711,8 +707,13 @@ class ImageProcessingService:
 
                         if (
                             ignore_neutral_light
-                            and value >= SUBJECT_IGNORE_NEUTRAL_MIN_VALUE
-                            and chroma <= SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA
+                            and (
+                                visited[row_start + x]
+                                or (
+                                    value >= SUBJECT_IGNORE_NEUTRAL_MIN_VALUE
+                                    and chroma <= SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA
+                                )
+                            )
                         ):
                             continue
 
@@ -737,7 +738,15 @@ class ImageProcessingService:
                 ignore_neutral_light=True
             )
             strict_area_ratio = strict_subject_pixels / total_pixels if total_pixels else 0.0
-            if strict_subject_pixels == 0 or strict_area_ratio < SUBJECT_STRICT_MIN_AREA_RATIO:
+            strict_bbox_ratio = 0.0
+            if right >= left and bottom >= top:
+                strict_bbox_ratio = ((right - left + 1) * (bottom - top + 1)) / total_pixels
+
+            if (
+                strict_subject_pixels == 0
+                or strict_area_ratio < SUBJECT_STRICT_MIN_AREA_RATIO
+                or strict_bbox_ratio < SUBJECT_STRICT_MIN_BBOX_AREA_RATIO
+            ):
                 left, top, right, bottom, _ = detect_subject_bounds(ignore_neutral_light=False)
 
             if right < left or bottom < top:
@@ -787,8 +796,7 @@ class ImageProcessingService:
                 output_mime = "image/jpeg"
 
             changed = (
-                background_count > 0
-                or width != output_side
+                width != output_side
                 or height != output_side
                 or abs(scale - 1.0) > 0.02
             )
