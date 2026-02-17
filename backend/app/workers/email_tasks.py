@@ -1,6 +1,7 @@
 """
 Email background tasks.
-Handles order confirmations, receipts, and notifications via SMTP.
+Handles order confirmations, receipts, and notifications.
+Uses Mailgun API when configured, with SMTP fallback.
 """
 
 import logging
@@ -11,9 +12,22 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import quote
 
+import httpx
+
 from app.celery_app import celery_app
 
 logger = logging.getLogger("app.workers.email")
+
+# Mailgun config from environment (preferred provider)
+MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "").strip()
+MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "").strip()
+MAILGUN_BASE_URL = os.getenv("MAILGUN_BASE_URL", "https://api.mailgun.net").rstrip("/")
+MAILGUN_FROM_EMAIL = os.getenv("MAILGUN_FROM_EMAIL", "").strip()
+MAILGUN_FROM_NAME = os.getenv("MAILGUN_FROM_NAME", "").strip()
+try:
+    MAILGUN_TIMEOUT_SECONDS = float(os.getenv("MAILGUN_TIMEOUT_SECONDS", "15"))
+except ValueError:
+    MAILGUN_TIMEOUT_SECONDS = 15.0
 
 # SMTP config from environment
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
@@ -40,19 +54,85 @@ def _frontend_link(path: str) -> str:
     return f"{FRONTEND_URL}{path}"
 
 
+def _mailgun_messages_url() -> str:
+    if MAILGUN_BASE_URL.endswith("/v3"):
+        return f"{MAILGUN_BASE_URL}/{MAILGUN_DOMAIN}/messages"
+    return f"{MAILGUN_BASE_URL}/v3/{MAILGUN_DOMAIN}/messages"
+
+
+def _mailgun_configured() -> bool:
+    return bool(MAILGUN_API_KEY and MAILGUN_DOMAIN)
+
+
+def _smtp_configured() -> bool:
+    return bool(SMTP_HOST and SMTP_PORT and SMTP_USER and SMTP_PASSWORD and SMTP_FROM_EMAIL)
+
+
+def _send_email_via_mailgun(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachments: list[tuple[str, bytes]] | None = None,
+) -> bool:
+    from_email = MAILGUN_FROM_EMAIL or SMTP_FROM_EMAIL
+    from_name = MAILGUN_FROM_NAME or SMTP_FROM_NAME or from_email
+    if not from_email:
+        raise RuntimeError("MAILGUN_FROM_EMAIL is required when using Mailgun API")
+
+    data = {
+        "from": f"{from_name} <{from_email}>",
+        "to": to_email,
+        "subject": subject,
+        "html": html_body,
+    }
+    files = []
+    if attachments:
+        for filename, file_bytes in attachments:
+            files.append(
+                ("attachment", (filename, file_bytes, "application/octet-stream"))
+            )
+
+    response = httpx.post(
+        _mailgun_messages_url(),
+        data=data,
+        files=files or None,
+        auth=("api", MAILGUN_API_KEY),
+        timeout=MAILGUN_TIMEOUT_SECONDS,
+    )
+    if response.status_code >= 400:
+        snippet = response.text.strip().replace("\n", " ")
+        raise RuntimeError(
+            f"Mailgun API error {response.status_code}: {snippet[:500]}"
+        )
+
+    logger.info("✅ Email sent to %s via Mailgun: %s", to_email, subject)
+    return True
+
+
 def _send_email(
     to_email: str,
     subject: str,
     html_body: str,
     attachments: list[tuple[str, bytes]] | None = None,
 ) -> bool:
-    """Send an email via SMTP. Returns True on success.
+    """Send an email. Mailgun API is preferred; SMTP is fallback.
 
     Args:
         attachments: Optional list of (filename, file_bytes) tuples.
     """
-    if not SMTP_HOST or not SMTP_PORT or not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
-        logger.warning("SMTP not configured — email to %s skipped (subject: %s)", to_email, subject)
+    if _mailgun_configured():
+        try:
+            return _send_email_via_mailgun(to_email, subject, html_body, attachments)
+        except Exception as e:
+            logger.error("❌ Mailgun send failed to %s: %s", to_email, str(e))
+            raise
+
+    if not _smtp_configured():
+        logger.warning(
+            "Email provider not configured — email to %s skipped (subject: %s)",
+            to_email,
+            subject,
+        )
         logger.info("Email content preview:\n%s", html_body[:500])
         if attachments:
             logger.info("Would attach %d file(s): %s", len(attachments), [a[0] for a in attachments])
