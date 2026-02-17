@@ -32,8 +32,6 @@ dependencies = [
     "stripe>=8.0.0",
     # Background Workers
     "celery[redis]>=5.4.0",
-    # SMS (Twilio)
-    "twilio>=9.0.0",
     # Email
     "aiosmtplib>=3.0.0",
     # Templating (for email/SMS templates)

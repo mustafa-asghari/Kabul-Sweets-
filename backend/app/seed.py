@@ -17,7 +17,6 @@ from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.product import Product, ProductCategory, ProductVariant, StockAdjustment  # noqa: F401
 from app.models.order import Order, OrderItem, Payment  # noqa: F401
 from app.models.analytics import AnalyticsEvent, DailyRevenue  # noqa: F401
-from app.services.ai_service import ProductEmbedding, AIQueryLog  # noqa: F401
 from app.models.business import ScheduleCapacity, CakeDeposit  # noqa: F401
 from app.models.ml import (  # noqa: F401
     CakePricePrediction, ServingEstimate, CustomCake, ProcessedImage, MLModelVersion,

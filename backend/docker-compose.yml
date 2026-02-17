@@ -82,7 +82,7 @@ services:
         "app.celery_app:celery_app",
         "worker",
         "--loglevel=INFO",
-        "--queues=default,email,sms,alerts,analytics",
+        "--queues=default,email,alerts,analytics",
       ]
 
   # ── Celery Beat (Scheduled Jobs) ────────────────────────────────────
