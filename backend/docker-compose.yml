@@ -56,6 +56,60 @@ services:
       - .:/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  # ── Celery Worker (Background Jobs) ─────────────────────────────────
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_celery_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      APP_ENV: development
+      DEBUG: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_app:celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--queues=default,email,sms,alerts,analytics",
+      ]
+
+  # ── Celery Beat (Scheduled Jobs) ────────────────────────────────────
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_celery_beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      APP_ENV: development
+      DEBUG: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: ["celery", "-A", "app.celery_app:celery_app", "beat", "--loglevel=INFO"]
+
   # ── Customer Frontend (Optional) ────────────────────────────────────
   # This service is connected to the Docker stack, but not started by
   # default. Start it explicitly with:
