@@ -1072,7 +1072,11 @@ export default function CustomCakesPage() {
               ) : (
                 <div className="mt-4 space-y-3">
                   {myRequests.slice(0, 6).map((request) => (
-                    <article key={request.id} className="rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3">
+                    <article
+                      id={`request-${request.id}`}
+                      key={request.id}
+                      className="rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-black">{request.flavor}</p>
@@ -1085,6 +1089,9 @@ export default function CustomCakesPage() {
                       <div className="mt-2 text-xs text-gray-700">
                         Predicted: {request.predicted_price ? asCurrency(request.predicted_price) : "N/A"} | Final:{" "}
                         {request.final_price ? asCurrency(request.final_price) : "Pending admin"}
+                      </div>
+                      <div className="mt-1 text-[11px] text-gray-600">
+                        Reference ID: {request.id.slice(0, 8)}
                       </div>
                     </article>
                   ))}
