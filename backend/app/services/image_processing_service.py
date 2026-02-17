@@ -38,8 +38,10 @@ class ImageCategory(str, Enum):
 CATEGORY_PROMPTS = {
     ImageCategory.CAKE: (
         "Transform this cake into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Place the cake centered with balanced studio lighting and soft realistic shadow underneath. "
+                "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
+        "Place the cake centered with balanced studio lighting and NO shadow on the background or under the cake. "
+        "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
+        "A thin flat cake board under the cake is allowed, but no raised stand. "
         "Enhance details of the frosting texture and printed animal decorations. "
         "Keep proportions and colours accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, luxury bakery advertisement style."
