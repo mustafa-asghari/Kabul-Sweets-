@@ -5,15 +5,15 @@ services:
     container_name: kabul_sweets_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: kabul_user
-      POSTGRES_PASSWORD: kabul_pass98112
-      POSTGRES_DB: kabul_sweets
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kabul_user -d kabul_sweets"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -43,12 +43,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
-      APP_ENV: ${APP_ENV:-production}
-      DEBUG: ${DEBUG:-false}
-      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?DOCKER_DATABASE_URL is required}
+      REDIS_URL: ${DOCKER_REDIS_URL:?DOCKER_REDIS_URL is required}
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      DEBUG: ${DEBUG:?DEBUG is required}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:?DOCKER_CELERY_BROKER_URL is required}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:?DOCKER_CELERY_RESULT_BACKEND is required}
     depends_on:
       db:
         condition: service_healthy
@@ -64,12 +64,12 @@ services:
     container_name: kabul_sweets_celery_worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
-      APP_ENV: ${APP_ENV:-development}
-      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?DOCKER_DATABASE_URL is required}
+      REDIS_URL: ${DOCKER_REDIS_URL:?DOCKER_REDIS_URL is required}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:?DOCKER_CELERY_BROKER_URL is required}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:?DOCKER_CELERY_RESULT_BACKEND is required}
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      DEBUG: ${DEBUG:?DEBUG is required}
     depends_on:
       db:
         condition: service_healthy
@@ -93,12 +93,12 @@ services:
     container_name: kabul_sweets_celery_beat
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
-      APP_ENV: ${APP_ENV:-development}
-      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?DOCKER_DATABASE_URL is required}
+      REDIS_URL: ${DOCKER_REDIS_URL:?DOCKER_REDIS_URL is required}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:?DOCKER_CELERY_BROKER_URL is required}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:?DOCKER_CELERY_RESULT_BACKEND is required}
+      APP_ENV: ${APP_ENV:?APP_ENV is required}
+      DEBUG: ${DEBUG:?DEBUG is required}
     depends_on:
       db:
         condition: service_healthy
@@ -128,8 +128,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:?INTERNAL_API_BASE_URL is required}
       NEXT_TELEMETRY_DISABLED: "1"
     depends_on:
       api:
@@ -149,9 +149,9 @@ services:
     ports:
       - "3001:3001"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
-      API_URL: ${API_URL:-http://api:8000/api/v1}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?NEXT_PUBLIC_API_BASE_URL is required}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:?INTERNAL_API_BASE_URL is required}
+      API_URL: ${API_URL:?API_URL is required}
       NEXT_TELEMETRY_DISABLED: "1"
       HUSKY: "0"
     depends_on:

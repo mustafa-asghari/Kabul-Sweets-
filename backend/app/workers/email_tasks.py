@@ -16,13 +16,24 @@ from app.celery_app import celery_app
 logger = logging.getLogger("app.workers.email")
 
 # SMTP config from environment
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.elasticemail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "2525"))
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "0"))
+except ValueError:
+    SMTP_PORT = 0
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USER or "noreply@kabulsweets.com.au")
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Kabul Sweets")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USER)
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "No-Reply")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
+
+
+def _frontend_link(path: str) -> str:
+    if not FRONTEND_URL:
+        return "#"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{FRONTEND_URL}{path}"
 
 
 def _send_email(
@@ -36,7 +47,7 @@ def _send_email(
     Args:
         attachments: Optional list of (filename, file_bytes) tuples.
     """
-    if not SMTP_USER or not SMTP_PASSWORD:
+    if not SMTP_HOST or not SMTP_PORT or not SMTP_USER or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
         logger.warning("SMTP not configured — email to %s skipped (subject: %s)", to_email, subject)
         logger.info("Email content preview:\n%s", html_body[:500])
         if attachments:
@@ -101,7 +112,7 @@ def send_order_confirmation(self, order_data: dict):
                 </div>
 
                 <div style="text-align: center; margin-top: 25px;">
-                    <a href="{FRONTEND_URL}/orders/{order_data.get('order_id', '')}"
+                    <a href="{_frontend_link(f"/orders/{order_data.get('order_id', '')}")}"
                        style="background: #7C3AED; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
                         View Order
                     </a>
@@ -274,7 +285,7 @@ def send_order_rejection_email(self, order_data: dict):
                     </p>
                 </div>
                 <div style="text-align: center; margin-top: 24px;">
-                    <a href="{FRONTEND_URL}/shop"
+                    <a href="{_frontend_link('/shop')}"
                        style="background: #7C3AED; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
                         Place a New Order
                     </a>
@@ -333,7 +344,7 @@ def send_abandoned_cart_email(self, data: dict):
                 <p style="color: #444; font-size: 16px;">{message}</p>
                 <p style="color: #666;">You have <strong>{data.get('item_count', 0)} item(s)</strong> in your cart.</p>
                 <div style="margin-top: 25px;">
-                    <a href="{FRONTEND_URL}/cart"
+                    <a href="{_frontend_link('/cart')}"
                        style="background: #7C3AED; color: white; padding: 14px 35px; border-radius: 25px; text-decoration: none; font-weight: 600;">
                         {button_text}
                     </a>
@@ -366,7 +377,11 @@ def send_password_reset_email(self, data: dict):
     try:
         reset_token = data.get("reset_token", "")
         encoded_token = quote(reset_token, safe="")
-        reset_link = f"{FRONTEND_URL}/reset-password?token={encoded_token}"
+        if not FRONTEND_URL:
+            logger.warning("FRONTEND_URL not configured — password reset email skipped")
+            return
+
+        reset_link = f"{_frontend_link('/reset-password')}?token={encoded_token}"
 
         html = f"""
         <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
@@ -424,7 +439,7 @@ def send_order_ready_notification(self, order_data: dict):
                 </p>
                 <p style="color: #666;">Please bring your order number when collecting.</p>
                 <div style="margin-top: 25px;">
-                    <a href="{FRONTEND_URL}/orders/{order_data.get('order_id', '')}"
+                    <a href="{_frontend_link(f"/orders/{order_data.get('order_id', '')}")}"
                        style="background: #27ae60; color: white; padding: 12px 30px; border-radius: 25px; text-decoration: none; font-weight: 600;">
                         View Order Details
                     </a>

@@ -20,6 +20,30 @@ except ImportError:
     logger.warning("stripe package not installed — payments will be in test mode")
 
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "").strip()
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "").strip()
+
+
+def _resolve_checkout_urls(
+    success_url: str | None = None,
+    cancel_url: str | None = None,
+) -> tuple[str, str]:
+    resolved_success = success_url or STRIPE_SUCCESS_URL
+    resolved_cancel = cancel_url or STRIPE_CANCEL_URL
+
+    if not resolved_success and FRONTEND_URL:
+        resolved_success = f"{FRONTEND_URL}/order/success?session_id={{CHECKOUT_SESSION_ID}}"
+    if not resolved_cancel and FRONTEND_URL:
+        resolved_cancel = f"{FRONTEND_URL}/order/cancel"
+
+    if not resolved_success or not resolved_cancel:
+        raise ValueError(
+            "Stripe checkout URLs are not configured. "
+            "Set STRIPE_SUCCESS_URL/STRIPE_CANCEL_URL or FRONTEND_URL."
+        )
+
+    return resolved_success, resolved_cancel
 
 
 class StripeService:
@@ -33,18 +57,26 @@ class StripeService:
         currency: str = "aud",
         customer_email: str | None = None,
         authorize_only: bool = False,
-        success_url: str = "http://localhost:3000/order/success?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url: str = "http://localhost:3000/order/cancel",
+        success_url: str | None = None,
+        cancel_url: str | None = None,
         line_items_description: str = "Kabul Sweets Order",
     ) -> dict:
         """
         Create a Stripe Checkout Session.
         Returns checkout URL, session ID, and payment intent ID.
         """
+        resolved_success_url, resolved_cancel_url = _resolve_checkout_urls(
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+
         if not STRIPE_AVAILABLE:
             logger.warning("Stripe not configured — returning test checkout session")
             return {
-                "checkout_url": f"{success_url.replace('{CHECKOUT_SESSION_ID}', 'test_session_' + order_id)}",
+                "checkout_url": resolved_success_url.replace(
+                    "{CHECKOUT_SESSION_ID}",
+                    f"test_session_{order_id}",
+                ),
                 "session_id": f"test_session_{order_id}",
                 "payment_intent_id": f"test_intent_{order_id}",
             }
@@ -79,8 +111,8 @@ class StripeService:
                 "order_number": order_number,
             },
             payment_intent_data=payment_intent_data,
-            success_url=success_url,
-            cancel_url=cancel_url,
+            success_url=resolved_success_url,
+            cancel_url=resolved_cancel_url,
         )
 
         return {
@@ -123,10 +155,16 @@ class StripeService:
         """
         if not STRIPE_AVAILABLE:
             logger.warning("Stripe not configured — returning test payment link")
+            success_url, _ = _resolve_checkout_urls()
             return {
-                "checkout_url": f"http://localhost:3000/order/success?session_id=test_cake_{custom_cake_id}",
+                "checkout_url": success_url.replace(
+                    "{CHECKOUT_SESSION_ID}",
+                    f"test_cake_{custom_cake_id}",
+                ),
                 "session_id": f"test_cake_{custom_cake_id}",
             }
+
+        success_url, cancel_url = _resolve_checkout_urls()
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -149,8 +187,8 @@ class StripeService:
                 "custom_cake_id": custom_cake_id,
                 "type": "custom_cake",
             },
-            success_url="http://localhost:3000/order/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="http://localhost:3000/order/cancel",
+            success_url=success_url,
+            cancel_url=cancel_url,
         )
 
         return {

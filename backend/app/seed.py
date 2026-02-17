@@ -5,6 +5,8 @@ Run with: python -m app.seed
 """
 
 import asyncio
+import json
+import os
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -235,6 +237,22 @@ async def seed_database():
     """Seed the database with initial data."""
     setup_logging()
     logger = get_logger("seed")
+    admin_email = os.getenv("SEED_ADMIN_EMAIL", "").strip()
+    admin_password = os.getenv("SEED_ADMIN_PASSWORD", "").strip()
+    admin_full_name = os.getenv("SEED_ADMIN_FULL_NAME", "Admin User").strip() or "Admin User"
+    admin_phone = os.getenv("SEED_ADMIN_PHONE", "").strip()
+    demo_customers_raw = os.getenv("SEED_DEMO_CUSTOMERS_JSON", "").strip()
+    demo_customers: list[dict] = []
+
+    if demo_customers_raw:
+        try:
+            parsed = json.loads(demo_customers_raw)
+            if isinstance(parsed, list):
+                demo_customers = [item for item in parsed if isinstance(item, dict)]
+            else:
+                logger.warning("SEED_DEMO_CUSTOMERS_JSON must be a JSON array. Skipping demo users.")
+        except json.JSONDecodeError:
+            logger.warning("SEED_DEMO_CUSTOMERS_JSON is invalid JSON. Skipping demo users.")
 
     logger.info("🌱 Starting database seed...")
 
@@ -245,60 +263,57 @@ async def seed_database():
 
     async with async_session_factory() as session:
         # ── Admin User ───────────────────────────────────────────────────
-        result = await session.execute(
-            select(User).where(User.email == "admin@kabulsweets.com.au")
-        )
-        if not result.scalar_one_or_none():
-            admin = User(
-                email="admin@kabulsweets.com.au",
-                hashed_password=hash_password("Admin@2024!"),
-                full_name="Kabul Sweets Admin",
-                phone="+61400000000",
-                role=UserRole.ADMIN,
-                is_active=True,
-                is_verified=True,
+        if admin_email and admin_password:
+            result = await session.execute(
+                select(User).where(User.email == admin_email)
             )
-            session.add(admin)
-            await session.commit()
-            logger.info("✅ Admin user created: admin@kabulsweets.com.au / Admin@2024!")
+            if not result.scalar_one_or_none():
+                admin = User(
+                    email=admin_email,
+                    hashed_password=hash_password(admin_password),
+                    full_name=admin_full_name,
+                    phone=admin_phone or None,
+                    role=UserRole.ADMIN,
+                    is_active=True,
+                    is_verified=True,
+                )
+                session.add(admin)
+                await session.commit()
+                logger.info("✅ Admin user created: %s", admin_email)
+            else:
+                logger.info("⏭️  Admin user already exists")
         else:
-            logger.info("⏭️  Admin user already exists")
+            logger.info("⏭️  SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD not set — skipping admin user seed")
 
         # ── Demo Customers ───────────────────────────────────────────────
-        demo_customers = [
-            {
-                "email": "customer@example.com",
-                "password": "Customer@2024!",
-                "full_name": "Demo Customer",
-                "phone": "+61411111111",
-            },
-            {
-                "email": "sarah@example.com",
-                "password": "Sarah@2024!",
-                "full_name": "Sarah Ahmed",
-                "phone": "+61422222222",
-            },
-        ]
-
         for cust in demo_customers:
+            email = str(cust.get("email", "")).strip().lower()
+            password = str(cust.get("password", "")).strip()
+            full_name = str(cust.get("full_name", "")).strip() or "Demo User"
+            phone = str(cust.get("phone", "")).strip()
+
+            if not email or not password:
+                logger.warning("Skipping demo customer without email/password: %s", cust)
+                continue
+
             result = await session.execute(
-                select(User).where(User.email == cust["email"])
+                select(User).where(User.email == email)
             )
             if not result.scalar_one_or_none():
                 user = User(
-                    email=cust["email"],
-                    hashed_password=hash_password(cust["password"]),
-                    full_name=cust["full_name"],
-                    phone=cust["phone"],
+                    email=email,
+                    hashed_password=hash_password(password),
+                    full_name=full_name,
+                    phone=phone or None,
                     role=UserRole.CUSTOMER,
                     is_active=True,
                     is_verified=True,
                 )
                 session.add(user)
                 await session.commit()
-                logger.info("✅ Customer created: %s / %s", cust["email"], cust["password"])
+                logger.info("✅ Customer created: %s", email)
             else:
-                logger.info("⏭️  Customer %s already exists", cust["email"])
+                logger.info("⏭️  Customer %s already exists", email)
 
         # ── Sample Products ──────────────────────────────────────────────
         result = await session.execute(select(Product).limit(1))
@@ -368,15 +383,14 @@ async def seed_database():
         logger.info("  Products: %d", len(product_count))
         logger.info("  Variants: %d", len(variant_count))
         logger.info("═" * 50)
-        logger.info("")
-        logger.info("  Admin login: admin@kabulsweets.com.au / Admin@2024!")
-        logger.info("  Demo user:   customer@example.com / Customer@2024!")
+        if admin_email:
+            logger.info("  Seed admin email: %s", admin_email)
+        if demo_customers:
+            logger.info("  Seed demo users: %d", len(demo_customers))
         logger.info("")
 
 
 if __name__ == "__main__":
-    import os
-
     if os.getenv("APP_ENV") == "production":
         print("❌ Seeding is disabled in production. Set APP_ENV to 'development' to seed.")
         raise SystemExit(1)
