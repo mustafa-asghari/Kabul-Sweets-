@@ -1,5 +1,4 @@
 import "server-only";
-import { headers } from "next/headers";
 
 import type {
   StorefrontCollection,
@@ -89,20 +88,22 @@ function getPublicApiBaseUrl() {
   return PUBLIC_API_BASE_URL;
 }
 
-async function resolveStoreApiBaseUrl() {
-  try {
-    const requestHeaders = await headers();
-    const host =
-      requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
-    if (host) {
-      const protocol = requestHeaders.get("x-forwarded-proto") || "http";
-      return `${protocol}://${host}`;
-    }
-  } catch {
-    // No request context (e.g. during build), use backend URL fallback.
-  }
+function getStoreApiBaseCandidates() {
+  const seen = new Set<string>();
+  const candidates = [
+    getInternalApiBaseUrl(),
+    "http://api:8000",
+    "http://localhost:8000",
+  ];
 
-  return getInternalApiBaseUrl();
+  return candidates.filter((value) => {
+    const normalized = value.replace(/\/+$/, "");
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+    seen.add(normalized);
+    return true;
+  });
 }
 
 function toNumber(value: string | number | null | undefined) {
@@ -237,31 +238,32 @@ function createProductsUrl(params?: {
 }
 
 async function fetchJson<T>(path: string): Promise<T | null> {
-  try {
-    const baseUrl = await resolveStoreApiBaseUrl();
+  const baseCandidates = getStoreApiBaseCandidates();
+
+  for (const baseUrl of baseCandidates) {
     const targetUrl = `${baseUrl}${path}`;
-    const response = await fetch(targetUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      console.error("[storefront-api] request failed", {
-        targetUrl,
-        status: response.status,
+    try {
+      const response = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        cache: "no-store",
       });
-      return null;
+      if (!response.ok) {
+        continue;
+      }
+      return (await response.json()) as T;
+    } catch {
+      continue;
     }
-    return (await response.json()) as T;
-  } catch (error) {
-    console.error("[storefront-api] request error", {
-      path,
-      error: error instanceof Error ? error.message : "unknown",
-    });
-    return null;
   }
+
+  console.error("[storefront-api] all request attempts failed", {
+    path,
+    baseCandidates,
+  });
+  return null;
 }
 
 export async function fetchStoreProducts(params?: {
