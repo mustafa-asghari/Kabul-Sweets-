@@ -239,7 +239,7 @@ async def seed_database():
     logger = get_logger("seed")
     admin_email = os.getenv("SEED_ADMIN_EMAIL", "").strip()
     admin_password = os.getenv("SEED_ADMIN_PASSWORD", "").strip()
-    admin_full_name = os.getenv("SEED_ADMIN_FULL_NAME", "Admin User").strip() or "Admin User"
+    admin_full_name = os.getenv("SEED_ADMIN_FULL_NAME", "").strip()
     admin_phone = os.getenv("SEED_ADMIN_PHONE", "").strip()
     demo_customers_raw = os.getenv("SEED_DEMO_CUSTOMERS_JSON", "").strip()
     demo_customers: list[dict] = []
@@ -268,10 +268,11 @@ async def seed_database():
                 select(User).where(User.email == admin_email)
             )
             if not result.scalar_one_or_none():
+                resolved_admin_full_name = admin_full_name or admin_email.split("@")[0]
                 admin = User(
                     email=admin_email,
                     hashed_password=hash_password(admin_password),
-                    full_name=admin_full_name,
+                    full_name=resolved_admin_full_name,
                     phone=admin_phone or None,
                     role=UserRole.ADMIN,
                     is_active=True,
@@ -289,7 +290,7 @@ async def seed_database():
         for cust in demo_customers:
             email = str(cust.get("email", "")).strip().lower()
             password = str(cust.get("password", "")).strip()
-            full_name = str(cust.get("full_name", "")).strip() or "Demo User"
+            full_name = str(cust.get("full_name", "")).strip() or (email.split("@")[0] if email else "")
             phone = str(cust.get("phone", "")).strip()
 
             if not email or not password:

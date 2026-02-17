@@ -21,11 +21,15 @@ try:
     SMTP_PORT = int(os.getenv("SMTP_PORT", "0"))
 except ValueError:
     SMTP_PORT = 0
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USER)
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "No-Reply")
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip()
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
+try:
+    SMTP_TIMEOUT_SECONDS = float(os.getenv("SMTP_TIMEOUT_SECONDS", "15"))
+except ValueError:
+    SMTP_TIMEOUT_SECONDS = 15.0
 
 
 def _frontend_link(path: str) -> str:
@@ -56,7 +60,8 @@ def _send_email(
 
     try:
         msg = MIMEMultipart("mixed")
-        msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
+        from_display_name = SMTP_FROM_NAME or SMTP_FROM_EMAIL
+        msg["From"] = f"{from_display_name} <{SMTP_FROM_EMAIL}>"
         msg["To"] = to_email
         msg["Subject"] = subject
 
@@ -72,10 +77,20 @@ def _send_email(
                 part["Content-Disposition"] = f'attachment; filename="{filename}"'
                 msg.attach(part)
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
+        try:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
+        finally:
+            # Some SMTP providers can return 250 on QUIT; treat that as non-fatal.
+            try:
+                server.quit()
+            except smtplib.SMTPResponseException as close_exc:
+                if close_exc.smtp_code not in (221, 250):
+                    raise
+            except Exception:
+                server.close()
 
         logger.info("✅ Email sent to %s: %s", to_email, subject)
         return True

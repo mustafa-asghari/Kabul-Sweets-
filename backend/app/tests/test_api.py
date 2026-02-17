@@ -16,7 +16,9 @@ from datetime import datetime, timedelta
 
 import httpx
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("TEST_BASE_URL", "").strip().rstrip("/")
+if not BASE_URL:
+    raise RuntimeError("TEST_BASE_URL is required")
 API = f"{BASE_URL}/api/v1"
 
 # Test credentials
@@ -24,6 +26,7 @@ ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "")
 ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "")
 CUSTOMER_EMAIL = os.getenv("TEST_CUSTOMER_EMAIL", "")
 CUSTOMER_PASSWORD = os.getenv("TEST_CUSTOMER_PASSWORD", "")
+REGISTER_TEST_PASSWORD = os.getenv("TEST_REGISTER_PASSWORD", f"T{uuid.uuid4().hex[:10]}!9")
 
 # Track results
 results: list[dict] = []
@@ -82,7 +85,7 @@ async def run_tests():
         test_email = f"test_{uuid.uuid4().hex[:8]}@test.com"
         r = await client.post(f"{API}/auth/register", json={
             "email": test_email,
-            "password": "TestPass@123",
+            "password": REGISTER_TEST_PASSWORD,
             "full_name": "Test User",
             "phone": "+61499999999",
         })
@@ -267,7 +270,7 @@ async def run_tests():
                     }
                 ],
                 "customer_name": "Demo Customer",
-                "customer_email": "customer@example.com",
+                "customer_email": CUSTOMER_EMAIL or test_email,
                 "customer_phone": "+61411111111",
                 "pickup_date": (datetime.now() + timedelta(days=2)).isoformat(),
                 "pickup_time_slot": "14:00-15:00",
