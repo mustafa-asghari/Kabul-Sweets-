@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
@@ -110,7 +110,7 @@ function toReadableDate(value: string | null) {
   return parsed.toLocaleDateString();
 }
 
-export default function OrdersPage() {
+function OrdersPageContent() {
   const searchParams = useSearchParams();
   const { accessToken, isAuthenticated, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<OrderSummary[]>([]);
@@ -546,5 +546,30 @@ export default function OrdersPage() {
       </main>
       <Footer />
     </>
+  );
+}
+
+function OrdersPageFallback() {
+  return (
+    <>
+      <Navbar />
+      <main className="flex-1 pb-20">
+        <section className="max-w-[980px] mx-auto px-6 pt-8">
+          <div className="rounded-[2rem] bg-cream-dark px-6 py-12">
+            <h1 className="text-4xl font-extrabold tracking-tight text-black">My Orders</h1>
+            <p className="mt-2 text-sm text-gray-600">Loading orders...</p>
+          </div>
+        </section>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<OrdersPageFallback />}>
+      <OrdersPageContent />
+    </Suspense>
   );
 }

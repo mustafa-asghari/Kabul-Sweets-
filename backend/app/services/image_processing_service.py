@@ -36,8 +36,13 @@ PURE_WHITE_BG_MIN_RATIO = 0.995
 PURE_WHITE_BG_BORDER_RATIO = 0.06
 BG_SEED_MIN_CHANNEL = 220
 BG_EXPAND_MIN_CHANNEL = 236
+BG_EXPAND_NEUTRAL_MIN_VALUE = 200
+BG_EXPAND_NEUTRAL_MAX_CHROMA = 16
 SUBJECT_DETECT_MAX_CHANNEL = 248
-FRAME_TARGET_OCCUPANCY = 0.68
+SUBJECT_IGNORE_NEUTRAL_MIN_VALUE = 205
+SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA = 20
+SUBJECT_STRICT_MIN_AREA_RATIO = 0.035
+FRAME_TARGET_OCCUPANCY = 0.82
 FRAME_SUBJECT_MARGIN_RATIO = 0.03
 FRAME_MIN_OUTPUT_SIDE = 1000
 FRAME_MAX_OUTPUT_SIDE = 1400
@@ -59,7 +64,7 @@ CATEGORY_PROMPTS = {
         "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
         "The background must be a flat, uniform white from edge to edge with no gradients, no vignettes, and no gray tint. "
         "Place the cake centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
-        "Use a consistent camera distance and framing: cake + cake board must be fully visible, with generous white space around the subject (roughly 65-70% frame occupancy). "
+        "Use a consistent camera distance and framing: cake + cake board must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
         "Do NOT add any cake stand, pedestal, plate, props, table textures, or decorative scene elements. "
         "A thin flat cake board under the cake is allowed, but no raised stand. "
         "Do NOT add any text, lettering, handwriting, logo, watermark, scribbles, or random lines on top of the cake. "
@@ -624,17 +629,33 @@ class ImageProcessingService:
                 return y * width + x
 
             def is_seed_bg(px: tuple[int, int, int]) -> bool:
+                value = max(px)
+                chroma = max(px) - min(px)
                 return (
-                    px[0] >= BG_SEED_MIN_CHANNEL
-                    and px[1] >= BG_SEED_MIN_CHANNEL
-                    and px[2] >= BG_SEED_MIN_CHANNEL
+                    (
+                        px[0] >= BG_SEED_MIN_CHANNEL
+                        and px[1] >= BG_SEED_MIN_CHANNEL
+                        and px[2] >= BG_SEED_MIN_CHANNEL
+                    )
+                    or (
+                        value >= BG_SEED_MIN_CHANNEL
+                        and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA
+                    )
                 )
 
             def is_expand_bg(px: tuple[int, int, int]) -> bool:
+                value = max(px)
+                chroma = max(px) - min(px)
                 return (
-                    px[0] >= BG_EXPAND_MIN_CHANNEL
-                    and px[1] >= BG_EXPAND_MIN_CHANNEL
-                    and px[2] >= BG_EXPAND_MIN_CHANNEL
+                    (
+                        px[0] >= BG_EXPAND_MIN_CHANNEL
+                        and px[1] >= BG_EXPAND_MIN_CHANNEL
+                        and px[2] >= BG_EXPAND_MIN_CHANNEL
+                    )
+                    or (
+                        value >= BG_EXPAND_NEUTRAL_MIN_VALUE
+                        and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA
+                    )
                 )
 
             for x in range(width):
@@ -675,27 +696,49 @@ class ImageProcessingService:
                         if visited[row_start + x]:
                             pixels[x, y] = (255, 255, 255)
 
-            left = width
-            top = height
-            right = -1
-            bottom = -1
+            def detect_subject_bounds(ignore_neutral_light: bool) -> tuple[int, int, int, int, int]:
+                left = width
+                top = height
+                right = -1
+                bottom = -1
+                subject_pixels = 0
 
-            for y in range(height):
-                for x in range(width):
-                    r, g, b = pixels[x, y]
-                    if (
-                        r < SUBJECT_DETECT_MAX_CHANNEL
-                        or g < SUBJECT_DETECT_MAX_CHANNEL
-                        or b < SUBJECT_DETECT_MAX_CHANNEL
-                    ):
-                        if x < left:
-                            left = x
-                        if x > right:
-                            right = x
-                        if y < top:
-                            top = y
-                        if y > bottom:
-                            bottom = y
+                for y in range(height):
+                    for x in range(width):
+                        r, g, b = pixels[x, y]
+                        value = max(r, g, b)
+                        chroma = max(r, g, b) - min(r, g, b)
+
+                        if (
+                            ignore_neutral_light
+                            and value >= SUBJECT_IGNORE_NEUTRAL_MIN_VALUE
+                            and chroma <= SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA
+                        ):
+                            continue
+
+                        if (
+                            r < SUBJECT_DETECT_MAX_CHANNEL
+                            or g < SUBJECT_DETECT_MAX_CHANNEL
+                            or b < SUBJECT_DETECT_MAX_CHANNEL
+                        ):
+                            subject_pixels += 1
+                            if x < left:
+                                left = x
+                            if x > right:
+                                right = x
+                            if y < top:
+                                top = y
+                            if y > bottom:
+                                bottom = y
+
+                return left, top, right, bottom, subject_pixels
+
+            left, top, right, bottom, strict_subject_pixels = detect_subject_bounds(
+                ignore_neutral_light=True
+            )
+            strict_area_ratio = strict_subject_pixels / total_pixels if total_pixels else 0.0
+            if strict_subject_pixels == 0 or strict_area_ratio < SUBJECT_STRICT_MIN_AREA_RATIO:
+                left, top, right, bottom, _ = detect_subject_bounds(ignore_neutral_light=False)
 
             if right < left or bottom < top:
                 subject_crop = rgb

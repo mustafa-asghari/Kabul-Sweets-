@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     TELEGRAM_ACTING_ADMIN_EMAIL: str | None = None
     ADMIN_FRONTEND_URL: str = Field(...)
     FRONTEND_URL: str = Field(...)
-    BUSINESS_TIMEZONE: str = "Australia/Sydney"
+    BUSINESS_TIMEZONE: str = "Australia/Brisbane"
 
     # ── CORS ─────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = Field(default_factory=list)

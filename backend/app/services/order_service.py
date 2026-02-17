@@ -141,7 +141,7 @@ class OrderService:
             BUSINESS_HOURS_BY_WEEKDAY[0],
         )
 
-        earliest_pickup_hour = max(open_hour + PICKUP_BUFFER_HOURS, start_hour)
+        earliest_pickup_hour = open_hour + PICKUP_BUFFER_HOURS
         if pickup_day == today_local:
             next_whole_hour = now_local.hour
             if now_local.minute > 0 or now_local.second > 0 or now_local.microsecond > 0:

@@ -59,7 +59,9 @@ export default function ProductCard({
       let maxX = -1;
       let maxY = -1;
 
-      const nearWhite = 248;
+      const nearWhite = 246;
+      const neutralLightMin = 205;
+      const neutralLightMaxChroma = 20;
       const nearTransparent = 16;
 
       for (let y = 0; y < sampleHeight; y += 1) {
@@ -69,8 +71,14 @@ export default function ProductCard({
           const g = pixelData[idx + 1];
           const b = pixelData[idx + 2];
           const a = pixelData[idx + 3];
+          const value = Math.max(r, g, b);
+          const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+          const isNeutralLightBackground =
+            value >= neutralLightMin && chroma <= neutralLightMaxChroma;
           const isBackground =
-            a <= nearTransparent || (r >= nearWhite && g >= nearWhite && b >= nearWhite);
+            a <= nearTransparent ||
+            (r >= nearWhite && g >= nearWhite && b >= nearWhite) ||
+            isNeutralLightBackground;
 
           if (isBackground) {
             continue;
@@ -94,8 +102,8 @@ export default function ProductCard({
         return;
       }
 
-      const targetOccupancy = 0.84;
-      const scale = Math.min(1.28, Math.max(1, targetOccupancy / occupancy));
+      const targetOccupancy = 0.9;
+      const scale = Math.min(1.5, Math.max(1, targetOccupancy / occupancy));
       setAutoScale(scale);
     } catch {
       // Canvas reads can fail for some remote assets. Keep default framing.

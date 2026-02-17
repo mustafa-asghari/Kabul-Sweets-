@@ -553,21 +553,14 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
       return;
     }
 
-    if (pickupTimeSlot && !selectedDate) {
-      setCheckoutError("Please select a pickup date before choosing a pickup time slot.");
+    const validSlots = buildTimeSlotOptionsForDate(pickupDate);
+    if (validSlots.length === 0) {
+      setCheckoutError("No pickup slots left for the selected date. Please choose another date.");
       return;
     }
-
-    if (selectedDate) {
-      const validSlots = buildTimeSlotOptionsForDate(pickupDate);
-      if (validSlots.length === 0 && pickupTimeSlot) {
-        setCheckoutError("No pickup slots left for the selected date. Please choose another date.");
-        return;
-      }
-      if (pickupTimeSlot && !validSlots.some((slot) => slot.value === pickupTimeSlot)) {
-        setCheckoutError("The selected pickup time is no longer available. Please choose a new slot.");
-        return;
-      }
+    if (!validSlots.some((slot) => slot.value === pickupTimeSlot)) {
+      setCheckoutError("The selected pickup time is no longer available. Please choose a new slot.");
+      return;
     }
 
     try {
