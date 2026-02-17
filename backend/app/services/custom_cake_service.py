@@ -208,6 +208,9 @@ class CustomCakeService:
             amount=final_price,
             customer_email=customer_email,
         )
+        cake.checkout_url = payment_result.get("checkout_url")
+        cake.payment_intent_id = payment_result.get("session_id")
+        await self.db.flush()
 
         # Send payment link email to customer
         if customer_email:

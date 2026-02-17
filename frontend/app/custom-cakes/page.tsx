@@ -891,15 +891,15 @@ export default function CustomCakesPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-extrabold tracking-tight text-black">Design Reference</h3>
+                  <h3 className="text-xl font-extrabold tracking-tight text-black">Cake Note</h3>
                   <div className="mt-4 space-y-4">
                     <label className="text-sm font-semibold text-black block">
-                      Decoration description
+                      Add a note about your cake
                       <textarea
                         rows={4}
                         value={form.decoration_description}
                         onChange={(event) => updateForm("decoration_description", event.target.value)}
-                        placeholder="Design ideas, piping style, flowers, theme..."
+                        placeholder="Add a note about your cake design, colors, theme, or style..."
                         className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none resize-none focus:ring-2 focus:ring-accent/25"
                       />
                     </label>

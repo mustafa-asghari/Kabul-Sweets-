@@ -250,10 +250,13 @@ async def get_my_custom_cakes(
             "id": str(c.id),
             "flavor": c.flavor,
             "status": c.status.value,
+            "diameter_inches": c.diameter_inches,
             "predicted_price": str(c.predicted_price) if c.predicted_price else None,
             "final_price": str(c.final_price) if c.final_price else None,
             "predicted_servings": c.predicted_servings,
             "requested_date": c.requested_date.isoformat() if c.requested_date else None,
+            "time_slot": c.time_slot,
+            "checkout_url": c.checkout_url,
             "created_at": c.created_at.isoformat(),
         }
         for c in cakes

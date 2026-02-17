@@ -3,9 +3,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatPrice } from "@/data/storefront";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, apiRequest } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 
@@ -14,8 +14,48 @@ interface CartDrawerProps {
   onClose: () => void;
 }
 
+interface CustomCakeCartSummary {
+  id: string;
+  flavor: string;
+  status: string;
+  diameter_inches: number;
+  predicted_price: string | null;
+  final_price: string | null;
+  checkout_url: string | null;
+  created_at: string;
+}
+
+function cakeStatusLabel(status: string) {
+  switch (status) {
+    case "pending_review":
+      return "Pending Review";
+    case "approved_awaiting_payment":
+      return "Approved - Awaiting Payment";
+    case "paid":
+      return "Paid";
+    case "in_production":
+      return "In Production";
+    case "completed":
+      return "Completed";
+    case "rejected":
+      return "Rejected";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status.replace(/_/g, " ");
+  }
+}
+
+function toNumber(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default function CartDrawer({ open, onClose }: CartDrawerProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { accessToken, isAuthenticated, user } = useAuth();
   const {
     lines,
     subtotal,
@@ -33,10 +73,51 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const [pickupTimeSlot, setPickupTimeSlot] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [customCakes, setCustomCakes] = useState<CustomCakeCartSummary[]>([]);
+  const [loadingCustomCakes, setLoadingCustomCakes] = useState(false);
 
   const openAuthPrompt = () => {
     window.dispatchEvent(new Event("open-auth-modal"));
   };
+
+  useEffect(() => {
+    setCustomerPhone(user?.phone || "");
+  }, [user?.phone]);
+
+  useEffect(() => {
+    if (!open || !isAuthenticated || !accessToken) {
+      if (!isAuthenticated) {
+        setCustomCakes([]);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingCustomCakes(true);
+
+    apiRequest<CustomCakeCartSummary[]>("/api/v1/custom-cakes/my-cakes", {
+      token: accessToken,
+    })
+      .then((data) => {
+        if (!cancelled) {
+          setCustomCakes(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCustomCakes([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingCustomCakes(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isAuthenticated, accessToken]);
 
   const handleCheckout = async () => {
     setCheckoutError(null);
@@ -234,6 +315,53 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                     </div>
                   </>
                 )}
+
+                {isAuthenticated ? (
+                  <div className="rounded-2xl border border-[#ece0cf] bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-bold text-black">Custom cake requests</h3>
+                      <Link
+                        href="/custom-cakes"
+                        onClick={onClose}
+                        className="text-xs font-semibold text-black hover:text-accent transition"
+                      >
+                        Open
+                      </Link>
+                    </div>
+
+                    {loadingCustomCakes ? (
+                      <p className="text-xs text-gray-500">Loading custom cakes...</p>
+                    ) : customCakes.length === 0 ? (
+                      <p className="text-xs text-gray-500">No custom cake requests yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {customCakes.slice(0, 3).map((cake) => {
+                          const price = cake.final_price ?? cake.predicted_price;
+                          const payable = cake.status === "approved_awaiting_payment" && Boolean(cake.checkout_url);
+
+                          return (
+                            <article key={cake.id} className="rounded-xl border border-[#ece0cf] p-3">
+                              <p className="text-xs font-semibold text-black">
+                                {cake.flavor} ({cake.diameter_inches} inch)
+                              </p>
+                              <p className="mt-1 text-[11px] text-gray-600">
+                                {cakeStatusLabel(cake.status)} - {formatPrice(toNumber(price))}
+                              </p>
+                              {payable ? (
+                                <a
+                                  href={cake.checkout_url || "#"}
+                                  className="mt-2 inline-flex rounded-full bg-black px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#222] transition"
+                                >
+                                  Pay custom cake
+                                </a>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 {cartError ? <p className="text-xs text-red-600">{cartError}</p> : null}
                 {checkoutError ? <p className="text-xs text-red-600">{checkoutError}</p> : null}

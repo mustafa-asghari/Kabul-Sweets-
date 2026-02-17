@@ -433,8 +433,23 @@ async def stripe_webhook(
     service = OrderService(db)
 
     if event_type == "checkout.session.completed":
-        order_id = data.get("metadata", {}).get("order_id")
+        metadata = data.get("metadata", {}) or {}
+        custom_cake_id = metadata.get("custom_cake_id")
+        order_id = metadata.get("order_id")
         payment_intent = data.get("payment_intent", "")
+
+        if custom_cake_id:
+            try:
+                from app.services.custom_cake_service import CustomCakeService
+
+                cake_service = CustomCakeService(db)
+                result = await cake_service.mark_paid(uuid.UUID(custom_cake_id))
+                if "error" in result:
+                    logger.error("Custom cake webhook error (%s): %s", custom_cake_id, result["error"])
+                else:
+                    logger.info("✅ Custom cake %s marked as paid", custom_cake_id)
+            except Exception as e:
+                logger.error("Error processing custom cake webhook: %s", str(e))
 
         if order_id:
             try:
