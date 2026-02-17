@@ -8,6 +8,7 @@ Requires: The app running locally on port 8000
 
 import asyncio
 import json
+import os
 import sys
 import time
 import uuid
@@ -19,10 +20,10 @@ BASE_URL = "http://localhost:8000"
 API = f"{BASE_URL}/api/v1"
 
 # Test credentials
-ADMIN_EMAIL = "admin@kabulsweets.com.au"
-ADMIN_PASSWORD = "Admin@2024!"
-CUSTOMER_EMAIL = "customer@example.com"
-CUSTOMER_PASSWORD = "Customer@2024!"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "")
+CUSTOMER_EMAIL = os.getenv("TEST_CUSTOMER_EMAIL", "")
+CUSTOMER_PASSWORD = os.getenv("TEST_CUSTOMER_PASSWORD", "")
 
 # Track results
 results: list[dict] = []
@@ -88,29 +89,35 @@ async def run_tests():
         log_result("/auth/register", "POST", r.status_code, r.status_code in (200, 201))
 
         # Admin login
-        r = await client.post(f"{API}/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD,
-        })
-        if r.status_code == 200:
-            data = r.json()
-            admin_token = data.get("access_token")
-            admin_refresh = data.get("refresh_token")
-            log_result("/auth/login (admin)", "POST", r.status_code, bool(admin_token))
+        if ADMIN_EMAIL and ADMIN_PASSWORD:
+            r = await client.post(f"{API}/auth/login", json={
+                "email": ADMIN_EMAIL,
+                "password": ADMIN_PASSWORD,
+            })
+            if r.status_code == 200:
+                data = r.json()
+                admin_token = data.get("access_token")
+                admin_refresh = data.get("refresh_token")
+                log_result("/auth/login (admin)", "POST", r.status_code, bool(admin_token))
+            else:
+                log_result("/auth/login (admin)", "POST", r.status_code, False, f"FAIL: {r.text[:100]}")
         else:
-            log_result("/auth/login (admin)", "POST", r.status_code, False, f"FAIL: {r.text[:100]}")
+            log_result("/auth/login (admin)", "POST", 0, False, "Skipped (TEST_ADMIN_* not set)")
 
         # Customer login
-        r = await client.post(f"{API}/auth/login", json={
-            "email": CUSTOMER_EMAIL,
-            "password": CUSTOMER_PASSWORD,
-        })
-        if r.status_code == 200:
-            data = r.json()
-            customer_token = data.get("access_token")
-            log_result("/auth/login (customer)", "POST", r.status_code, bool(customer_token))
+        if CUSTOMER_EMAIL and CUSTOMER_PASSWORD:
+            r = await client.post(f"{API}/auth/login", json={
+                "email": CUSTOMER_EMAIL,
+                "password": CUSTOMER_PASSWORD,
+            })
+            if r.status_code == 200:
+                data = r.json()
+                customer_token = data.get("access_token")
+                log_result("/auth/login (customer)", "POST", r.status_code, bool(customer_token))
+            else:
+                log_result("/auth/login (customer)", "POST", r.status_code, False, f"FAIL: {r.text[:100]}")
         else:
-            log_result("/auth/login (customer)", "POST", r.status_code, False, f"FAIL: {r.text[:100]}")
+            log_result("/auth/login (customer)", "POST", 0, False, "Skipped (TEST_CUSTOMER_* not set)")
 
         # Refresh token
         if admin_refresh:

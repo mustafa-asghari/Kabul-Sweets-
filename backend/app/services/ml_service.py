@@ -129,7 +129,9 @@ class CakePricingService:
 
         # Step 2: Estimate ingredients cost if not provided
         if ingredients_cost is None:
-            ingredients_cost = (Decimal(str(volume)) * BASE_COST_PER_CUBIC_INCH).quantize(Decimal("0.01"))
+            ingredients_cost = (
+                Decimal(str(volume)) * BASE_COST_PER_CUBIC_INCH
+            ).quantize(Decimal("0.01"))
 
         # Step 3: Calculate labor cost
         labor_cost = (Decimal(str(labor_hours)) * LABOR_RATE_PER_HOUR).quantize(Decimal("0.01"))
@@ -168,7 +170,9 @@ class CakePricingService:
 
         if xgb_price is not None:
             # Keep some heuristic influence to stay business-safe.
-            price = self._normalize_price((xgb_price * Decimal("0.8")) + (heuristic_price * Decimal("0.2")))
+            price = self._normalize_price(
+                (xgb_price * Decimal("0.8")) + (heuristic_price * Decimal("0.2"))
+            )
             model_version = MODEL_VERSION_XGBOOST
             confidence_score = xgb_confidence
         else:
@@ -220,7 +224,9 @@ class CakePricingService:
                 "target_margin_pct": float(TARGET_MARGIN * 100),
                 "actual_margin_pct": round(actual_margin, 1),
                 "xgboost_active": model_version == MODEL_VERSION_XGBOOST,
-                "xgboost_training_samples": xgb_samples if model_version == MODEL_VERSION_XGBOOST else 0,
+                "xgboost_training_samples": (
+                    xgb_samples if model_version == MODEL_VERSION_XGBOOST else 0
+                ),
             },
             "historical_average": historical_avg,
             "confidence_score": prediction.confidence_score,
@@ -500,7 +506,11 @@ class CakePricingService:
             model_path = Path(XGBOOST_MODEL_PATH)
             model_path.parent.mkdir(parents=True, exist_ok=True)
             model.save_model(str(model_path))
-            logger.info("Trained XGBoost pricing model with %d samples at %s", len(features), model_path)
+            logger.info(
+                "Trained XGBoost pricing model with %d samples at %s",
+                len(features),
+                model_path,
+            )
 
             return model, len(features)
         except Exception as exc:
