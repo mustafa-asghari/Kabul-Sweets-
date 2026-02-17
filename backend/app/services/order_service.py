@@ -196,9 +196,12 @@ class OrderService:
         order_items = []
         subtotal = Decimal("0.00")
         has_cake = False
+        inventory_warnings: list[str] = []
 
         for item_data in data.items:
-            product, variant, unit_price = await self._validate_order_item(item_data)
+            product, variant, unit_price, inventory_warning = await self._validate_order_item(
+                item_data
+            )
 
             if product.is_cake:
                 has_cake = True
@@ -218,9 +221,13 @@ class OrderService:
             order_items.append(order_item)
             subtotal += line_total
 
-            # Reserve inventory (reduce stock)
+            if inventory_warning:
+                inventory_warnings.append(inventory_warning)
+
+            # Reserve inventory numerically (can go below zero).
+            # Negative stock indicates shortage for admin review.
             if variant:
-                variant.stock_quantity = max(0, variant.stock_quantity - item_data.quantity)
+                variant.stock_quantity = variant.stock_quantity - item_data.quantity
                 variant.is_in_stock = variant.stock_quantity > 0
 
         # Calculate totals
@@ -228,6 +235,12 @@ class OrderService:
         total = subtotal + tax_amount
 
         # Create order
+        admin_notes = None
+        if inventory_warnings:
+            admin_notes = "Inventory check required before approval:\n" + "\n".join(
+                f"- {warning}" for warning in inventory_warnings
+            )
+
         order = Order(
             order_number=order_number,
             customer_id=customer_id,
@@ -245,6 +258,7 @@ class OrderService:
             discount_amount=Decimal("0.00"),
             total=total,
             discount_code=data.discount_code,
+            admin_notes=admin_notes,
         )
         self.db.add(order)
         await self.db.flush()
@@ -289,6 +303,7 @@ class OrderService:
 
         variant = None
         unit_price = product.base_price
+        inventory_warning: str | None = None
 
         if item_data.variant_id:
             result = await self.db.execute(
@@ -302,12 +317,13 @@ class OrderService:
                 raise ValueError(f"Variant not found or inactive: {item_data.variant_id}")
 
             if not variant.is_in_stock or variant.stock_quantity < item_data.quantity:
-                raise ValueError(
-                    f"'{product.name} - {variant.name}' is out of stock or insufficient quantity"
+                inventory_warning = (
+                    f"{product.name} - {variant.name}: requested {item_data.quantity}, "
+                    f"available {max(variant.stock_quantity, 0)}"
                 )
             unit_price = variant.price
 
-        return product, variant, unit_price
+        return product, variant, unit_price, inventory_warning
 
     async def _order_number_exists(self, order_number: str) -> bool:
         result = await self.db.execute(
