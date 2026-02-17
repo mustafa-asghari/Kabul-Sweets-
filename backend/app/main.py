@@ -106,10 +106,18 @@ def create_app() -> FastAPI:
             "Manage products, orders, payments, and more."
         ),
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None if settings.is_production else "/docs",
+        redoc_url=None if settings.is_production else "/redoc",
         lifespan=lifespan,
     )
+
+    # ── Security Middleware ──────────────────────────────────────────────
+    from app.core.security_middleware import apply_security_middleware
+    apply_security_middleware(app)
+
+    # ── Monitoring ────────────────────────────────────────────────────────
+    from app.core.monitoring import setup_sentry
+    setup_sentry(app)
 
     # ── CORS Middleware ──────────────────────────────────────────────────
     app.add_middleware(
