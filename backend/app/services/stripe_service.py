@@ -52,7 +52,16 @@ def _append_query_params(url: str, extra_params: dict[str, str]) -> str:
     parsed = urlparse(url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     query.update(extra_params)
-    return urlunparse(parsed._replace(query=urlencode(query)))
+    # Keep Stripe placeholder braces unescaped so Stripe can inject session IDs.
+    return urlunparse(parsed._replace(query=urlencode(query, safe="{}")))
+
+
+def _replace_checkout_session_placeholder(url: str, replacement: str) -> str:
+    return (
+        url.replace("{CHECKOUT_SESSION_ID}", replacement)
+        .replace("%7BCHECKOUT_SESSION_ID%7D", replacement)
+        .replace("%7bCHECKOUT_SESSION_ID%7d", replacement)
+    )
 
 
 class StripeService:
@@ -82,8 +91,8 @@ class StripeService:
         if not STRIPE_AVAILABLE:
             logger.warning("Stripe not configured — returning test checkout session")
             return {
-                "checkout_url": resolved_success_url.replace(
-                    "{CHECKOUT_SESSION_ID}",
+                "checkout_url": _replace_checkout_session_placeholder(
+                    resolved_success_url,
                     f"test_session_{order_id}",
                 ),
                 "session_id": f"test_session_{order_id}",
@@ -170,8 +179,8 @@ class StripeService:
                 {"payment_type": "custom_cake", "custom_cake_id": custom_cake_id},
             )
             return {
-                "checkout_url": success_url.replace(
-                    "{CHECKOUT_SESSION_ID}",
+                "checkout_url": _replace_checkout_session_placeholder(
+                    success_url,
                     f"test_cake_{custom_cake_id}",
                 ),
                 "session_id": f"test_cake_{custom_cake_id}",
