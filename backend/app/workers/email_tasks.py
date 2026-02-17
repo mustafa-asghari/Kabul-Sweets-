@@ -309,6 +309,16 @@ def send_payment_receipt(self, order_data: dict):
 def send_custom_cake_payment_email(self, data: dict):
     """Send payment link email to customer after custom cake approval."""
     try:
+        payment_url = str(data.get("payment_url") or "").strip()
+        if payment_url and payment_url.startswith("/"):
+            payment_url = _frontend_link(payment_url)
+        if not payment_url:
+            payment_url = _frontend_link("/orders")
+            logger.warning(
+                "Custom cake payment email missing payment_url for cake %s; using /orders fallback",
+                data.get("custom_cake_id"),
+            )
+
         predicted_price_raw = data.get("predicted_price")
         final_price_raw = data.get("final_price", "0.00")
         price_note_html = ""
@@ -342,7 +352,7 @@ def send_custom_cake_payment_email(self, data: dict):
                 </div>
 
                 <div style="text-align: center; margin-top: 25px;">
-                    <a href="{data.get('payment_url', '#')}"
+                    <a href="{payment_url}"
                        style="background: #7C3AED; color: white; padding: 14px 35px; border-radius: 25px; text-decoration: none; font-weight: 600; font-size: 16px;">
                         Pay Now
                     </a>
@@ -350,6 +360,10 @@ def send_custom_cake_payment_email(self, data: dict):
 
                 <p style="color: #999; font-size: 13px; text-align: center; margin-top: 20px;">
                     This link will take you to our secure payment page.
+                </p>
+                <p style="color: #666; font-size: 12px; text-align: center; word-break: break-all; margin-top: 12px;">
+                    If the button is not visible, use this payment link:
+                    <a href="{payment_url}" style="color: #1a1a2e;">{payment_url}</a>
                 </p>
             </div>
             <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">

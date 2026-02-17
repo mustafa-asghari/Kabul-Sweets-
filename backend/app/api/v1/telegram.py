@@ -125,14 +125,15 @@ def _price_str(value: Decimal) -> str:
     return f"{value.quantize(Decimal('0.01'))}"
 
 
-def _cake_markup(cake: CustomCake) -> dict:
-    rows: list[list[dict]] = [
-        [
-            {"text": "✅ Approve", "callback_data": f"cake:approve:{cake.id}"},
-            {"text": "❌ Reject", "callback_data": f"cake:reject:{cake.id}"},
-        ]
-    ]
+def _cake_price_reference(cake: CustomCake) -> Decimal:
+    reference = cake.final_price or cake.predicted_price
+    if reference is None:
+        return Decimal("50.00")
+    return Decimal(str(reference))
 
+
+def _cake_price_adjustment_rows(cake: CustomCake) -> list[list[dict]]:
+    rows: list[list[dict]] = []
     base_price = cake.final_price or cake.predicted_price
     if base_price is not None:
         base = Decimal(str(base_price))
@@ -153,8 +154,43 @@ def _cake_markup(cake: CustomCake) -> dict:
                 {"text": "Use Predicted", "callback_data": f"cakeprice:{cake.id}:{_price_str(predicted)}"},
             ]
         )
+    return rows
 
-    rows.append([{"text": "✍️ Set Exact Price", "callback_data": f"cakepricehelp:{cake.id}"}])
+
+def _cake_price_editor_message(cake: CustomCake) -> str:
+    suggested = _cake_price_reference(cake)
+    return (
+        "💵 <b>Edit Final Price</b>\n"
+        f"Cake ID: <b>{cake.id}</b>\n"
+        f"Predicted estimate: {_as_money(cake.predicted_price)}\n"
+        f"Current final price: {_as_money(cake.final_price)}\n\n"
+        "Choose a quick amount below, or set an exact amount with:\n"
+        f"<code>/cakeprice {cake.id} {_price_str(suggested)}</code>\n\n"
+        "After updating the amount, tap ✅ Approve."
+    )
+
+
+def _cake_price_editor_markup(cake: CustomCake) -> dict:
+    rows = _cake_price_adjustment_rows(cake)
+    rows.append(
+        [
+            {"text": "✅ Approve", "callback_data": f"cake:approve:{cake.id}"},
+            {"text": "❌ Reject", "callback_data": f"cake:reject:{cake.id}"},
+        ]
+    )
+    return {"inline_keyboard": rows}
+
+
+def _cake_markup(cake: CustomCake) -> dict:
+    rows: list[list[dict]] = [
+        [
+            {"text": "✅ Approve", "callback_data": f"cake:approve:{cake.id}"},
+            {"text": "❌ Reject", "callback_data": f"cake:reject:{cake.id}"},
+        ],
+        [
+            {"text": "💵 Edit Final Price", "callback_data": f"cake:editprice:{cake.id}"},
+        ],
+    ]
     return {"inline_keyboard": rows}
 
 
@@ -1531,6 +1567,25 @@ async def _set_custom_cake_price_via_telegram(
     return f"Final price set to {_as_money(final_value)}. Now click Approve."
 
 
+async def _open_cake_price_editor_via_telegram(
+    telegram: TelegramService,
+    chat_id: int,
+    cake_id: uuid.UUID,
+    db: AsyncSession,
+) -> None:
+    service = CustomCakeService(db)
+    cake = await service.get_custom_cake(cake_id)
+    if not cake:
+        raise HTTPException(status_code=404, detail="Custom cake not found")
+
+    await _send_text(
+        telegram,
+        chat_id,
+        _cake_price_editor_message(cake),
+        _cake_price_editor_markup(cake),
+    )
+
+
 async def _reject_custom_cake_via_telegram(
     cake_id: uuid.UUID,
     acting_admin: User,
@@ -1637,24 +1692,13 @@ async def telegram_webhook(
 
             if len(parts) == 2 and parts[0] == "cakepricehelp":
                 cake_id = uuid.UUID(parts[1])
-                service = CustomCakeService(db)
-                cake = await service.get_custom_cake(cake_id)
-                if not cake:
-                    await _answer_callback(telegram, callback_id, "Cake not found")
-                    return {"ok": True}
-
-                suggested = cake.final_price or cake.predicted_price or Decimal("0")
-                await _send_text(
+                await _open_cake_price_editor_via_telegram(
                     telegram,
                     int(chat_id),
-                    (
-                        "Set exact final price before approval:\n"
-                        f"<code>/cakeprice {cake_id} {_price_str(Decimal(str(suggested)))}</code>\n\n"
-                        f"Predicted estimate: {_as_money(cake.predicted_price)}\n"
-                        f"Current final price: {_as_money(cake.final_price)}"
-                    ),
+                    cake_id,
+                    db,
                 )
-                await _answer_callback(telegram, callback_id, "Use /cakeprice command")
+                await _answer_callback(telegram, callback_id, "Edit final price")
                 return {"ok": True}
 
             if len(parts) == 2 and parts[0] == "pcat":
@@ -1816,7 +1860,24 @@ async def telegram_webhook(
                 )
                 await _answer_callback(telegram, callback_id, "Price updated")
                 if isinstance(chat_id, int):
-                    await _send_text(telegram, chat_id, f"💵 {result_message}")
+                    cake = await CustomCakeService(db).get_custom_cake(target_id)
+                    await _send_text(
+                        telegram,
+                        chat_id,
+                        f"💵 {result_message}",
+                        _cake_markup(cake) if cake else None,
+                    )
+                return {"ok": True}
+
+            if len(parts) == 3 and parts[0] == "cake" and parts[1] == "editprice":
+                target_id = uuid.UUID(parts[2])
+                await _open_cake_price_editor_via_telegram(
+                    telegram,
+                    int(chat_id),
+                    target_id,
+                    db,
+                )
+                await _answer_callback(telegram, callback_id, "Edit final price")
                 return {"ok": True}
 
             if len(parts) == 3:
@@ -1908,7 +1969,13 @@ async def telegram_webhook(
                 final_price,
                 db,
             )
-            await _send_text(telegram, int(chat_id), f"💵 {result_message}")
+            cake = await CustomCakeService(db).get_custom_cake(cake_id)
+            await _send_text(
+                telegram,
+                int(chat_id),
+                f"💵 {result_message}",
+                _cake_markup(cake) if cake else None,
+            )
         except (ValueError, ArithmeticError):
             await _send_text(
                 telegram,
