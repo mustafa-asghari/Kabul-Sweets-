@@ -23,6 +23,10 @@ Production-ready FastAPI backend for the Kabul Sweets Afghan bakery e-commerce p
 docker compose up -d db redis api celery_worker celery_beat
 ```
 
+Note: `docker-compose.yml` uses `DOCKER_*` URL variables for container-to-container
+connections, so your local `DATABASE_URL=...localhost...` and `REDIS_URL=...localhost...`
+can still be used when running the API directly on your machine.
+
 ### Optional: Connect Frontends to Docker (Not Started by Default)
 
 Both UI services are wired to the same Docker network and API service, but are

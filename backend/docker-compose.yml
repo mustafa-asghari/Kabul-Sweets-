@@ -43,12 +43,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
     depends_on:
       db:
         condition: service_healthy
@@ -66,10 +66,10 @@ services:
     container_name: kabul_sweets_celery_worker
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
     depends_on:
@@ -97,10 +97,10 @@ services:
     container_name: kabul_sweets_celery_beat
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://kabul_user:kabul_pass98112@db:5432/kabul_sweets}
+      REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
     depends_on:
