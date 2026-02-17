@@ -66,6 +66,22 @@ python -m app.seed
 Note: user seeding now comes from env vars (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`,
 `SEED_DEMO_CUSTOMERS_JSON`, etc.) rather than hardcoded credentials.
 
+### 4.1 Create Admin Safely (No Direct DB Insert)
+
+Do not insert users directly in SQL. Use the provisioning command so passwords
+are hashed with Argon2 and role/flags are set correctly.
+
+```bash
+# Create a new admin (prompts for password securely)
+python -m app.create_admin --email admin@kabulsweets.com.au --full-name "Kabul Admin"
+
+# Promote an existing user to admin and reset their password
+python -m app.create_admin \
+  --email existing@kabulsweets.com.au \
+  --promote-existing \
+  --reset-password
+```
+
 ### 5. Run the API
 
 ```bash
@@ -104,7 +120,8 @@ backend/
 │   │   └── user.py       # User & auth schemas
 │   ├── services/         # Business logic (Phase 3+)
 │   ├── main.py           # FastAPI app factory
-│   └── seed.py           # Database seeder
+│   ├── seed.py           # Database seeder
+│   └── create_admin.py   # Secure admin provisioning utility
 ├── alembic/              # Database migrations
 ├── tests/                # Test suite
 ├── docker-compose.yml    # PostgreSQL + Redis + API
