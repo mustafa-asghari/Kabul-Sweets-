@@ -8,9 +8,11 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger("monitoring")
+settings = get_settings()
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
@@ -92,7 +94,7 @@ class HealthMonitor:
         try:
             import json
             import redis as redis_sync
-            r = redis_sync.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            r = redis_sync.from_url(settings.REDIS_URL)
             r.publish("admin:alerts", json.dumps({
                 "type": "service_failure",
                 "service": service,

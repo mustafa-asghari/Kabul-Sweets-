@@ -13,9 +13,11 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
+from app.core.config import get_settings
 from app.models.order import Order, OrderItem, OrderStatus
 
 logger = logging.getLogger("app.workers.trends")
+settings = get_settings()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg2")
 _engine = None
@@ -128,7 +130,7 @@ def detect_trends():
         # Publish to Redis
         try:
             import redis
-            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            r = redis.from_url(settings.REDIS_URL)
             alert_data = {
                 "type": "trend_alert",
                 "trends": trends[:10],

@@ -6,7 +6,7 @@ Uses pydantic-settings for validation and type coercion.
 from functools import lru_cache
 from typing import List
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Kabul Sweets"
     APP_ENV: str = "development"
     DEBUG: bool = True
-    SECRET_KEY: str = "change-me"
+    SECRET_KEY: str = Field(...)
     API_PREFIX: str = "/api/v1"
 
     # ── Server ───────────────────────────────────────────────────────────
@@ -32,14 +32,14 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # ── Database ─────────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://kabul_user:kabul_pass@localhost:5432/kabul_sweets"
+    DATABASE_URL: str = Field(...)
     DATABASE_ECHO: bool = False
 
     # ── Redis ────────────────────────────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = Field(...)
 
     # ── JWT Auth ─────────────────────────────────────────────────────────
-    JWT_SECRET_KEY: str = "change-me"
+    JWT_SECRET_KEY: str = Field(...)
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -50,11 +50,12 @@ class Settings(BaseSettings):
     TELEGRAM_WEBHOOK_SECRET: str = ""
     TELEGRAM_ADMIN_CHAT_IDS: List[int] = []
     TELEGRAM_ACTING_ADMIN_EMAIL: str | None = None
-    ADMIN_FRONTEND_URL: str = "http://localhost:3001"
+    ADMIN_FRONTEND_URL: str = Field(...)
+    FRONTEND_URL: str = Field(...)
     BUSINESS_TIMEZONE: str = "Australia/Sydney"
 
     # ── CORS ─────────────────────────────────────────────────────────────
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: List[str] = Field(default_factory=list)
 
     # ── Rate Limiting ────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60

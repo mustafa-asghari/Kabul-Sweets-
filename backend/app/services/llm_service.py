@@ -11,7 +11,7 @@ from app.core.logging import get_logger
 logger = get_logger("llm_service")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-pro-preview")
 
 
 class DescriptionService:

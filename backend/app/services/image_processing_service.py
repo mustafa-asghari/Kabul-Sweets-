@@ -21,7 +21,7 @@ from app.core.logging import get_logger
 logger = get_logger("image_processing")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.0-flash-exp")
+GEMINI_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3-pro-image-preview")
 
 
 # ── Category Prompts ─────────────────────────────────────────────────────────

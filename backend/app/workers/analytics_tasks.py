@@ -12,11 +12,13 @@ from sqlalchemy import Date, case, cast, create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
+from app.core.config import get_settings
 from app.models.analytics import DailyRevenue
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import ProductVariant
 
 logger = logging.getLogger("app.workers.analytics")
+settings = get_settings()
 
 # Sync DB URL for Celery (Celery doesn't use async)
 DATABASE_URL = os.getenv("DATABASE_URL", "").replace("+asyncpg", "+psycopg2")
@@ -143,7 +145,7 @@ def check_low_stock_alerts():
             import json
             import redis
 
-            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            r = redis.from_url(settings.REDIS_URL)
             alert_data = {
                 "type": "low_stock",
                 "count": len(low_stock),
