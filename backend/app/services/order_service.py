@@ -556,14 +556,14 @@ class OrderService:
         order_id: uuid.UUID,
         customer_id: uuid.UUID,
     ) -> dict:
-        """Hard-delete an unpaid customer order and release reserved inventory."""
+        """Hard-delete a customer order before admin approval and release reserved inventory."""
         order = await self.get_order(order_id)
         if not order or order.customer_id != customer_id:
             return {"error": "Order not found", "status_code": 404}
 
-        deletable_statuses = {OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL}
+        deletable_statuses = {OrderStatus.PENDING}
         if order.status not in deletable_statuses:
-            return {"error": "Only unpaid orders can be deleted.", "status_code": 400}
+            return {"error": "Orders cannot be deleted after admin approval.", "status_code": 400}
 
         if order.payment and order.payment.status == PaymentStatus.SUCCEEDED:
             return {"error": "Paid orders cannot be deleted.", "status_code": 400}

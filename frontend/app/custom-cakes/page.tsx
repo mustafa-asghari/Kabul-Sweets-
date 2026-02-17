@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import ScrollReveal from "@/components/ScrollReveal";
@@ -507,7 +508,9 @@ function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDa
 }
 
 export default function CustomCakesPage() {
+  const searchParams = useSearchParams();
   const { user, accessToken, loading: authLoading, isAuthenticated } = useAuth();
+  const requestFromOrders = searchParams.get("request");
 
   const [form, setForm] = useState<CakeFormState>(defaultFormState);
   const [referenceCakeFile, setReferenceCakeFile] = useState<File | null>(null);
@@ -524,6 +527,8 @@ export default function CustomCakesPage() {
 
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [focusedRequestId, setFocusedRequestId] = useState<string | null>(null);
+  const autoOpenedRequestRef = useRef<string | null>(null);
 
   const minimumRequestedDate = useMemo(() => {
     const tomorrow = new Date();
@@ -572,7 +577,7 @@ export default function CustomCakesPage() {
       const data = await apiRequest<MyCakeSummary[]>("/api/v1/custom-cakes/my-cakes", {
         token: accessToken,
       });
-      setMyRequests(data);
+      setMyRequests(data.filter((request) => request.status !== "cancelled"));
     } catch {
       if (!background) {
         setMyRequests([]);
@@ -604,6 +609,67 @@ export default function CustomCakesPage() {
 
     return () => window.clearInterval(interval);
   }, [authLoading, isAuthenticated, accessToken, loadMyRequests]);
+
+  useEffect(() => {
+    if (!requestFromOrders || loadingRequests) {
+      return;
+    }
+    if (autoOpenedRequestRef.current === requestFromOrders) {
+      return;
+    }
+
+    const targetElementId = `request-${requestFromOrders}`;
+    let cancelled = false;
+    let highlightTimeout: number | null = null;
+
+    const tryScroll = () => {
+      if (cancelled) {
+        return true;
+      }
+
+      const target = document.getElementById(targetElementId);
+      if (!target) {
+        return false;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFocusedRequestId(requestFromOrders);
+      autoOpenedRequestRef.current = requestFromOrders;
+      highlightTimeout = window.setTimeout(() => {
+        setFocusedRequestId((current) =>
+          current === requestFromOrders ? null : current
+        );
+      }, 4000);
+      return true;
+    };
+
+    if (tryScroll()) {
+      return () => {
+        cancelled = true;
+        if (highlightTimeout) {
+          window.clearTimeout(highlightTimeout);
+        }
+      };
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (tryScroll()) {
+        window.clearInterval(intervalId);
+      }
+    }, 180);
+    const stopPollingId = window.setTimeout(() => {
+      window.clearInterval(intervalId);
+    }, 2600);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.clearTimeout(stopPollingId);
+      if (highlightTimeout) {
+        window.clearTimeout(highlightTimeout);
+      }
+    };
+  }, [requestFromOrders, loadingRequests, myRequests]);
 
   useEffect(() => {
     if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
@@ -1075,7 +1141,11 @@ export default function CustomCakesPage() {
                     <article
                       id={`request-${request.id}`}
                       key={request.id}
-                      className="rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3"
+                      className={`rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3 transition ${
+                        focusedRequestId === request.id
+                          ? "ring-2 ring-[#ad751c] shadow-[0_0_0_4px_rgba(173,117,28,0.12)]"
+                          : ""
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>

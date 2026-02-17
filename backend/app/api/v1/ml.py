@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.logging import get_logger
+from app.models.ml import CustomCakeStatus
 from app.models.user import User
 from app.services.custom_cake_service import CustomCakeService
 from app.services.llm_service import DescriptionService
@@ -248,6 +249,7 @@ async def get_my_custom_cakes(
 ):
     """Get your custom cake submissions."""
     service = CustomCakeService(db)
+    await service.purge_cancelled_cakes_for_customer(current_user.id)
     cakes = await service.list_custom_cakes(customer_id=current_user.id)
     return [
         {
@@ -264,6 +266,7 @@ async def get_my_custom_cakes(
             "created_at": c.created_at.isoformat(),
         }
         for c in cakes
+        if c.status != CustomCakeStatus.CANCELLED
     ]
 
 
