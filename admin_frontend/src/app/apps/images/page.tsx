@@ -268,7 +268,8 @@ function Images() {
                   size="xs"
                   variant="light"
                   disabled={
-                    img.status === 'processing' || img.status === 'processed'
+                    PROCESSING_STATUSES.has(img.status) ||
+                    img.status === 'completed'
                   }
                   onClick={() => handleProcess(img.id, 'cake')}
                 >
@@ -276,7 +277,7 @@ function Images() {
                 </Button>
               </Group>
 
-              {img.status === 'processed' && (
+              {img.status === 'completed' && (
                 <Group grow>
                   <Button
                     size="xs"
