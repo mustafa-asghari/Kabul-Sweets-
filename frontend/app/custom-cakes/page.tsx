@@ -524,6 +524,8 @@ export default function CustomCakesPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CustomCakeSubmissionResponse | null>(null);
   const [showSubmitNotice, setShowSubmitNotice] = useState(false);
+  const [submissionProgress, setSubmissionProgress] = useState(0);
+  const [submissionStep, setSubmissionStep] = useState("");
 
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
@@ -790,6 +792,31 @@ export default function CustomCakesPage() {
     }
 
     setSubmitting(true);
+    setSubmissionProgress(0);
+    setSubmissionStep("Uploading images...");
+
+    const progressInterval = window.setInterval(() => {
+      setSubmissionProgress((prev) => {
+        if (prev < 25) {
+          setSubmissionStep("Uploading images...");
+          return Math.min(25, prev + 4);
+        }
+        if (prev < 55) {
+          setSubmissionStep("AI analyzing cake design...");
+          return Math.min(55, prev + 2);
+        }
+        if (prev < 80) {
+          setSubmissionStep("Predicting price...");
+          return Math.min(80, prev + 1.5);
+        }
+        if (prev < 95) {
+          setSubmissionStep("Generating description...");
+          return Math.min(95, prev + 0.5);
+        }
+        return prev;
+      });
+    }, 400);
+
     try {
       const referenceImages = [await fileToDataUrl(referenceCakeFile)];
       if (imageOnCakeFile) {
@@ -818,11 +845,21 @@ export default function CustomCakesPage() {
         },
       });
 
+      window.clearInterval(progressInterval);
+      setSubmissionProgress(100);
+      setSubmissionStep("Complete!");
       setSubmitResult(submission);
       setShowSubmitNotice(true);
       resetFormAfterSuccess();
       await loadMyRequests();
+      setTimeout(() => {
+        setSubmissionProgress(0);
+        setSubmissionStep("");
+      }, 1200);
     } catch (error) {
+      window.clearInterval(progressInterval);
+      setSubmissionProgress(0);
+      setSubmissionStep("");
       if (error instanceof ApiError) {
         setSubmitError(error.detail);
       } else {
@@ -1065,13 +1102,48 @@ export default function CustomCakesPage() {
 
                 {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
 
-                <button
-                  type="submit"
-                  disabled={submitting || !hasAnyContact}
-                  className="inline-flex items-center justify-center rounded-full bg-black px-6 py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-50"
-                >
-                  {submitting ? "Submitting request..." : "Submit custom cake request"}
-                </button>
+                <div className="relative">
+                  {submitting && submissionProgress > 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <div className="relative inline-flex items-center justify-center">
+                        <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            fill="none"
+                            stroke="#e8dccb"
+                            strokeWidth="6"
+                          />
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            fill="none"
+                            stroke="#1a1a2e"
+                            strokeWidth="6"
+                            strokeLinecap="round"
+                            strokeDasharray={`${2 * Math.PI * 34}`}
+                            strokeDashoffset={`${2 * Math.PI * 34 * (1 - submissionProgress / 100)}`}
+                            style={{ transition: "stroke-dashoffset 0.4s ease" }}
+                          />
+                        </svg>
+                        <span className="absolute text-sm font-bold text-black">
+                          {Math.round(submissionProgress)}%
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700">{submissionStep}</p>
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={submitting || !hasAnyContact}
+                      className="inline-flex items-center justify-center rounded-full bg-black px-6 py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-50"
+                    >
+                      Submit custom cake request
+                    </button>
+                  )}
+                </div>
               </form>
             )}
           </ScrollReveal>
