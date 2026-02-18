@@ -10,9 +10,11 @@ import time
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger("security")
+_settings = get_settings()
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -42,7 +44,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
 
         # HSTS (only in production)
-        if os.getenv("APP_ENV") == "production":
+        if _settings.APP_ENV == "production":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains; preload"
             )
