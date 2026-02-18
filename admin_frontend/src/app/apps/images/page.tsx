@@ -46,6 +46,26 @@ const items = [
 function Images() {
   const { data, loading, error, refetch } = useApiGet<any[]>('/api/images');
   const [uploading, setUploading] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Poll every 4 seconds while any image is still processing
+  useEffect(() => {
+    const images: any[] = data?.data || [];
+    const hasProcessing = images.some((img: any) =>
+      PROCESSING_STATUSES.has(img.status),
+    );
+
+    if (hasProcessing) {
+      pollRef.current = setTimeout(() => refetch(), 4000);
+    }
+
+    return () => {
+      if (pollRef.current) {
+        clearTimeout(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [data, refetch]);
 
   const handleUpload = async (files: File[]) => {
     setUploading(true);
@@ -177,7 +197,7 @@ function Images() {
                 <div style={{ height: 200, position: 'relative' }}>
                   <AuthenticatedImage
                     src={
-                      img.status === 'processed'
+                      img.status === 'completed'
                         ? `/api/images/${img.id}/processed`
                         : `/api/images/${img.id}/original`
                     }
@@ -188,7 +208,7 @@ function Images() {
                       objectFit: 'cover',
                     }}
                   />
-                  {img.status === 'processed' && (
+                  {img.status === 'completed' && (
                     <Badge
                       color="green"
                       variant="filled"
@@ -199,7 +219,7 @@ function Images() {
                       Processed
                     </Badge>
                   )}
-                  {img.status === 'processing' && (
+                  {PROCESSING_STATUSES.has(img.status) && (
                     <Badge
                       color="blue"
                       variant="filled"
@@ -208,6 +228,17 @@ function Images() {
                       right={10}
                     >
                       Processing
+                    </Badge>
+                  )}
+                  {img.status === 'failed' && (
+                    <Badge
+                      color="red"
+                      variant="filled"
+                      pos="absolute"
+                      top={10}
+                      right={10}
+                    >
+                      Failed
                     </Badge>
                   )}
                   {img.admin_chosen && (
