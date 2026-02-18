@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: false,
+  output: 'standalone',
 
   // Enable React Compiler (stable in Next.js 16)
   reactCompiler: true,
