@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   Anchor,
@@ -10,9 +10,7 @@ import {
   SimpleGrid,
   Skeleton,
   Stack,
-  Table,
   Text,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
@@ -32,6 +30,8 @@ import {
 } from '@/components';
 import { useApiGet, apiPost } from '@/lib/hooks/useApi';
 import { PATH_DASHBOARD } from '@/routes';
+
+const PROCESSING_STATUSES = new Set(['processing', 'reprocessing']);
 
 const items = [
   { title: 'Dashboard', href: PATH_DASHBOARD.ecommerce },
