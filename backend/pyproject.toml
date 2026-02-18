@@ -43,6 +43,8 @@ dependencies = [
     "reportlab>=4.0.0",
     # Image processing
     "pillow>=11.0.0",
+    # Monitoring
+    "sentry-sdk[fastapi,sqlalchemy]>=2.0.0",
 ]
 
 [project.optional-dependencies]

@@ -3,6 +3,7 @@ Order management endpoints.
 Customer: create order, view their orders. Admin: view all, update status, filter.
 """
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -21,6 +22,8 @@ from app.schemas.order import (
     OrderUpdateAdmin,
 )
 from app.services.order_service import OrderService
+
+logger = logging.getLogger("app.api.orders")
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
