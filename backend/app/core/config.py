@@ -100,6 +100,44 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     APP_VERSION: str = "0.1.0"
 
+    # ── SMTP ─────────────────────────────────────────────────────────────
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 0
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = ""
+    SMTP_TIMEOUT_SECONDS: float = 15.0
+
+    # ── Mailgun ──────────────────────────────────────────────────────────
+    MAILGUN_API_KEY: str = ""
+    MAILGUN_DOMAIN: str = ""
+    MAILGUN_BASE_URL: str = "https://api.mailgun.net"
+    MAILGUN_FROM_EMAIL: str = ""
+    MAILGUN_FROM_NAME: str = ""
+    MAILGUN_TIMEOUT_SECONDS: float = 15.0
+
+    # ── Stripe ───────────────────────────────────────────────────────────
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_SUCCESS_URL: str = ""
+    STRIPE_CANCEL_URL: str = ""
+
+    # ── Celery ───────────────────────────────────────────────────────────
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
+    CELERY_TASK_ALWAYS_EAGER: str = ""
+
+    # ── ML ────────────────────────────────────────────────────────────────
+    ML_USE_XGBOOST: bool = True
+    XGBOOST_MODEL_PATH: str = ""
+    XGBOOST_MIN_TRAINING_SAMPLES: int = 50
+
+    # ── Monitoring ────────────────────────────────────────────────────────
+    SENTRY_DSN: str = ""
+    APP_VERSION: str = "0.1.0"
+
     # ── Rate Limiting ────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60
 
