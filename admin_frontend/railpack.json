@@ -1,0 +1,8 @@
+{
+  "build": {
+    "cmd": "pnpm install --frozen-lockfile && pnpm build"
+  },
+  "start": {
+    "cmd": "node .next/standalone/server.js"
+  }
+}

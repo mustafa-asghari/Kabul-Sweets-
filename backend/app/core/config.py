@@ -59,8 +59,8 @@ class Settings(BaseSettings):
 
     # ── Gemini (AI) ──────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
-    GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
-    GEMINI_TEXT_MODEL: str = "gemini-3-pro-preview"
+    GEMINI_IMAGE_MODEL: str = "gemini-2.0-flash-exp-image-generation"
+    GEMINI_TEXT_MODEL: str = "gemini-2.0-flash"
 
     # ── SMTP ─────────────────────────────────────────────────────────────
     SMTP_HOST: str = ""
@@ -105,6 +105,16 @@ class Settings(BaseSettings):
 
     # ── Logging ──────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def coerce_database_url(cls, v: str) -> str:
+        if isinstance(v, str):
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+            if v.startswith("postgresql://"):
+                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

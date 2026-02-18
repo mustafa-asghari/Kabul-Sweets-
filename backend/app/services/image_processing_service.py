@@ -528,8 +528,8 @@ class ImageProcessingService:
                 }
             ],
             "generationConfig": {
-                "responseModalities": ["image", "text"],
-                "temperature": 0.0,
+                "responseModalities": ["IMAGE", "TEXT"],
+                "temperature": 1.0,
             },
         }
 

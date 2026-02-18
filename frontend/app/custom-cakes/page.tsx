@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Footer from "@/components/Footer";
@@ -507,7 +507,33 @@ function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDa
   );
 }
 
+function CustomCakesPageFallback() {
+  return (
+    <>
+      <Navbar />
+      <main className="flex-1 pb-20">
+        <section className="max-w-[1200px] mx-auto px-6 pt-8">
+          <div className="rounded-[2rem] bg-cream-dark px-6 py-12 md:px-10 md:py-14 animate-pulse">
+            <div className="h-4 w-32 rounded-full bg-gray-200" />
+            <div className="mt-5 h-16 w-3/4 rounded-xl bg-gray-200" />
+            <div className="mt-4 h-4 w-1/2 rounded-full bg-gray-200" />
+          </div>
+        </section>
+      </main>
+      <Footer />
+    </>
+  );
+}
+
 export default function CustomCakesPage() {
+  return (
+    <Suspense fallback={<CustomCakesPageFallback />}>
+      <CustomCakesPageContent />
+    </Suspense>
+  );
+}
+
+function CustomCakesPageContent() {
   const searchParams = useSearchParams();
   const { user, accessToken, loading: authLoading, isAuthenticated } = useAuth();
   const requestFromOrders = searchParams.get("request");
