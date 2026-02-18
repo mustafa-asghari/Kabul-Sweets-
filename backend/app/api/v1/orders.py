@@ -3,6 +3,7 @@ Order management endpoints.
 Customer: create order, view their orders. Admin: view all, update status, filter.
 """
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -21,6 +22,8 @@ from app.schemas.order import (
     OrderUpdateAdmin,
 )
 from app.services.order_service import OrderService
+
+logger = logging.getLogger("app.api.orders")
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -47,6 +50,36 @@ async def create_order(
             customer_id = matched_customer.scalar_one_or_none()
 
         order = await service.create_order(data, customer_id=customer_id)
+
+        # Queue Telegram notification to admin
+        try:
+            from app.workers.telegram_tasks import send_admin_order_pending_alert
+
+            items_payload = [
+                {
+                    "product_name": item.product_name,
+                    "variant_name": item.variant_name,
+                    "quantity": item.quantity,
+                }
+                for item in order.items
+            ]
+            send_admin_order_pending_alert.delay(
+                {
+                    "order_id": str(order.id),
+                    "order_number": order.order_number,
+                    "customer_name": order.customer_name,
+                    "customer_email": order.customer_email,
+                    "customer_phone": order.customer_phone,
+                    "total": str(order.total),
+                    "pickup_date": str(order.pickup_date.date()) if order.pickup_date else None,
+                    "pickup_time_slot": order.pickup_time_slot,
+                    "cake_message": order.cake_message,
+                    "items": items_payload,
+                }
+            )
+        except Exception as exc:
+            logger.warning("Failed to queue Telegram order alert: %s", exc)
+
         return order
     except ValueError as e:
         raise HTTPException(

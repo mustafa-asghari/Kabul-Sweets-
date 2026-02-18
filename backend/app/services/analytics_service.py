@@ -153,9 +153,12 @@ class AnalyticsService:
                 func.sum(OrderItem.line_total).label("total_revenue"),
             ).join(
                 Order, OrderItem.order_id == Order.id
+            ).join(
+                Product, OrderItem.product_id == Product.id
             ).where(
                 Order.status.in_([OrderStatus.PAID, OrderStatus.CONFIRMED, OrderStatus.COMPLETED]),
                 Order.created_at >= since,
+                OrderItem.product_id.isnot(None),
             ).group_by(
                 OrderItem.product_id, OrderItem.product_name
             ).order_by(
@@ -165,6 +168,10 @@ class AnalyticsService:
 
         items = []
         for row in result.all():
+            # Skip if product_id is explicitly None (sanity check)
+            if not row.product_id:
+                continue
+
             # Get product category
             prod = await self.db.execute(select(Product.category).where(Product.id == row.product_id))
             cat = prod.scalar() or "other"
@@ -190,9 +197,12 @@ class AnalyticsService:
                 func.sum(OrderItem.line_total).label("total_revenue"),
             ).join(
                 Order, OrderItem.order_id == Order.id
+            ).join(
+                Product, OrderItem.product_id == Product.id
             ).where(
                 Order.status.in_([OrderStatus.PAID, OrderStatus.CONFIRMED, OrderStatus.COMPLETED]),
                 Order.created_at >= since,
+                OrderItem.product_id.isnot(None),
             ).group_by(
                 OrderItem.product_id, OrderItem.product_name
             ).order_by(
@@ -202,6 +212,9 @@ class AnalyticsService:
 
         items = []
         for row in result.all():
+            if not row.product_id:
+                continue
+
             prod = await self.db.execute(select(Product.category).where(Product.id == row.product_id))
             cat = prod.scalar() or "other"
             items.append({

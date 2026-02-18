@@ -27,6 +27,8 @@ interface OrderItemSummary {
   product_name: string;
   variant_name: string | null;
   quantity: number;
+  unit_price?: string | number;
+  line_total?: string | number;
 }
 
 interface CustomCakeSummary {
@@ -159,6 +161,7 @@ function OrdersPageContent() {
           token: accessToken,
         }),
       ]);
+      const visibleCakes = cakesData.filter((cake) => cake.status !== "cancelled");
 
       const detailPairs = await Promise.all(
         ordersData.map(async (order) => {
@@ -211,7 +214,7 @@ function OrdersPageContent() {
       }
 
       setOrders(ordersWithItems);
-      setCustomCakes(cakesData);
+      setCustomCakes(visibleCakes);
       setProductSlugById(nextProductSlugById);
     } catch (fetchError) {
       if (!background) {
@@ -371,6 +374,7 @@ function OrdersPageContent() {
             reason: "Customer deleted request from orders page.",
           },
         });
+        setCustomCakes((prev) => prev.filter((cake) => cake.id !== cakeId));
         await fetchOrders(true);
       } catch (actionError) {
         const detail =
@@ -428,7 +432,7 @@ function OrdersPageContent() {
                 ) : (
                   orders.map((order) => {
                     const payable = order.status === "pending_approval";
-                    const deletable = order.status === "pending" || order.status === "pending_approval";
+                    const deletable = order.status === "pending";
 
                     return (
                     <article key={order.id} className="rounded-[1.5rem] bg-white border border-[#eadcc8] p-5">
@@ -460,22 +464,47 @@ function OrdersPageContent() {
                         {!order.items || order.items.length === 0 ? (
                           <p className="mt-2 text-sm text-gray-500">No item references available.</p>
                         ) : (
-                          <ul className="mt-2 space-y-1.5 text-sm text-gray-700">
+                          <ul className="mt-2 space-y-2">
                             {order.items.map((item, index) => {
                               const slug = item.product_id ? productSlugById[item.product_id] : "";
                               return (
-                                <li key={`${order.id}-${item.product_id || item.product_name}-${index}`}>
-                                  {slug ? (
-                                    <Link
-                                      href={`/products/${slug}`}
-                                      className="font-semibold text-black underline decoration-[#d7b883] underline-offset-4 hover:text-accent transition"
-                                    >
-                                      {item.product_name}
-                                    </Link>
-                                  ) : (
-                                    <span className="font-semibold text-black">{item.product_name}</span>
-                                  )}{" "}
-                                  {item.variant_name ? <span>({item.variant_name})</span> : null} x{item.quantity}
+                                <li
+                                  key={`${order.id}-${item.product_id || item.product_name}-${index}`}
+                                  className="rounded-xl border border-[#efe4d3] bg-[#fdfaf5] p-3 text-sm"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    {slug ? (
+                                      <Link
+                                        href={`/products/${slug}`}
+                                        className="font-semibold text-black underline decoration-[#d7b883] underline-offset-4 hover:text-accent transition"
+                                      >
+                                        {item.product_name}
+                                      </Link>
+                                    ) : (
+                                      <span className="font-semibold text-black">{item.product_name}</span>
+                                    )}
+                                    <span className="text-xs text-gray-600">
+                                      Qty: <span className="font-semibold text-black">{item.quantity}</span>
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+                                    <span>
+                                      Variant:{" "}
+                                      <span className="font-medium text-black">{item.variant_name || "Default"}</span>
+                                    </span>
+                                    <span>
+                                      Unit:{" "}
+                                      <span className="font-medium text-black">
+                                        {formatPrice(toNumber(item.unit_price))}
+                                      </span>
+                                    </span>
+                                    <span>
+                                      Line total:{" "}
+                                      <span className="font-semibold text-black">
+                                        {formatPrice(toNumber(item.line_total))}
+                                      </span>
+                                    </span>
+                                  </div>
                                 </li>
                               );
                             })}
@@ -524,7 +553,7 @@ function OrdersPageContent() {
                 ) : (
                   customCakes.map((cake) => {
                     const payable = cake.status === "approved_awaiting_payment";
-                    const deletable = ["pending_review", "approved_awaiting_payment", "rejected"].includes(
+                    const deletable = ["pending_review", "rejected"].includes(
                       cake.status
                     );
                     const displayPrice = cake.final_price ?? cake.predicted_price;
@@ -560,7 +589,9 @@ function OrdersPageContent() {
                           <p>
                             <span className="font-semibold text-black">Reference:</span>{" "}
                             <Link
-                              href={`/custom-cakes#request-${cake.id}`}
+                              href={`/custom-cakes?request=${encodeURIComponent(
+                                cake.id
+                              )}#request-${cake.id}`}
                               className="font-semibold text-black underline decoration-[#d7b883] underline-offset-4 hover:text-accent transition"
                             >
                               Open custom cake request

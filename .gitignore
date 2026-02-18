@@ -1,11 +1,72 @@
-/screenshot
-.screenshot
-screenshot**
-planning.md
-reminaing.md
+# Environment Variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
+# OS Generated
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project Junctions
+planning.md
+remanaing.md
 claud_plan.md
-claud_plan.md   
-    
+TODO.md
+notes/
+screenshots/
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.settings/
+.classpath
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node/Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+out/
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+backend/kabul_sweets_backend.egg-info

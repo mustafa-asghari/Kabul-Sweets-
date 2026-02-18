@@ -36,6 +36,28 @@ class ProductService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _normalize_variant_stock(product: Product | None) -> Product | None:
+        """
+        Heal negative stock values to zero so API responses remain valid.
+        This also keeps is_in_stock aligned with stock_quantity.
+        """
+        if not product:
+            return product
+
+        for variant in product.variants or []:
+            if variant.stock_quantity < 0:
+                logger.warning(
+                    "Normalizing negative stock for variant %s (%s): %s -> 0",
+                    variant.id,
+                    variant.name,
+                    variant.stock_quantity,
+                )
+                variant.stock_quantity = 0
+            variant.is_in_stock = variant.stock_quantity > 0
+
+        return product
+
     # ── Product CRUD ─────────────────────────────────────────────────────
     async def create_product(self, data: ProductCreate) -> Product:
         """Create a product with optional variants."""
@@ -95,7 +117,8 @@ class ProductService:
             .options(selectinload(Product.variants))
             .where(Product.id == product_id)
         )
-        return result.scalar_one_or_none()
+        product = result.scalar_one_or_none()
+        return self._normalize_variant_stock(product)
 
     async def get_product_by_slug(self, slug: str) -> Product | None:
         """Get a product by slug."""
@@ -104,7 +127,8 @@ class ProductService:
             .options(selectinload(Product.variants))
             .where(Product.slug == slug)
         )
-        return result.scalar_one_or_none()
+        product = result.scalar_one_or_none()
+        return self._normalize_variant_stock(product)
 
     async def list_products(
         self,
@@ -137,7 +161,10 @@ class ProductService:
             query = query.where(Product.name.ilike(f"%{search}%"))
 
         result = await self.db.execute(query)
-        return list(result.scalars().all())
+        products = list(result.scalars().all())
+        for product in products:
+            self._normalize_variant_stock(product)
+        return products
 
     async def count_products(self, is_active: bool | None = None) -> int:
         """Count products."""

@@ -1,0 +1,8 @@
+{
+    "name": "Admin User",
+    "email": "admin@kabulsweets.com",
+    "avatar": "/logo.png",
+    "role": "Administrator",
+    "phone": "+1 (555) 123-4567",
+    "location": "Kabul, Afghanistan"
+}

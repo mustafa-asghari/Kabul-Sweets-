@@ -3,7 +3,6 @@ Monitoring service — Phase 12.
 Structured error tracking, health monitoring, and alerting.
 """
 
-import os
 import time
 import traceback
 from datetime import datetime, timezone
@@ -14,12 +13,10 @@ from app.core.logging import get_logger
 logger = get_logger("monitoring")
 settings = get_settings()
 
-SENTRY_DSN = os.getenv("SENTRY_DSN", "")
-
 
 def setup_sentry(app=None):
     """Initialize Sentry for error monitoring (if configured)."""
-    if not SENTRY_DSN:
+    if not settings.SENTRY_DSN:
         logger.info("Sentry DSN not configured — error tracking disabled")
         return
 
@@ -29,11 +26,11 @@ def setup_sentry(app=None):
         from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
         sentry_sdk.init(
-            dsn=SENTRY_DSN,
+            dsn=settings.SENTRY_DSN,
             traces_sample_rate=0.1,  # 10% of transactions
             profiles_sample_rate=0.1,
-            environment=os.getenv("APP_ENV", "development"),
-            release=os.getenv("APP_VERSION", "0.1.0"),
+            environment=settings.APP_ENV,
+            release=settings.APP_VERSION,
             integrations=[
                 FastApiIntegration(transaction_style="endpoint"),
                 SqlalchemyIntegration(),

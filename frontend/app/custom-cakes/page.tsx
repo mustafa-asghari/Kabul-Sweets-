@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import ScrollReveal from "@/components/ScrollReveal";
@@ -507,7 +508,9 @@ function ThemedDatePicker({ value, onChange, className, minDateValue }: ThemedDa
 }
 
 export default function CustomCakesPage() {
+  const searchParams = useSearchParams();
   const { user, accessToken, loading: authLoading, isAuthenticated } = useAuth();
+  const requestFromOrders = searchParams.get("request");
 
   const [form, setForm] = useState<CakeFormState>(defaultFormState);
   const [referenceCakeFile, setReferenceCakeFile] = useState<File | null>(null);
@@ -521,9 +524,13 @@ export default function CustomCakesPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CustomCakeSubmissionResponse | null>(null);
   const [showSubmitNotice, setShowSubmitNotice] = useState(false);
+  const [submissionProgress, setSubmissionProgress] = useState(0);
+  const [submissionStep, setSubmissionStep] = useState("");
 
   const [myRequests, setMyRequests] = useState<MyCakeSummary[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [focusedRequestId, setFocusedRequestId] = useState<string | null>(null);
+  const autoOpenedRequestRef = useRef<string | null>(null);
 
   const minimumRequestedDate = useMemo(() => {
     const tomorrow = new Date();
@@ -572,7 +579,7 @@ export default function CustomCakesPage() {
       const data = await apiRequest<MyCakeSummary[]>("/api/v1/custom-cakes/my-cakes", {
         token: accessToken,
       });
-      setMyRequests(data);
+      setMyRequests(data.filter((request) => request.status !== "cancelled"));
     } catch {
       if (!background) {
         setMyRequests([]);
@@ -604,6 +611,67 @@ export default function CustomCakesPage() {
 
     return () => window.clearInterval(interval);
   }, [authLoading, isAuthenticated, accessToken, loadMyRequests]);
+
+  useEffect(() => {
+    if (!requestFromOrders || loadingRequests) {
+      return;
+    }
+    if (autoOpenedRequestRef.current === requestFromOrders) {
+      return;
+    }
+
+    const targetElementId = `request-${requestFromOrders}`;
+    let cancelled = false;
+    let highlightTimeout: number | null = null;
+
+    const tryScroll = () => {
+      if (cancelled) {
+        return true;
+      }
+
+      const target = document.getElementById(targetElementId);
+      if (!target) {
+        return false;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFocusedRequestId(requestFromOrders);
+      autoOpenedRequestRef.current = requestFromOrders;
+      highlightTimeout = window.setTimeout(() => {
+        setFocusedRequestId((current) =>
+          current === requestFromOrders ? null : current
+        );
+      }, 4000);
+      return true;
+    };
+
+    if (tryScroll()) {
+      return () => {
+        cancelled = true;
+        if (highlightTimeout) {
+          window.clearTimeout(highlightTimeout);
+        }
+      };
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (tryScroll()) {
+        window.clearInterval(intervalId);
+      }
+    }, 180);
+    const stopPollingId = window.setTimeout(() => {
+      window.clearInterval(intervalId);
+    }, 2600);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.clearTimeout(stopPollingId);
+      if (highlightTimeout) {
+        window.clearTimeout(highlightTimeout);
+      }
+    };
+  }, [requestFromOrders, loadingRequests, myRequests]);
 
   useEffect(() => {
     if (!Number.isFinite(form.desired_servings) || form.desired_servings < 1) {
@@ -724,6 +792,31 @@ export default function CustomCakesPage() {
     }
 
     setSubmitting(true);
+    setSubmissionProgress(0);
+    setSubmissionStep("Uploading images...");
+
+    const progressInterval = window.setInterval(() => {
+      setSubmissionProgress((prev) => {
+        if (prev < 25) {
+          setSubmissionStep("Uploading images...");
+          return Math.min(25, prev + 4);
+        }
+        if (prev < 55) {
+          setSubmissionStep("AI analyzing cake design...");
+          return Math.min(55, prev + 2);
+        }
+        if (prev < 80) {
+          setSubmissionStep("Predicting price...");
+          return Math.min(80, prev + 1.5);
+        }
+        if (prev < 95) {
+          setSubmissionStep("Generating description...");
+          return Math.min(95, prev + 0.5);
+        }
+        return prev;
+      });
+    }, 400);
+
     try {
       const referenceImages = [await fileToDataUrl(referenceCakeFile)];
       if (imageOnCakeFile) {
@@ -752,11 +845,21 @@ export default function CustomCakesPage() {
         },
       });
 
+      window.clearInterval(progressInterval);
+      setSubmissionProgress(100);
+      setSubmissionStep("Complete!");
       setSubmitResult(submission);
       setShowSubmitNotice(true);
       resetFormAfterSuccess();
       await loadMyRequests();
+      setTimeout(() => {
+        setSubmissionProgress(0);
+        setSubmissionStep("");
+      }, 1200);
     } catch (error) {
+      window.clearInterval(progressInterval);
+      setSubmissionProgress(0);
+      setSubmissionStep("");
       if (error instanceof ApiError) {
         setSubmitError(error.detail);
       } else {
@@ -999,13 +1102,48 @@ export default function CustomCakesPage() {
 
                 {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
 
-                <button
-                  type="submit"
-                  disabled={submitting || !hasAnyContact}
-                  className="inline-flex items-center justify-center rounded-full bg-black px-6 py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-50"
-                >
-                  {submitting ? "Submitting request..." : "Submit custom cake request"}
-                </button>
+                <div className="relative">
+                  {submitting && submissionProgress > 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <div className="relative inline-flex items-center justify-center">
+                        <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            fill="none"
+                            stroke="#e8dccb"
+                            strokeWidth="6"
+                          />
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="34"
+                            fill="none"
+                            stroke="#1a1a2e"
+                            strokeWidth="6"
+                            strokeLinecap="round"
+                            strokeDasharray={`${2 * Math.PI * 34}`}
+                            strokeDashoffset={`${2 * Math.PI * 34 * (1 - submissionProgress / 100)}`}
+                            style={{ transition: "stroke-dashoffset 0.4s ease" }}
+                          />
+                        </svg>
+                        <span className="absolute text-sm font-bold text-black">
+                          {Math.round(submissionProgress)}%
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-700">{submissionStep}</p>
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={submitting || !hasAnyContact}
+                      className="inline-flex items-center justify-center rounded-full bg-black px-6 py-3 text-sm font-semibold text-white hover:bg-[#222] transition disabled:opacity-50"
+                    >
+                      Submit custom cake request
+                    </button>
+                  )}
+                </div>
               </form>
             )}
           </ScrollReveal>
@@ -1075,7 +1213,11 @@ export default function CustomCakesPage() {
                     <article
                       id={`request-${request.id}`}
                       key={request.id}
-                      className="rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3"
+                      className={`rounded-xl border border-[#eadcc8] bg-cream-dark/50 p-3 transition ${
+                        focusedRequestId === request.id
+                          ? "ring-2 ring-[#ad751c] shadow-[0_0_0_4px_rgba(173,117,28,0.12)]"
+                          : ""
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>

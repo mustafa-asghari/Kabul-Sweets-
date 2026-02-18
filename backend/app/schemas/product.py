@@ -36,9 +36,18 @@ class VariantUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class VariantResponse(VariantBase):
+class VariantResponse(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
+    name: str
+    price: Decimal
+    # Can be negative when pending orders reserve more than available stock.
+    stock_quantity: int
+    low_stock_threshold: int
+    serves: int | None
+    dimensions: dict | None
+    is_active: bool
+    sort_order: int
     sku: str | None
     is_in_stock: bool
     created_at: datetime

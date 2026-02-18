@@ -196,9 +196,12 @@ class OrderService:
         order_items = []
         subtotal = Decimal("0.00")
         has_cake = False
+        inventory_warnings: list[str] = []
 
         for item_data in data.items:
-            product, variant, unit_price = await self._validate_order_item(item_data)
+            product, variant, unit_price, inventory_warning = await self._validate_order_item(
+                item_data
+            )
 
             if product.is_cake:
                 has_cake = True
@@ -218,7 +221,11 @@ class OrderService:
             order_items.append(order_item)
             subtotal += line_total
 
-            # Reserve inventory (reduce stock)
+            if inventory_warning:
+                inventory_warnings.append(inventory_warning)
+
+            # Reserve inventory while keeping stock non-negative.
+            # Any shortage is captured in admin notes for manual review.
             if variant:
                 variant.stock_quantity = max(0, variant.stock_quantity - item_data.quantity)
                 variant.is_in_stock = variant.stock_quantity > 0
@@ -228,6 +235,12 @@ class OrderService:
         total = subtotal + tax_amount
 
         # Create order
+        admin_notes = None
+        if inventory_warnings:
+            admin_notes = "Inventory check required before approval:\n" + "\n".join(
+                f"- {warning}" for warning in inventory_warnings
+            )
+
         order = Order(
             order_number=order_number,
             customer_id=customer_id,
@@ -245,6 +258,7 @@ class OrderService:
             discount_amount=Decimal("0.00"),
             total=total,
             discount_code=data.discount_code,
+            admin_notes=admin_notes,
         )
         self.db.add(order)
         await self.db.flush()
@@ -289,6 +303,7 @@ class OrderService:
 
         variant = None
         unit_price = product.base_price
+        inventory_warning: str | None = None
 
         if item_data.variant_id:
             result = await self.db.execute(
@@ -302,12 +317,13 @@ class OrderService:
                 raise ValueError(f"Variant not found or inactive: {item_data.variant_id}")
 
             if not variant.is_in_stock or variant.stock_quantity < item_data.quantity:
-                raise ValueError(
-                    f"'{product.name} - {variant.name}' is out of stock or insufficient quantity"
+                inventory_warning = (
+                    f"{product.name} - {variant.name}: requested {item_data.quantity}, "
+                    f"available {max(variant.stock_quantity, 0)}"
                 )
             unit_price = variant.price
 
-        return product, variant, unit_price
+        return product, variant, unit_price, inventory_warning
 
     async def _order_number_exists(self, order_number: str) -> bool:
         result = await self.db.execute(
@@ -540,14 +556,14 @@ class OrderService:
         order_id: uuid.UUID,
         customer_id: uuid.UUID,
     ) -> dict:
-        """Hard-delete an unpaid customer order and release reserved inventory."""
+        """Hard-delete a customer order before admin approval and release reserved inventory."""
         order = await self.get_order(order_id)
         if not order or order.customer_id != customer_id:
             return {"error": "Order not found", "status_code": 404}
 
-        deletable_statuses = {OrderStatus.PENDING, OrderStatus.PENDING_APPROVAL}
+        deletable_statuses = {OrderStatus.PENDING}
         if order.status not in deletable_statuses:
-            return {"error": "Only unpaid orders can be deleted.", "status_code": 400}
+            return {"error": "Orders cannot be deleted after admin approval.", "status_code": 400}
 
         if order.payment and order.payment.status == PaymentStatus.SUCCEEDED:
             return {"error": "Paid orders cannot be deleted.", "status_code": 400}

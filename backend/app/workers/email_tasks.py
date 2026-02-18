@@ -5,7 +5,6 @@ Uses Mailgun API when configured, with SMTP fallback.
 """
 
 import logging
-import os
 import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -15,35 +14,28 @@ from urllib.parse import quote
 import httpx
 
 from app.celery_app import celery_app
+from app.core.config import get_settings
 
 logger = logging.getLogger("app.workers.email")
+_settings = get_settings()
 
-# Mailgun config from environment (preferred provider)
-MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "").strip()
-MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "").strip()
-MAILGUN_BASE_URL = os.getenv("MAILGUN_BASE_URL", "https://api.mailgun.net").rstrip("/")
-MAILGUN_FROM_EMAIL = os.getenv("MAILGUN_FROM_EMAIL", "").strip()
-MAILGUN_FROM_NAME = os.getenv("MAILGUN_FROM_NAME", "").strip()
-try:
-    MAILGUN_TIMEOUT_SECONDS = float(os.getenv("MAILGUN_TIMEOUT_SECONDS", "15"))
-except ValueError:
-    MAILGUN_TIMEOUT_SECONDS = 15.0
+# Mailgun config from settings
+MAILGUN_API_KEY = (_settings.MAILGUN_API_KEY or "").strip()
+MAILGUN_DOMAIN = (_settings.MAILGUN_DOMAIN or "").strip()
+MAILGUN_BASE_URL = (_settings.MAILGUN_BASE_URL or "https://api.mailgun.net").rstrip("/")
+MAILGUN_FROM_EMAIL = (_settings.MAILGUN_FROM_EMAIL or "").strip()
+MAILGUN_FROM_NAME = (_settings.MAILGUN_FROM_NAME or "").strip()
+MAILGUN_TIMEOUT_SECONDS = _settings.MAILGUN_TIMEOUT_SECONDS
 
-# SMTP config from environment
-SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
-try:
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "0"))
-except ValueError:
-    SMTP_PORT = 0
-SMTP_USER = os.getenv("SMTP_USER", "").strip()
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "").strip()
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "").strip()
-FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
-try:
-    SMTP_TIMEOUT_SECONDS = float(os.getenv("SMTP_TIMEOUT_SECONDS", "15"))
-except ValueError:
-    SMTP_TIMEOUT_SECONDS = 15.0
+# SMTP config from settings
+SMTP_HOST = (_settings.SMTP_HOST or "").strip()
+SMTP_PORT = _settings.SMTP_PORT
+SMTP_USER = (_settings.SMTP_USER or "").strip()
+SMTP_PASSWORD = (_settings.SMTP_PASSWORD or "").strip()
+SMTP_FROM_EMAIL = (_settings.SMTP_FROM_EMAIL or "").strip()
+SMTP_FROM_NAME = (_settings.SMTP_FROM_NAME or "").strip()
+FRONTEND_URL = (_settings.FRONTEND_URL or "").rstrip("/")
+SMTP_TIMEOUT_SECONDS = _settings.SMTP_TIMEOUT_SECONDS
 
 
 def _frontend_link(path: str) -> str:

@@ -342,6 +342,7 @@ class CustomCakeService:
             return {"error": "Not your custom cake"}
 
         non_cancellable = {
+            CustomCakeStatus.APPROVED_AWAITING_PAYMENT,
             CustomCakeStatus.PAID,
             CustomCakeStatus.IN_PRODUCTION,
             CustomCakeStatus.COMPLETED,
@@ -447,6 +448,29 @@ class CustomCakeService:
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def purge_cancelled_cakes_for_customer(
+        self,
+        customer_id: uuid.UUID,
+    ) -> int:
+        """
+        Permanently delete cancelled custom-cake rows for a customer.
+        Keeps customer history clean after user-initiated cancellation.
+        """
+        result = await self.db.execute(
+            select(CustomCake).where(
+                CustomCake.customer_id == customer_id,
+                CustomCake.status == CustomCakeStatus.CANCELLED,
+            )
+        )
+        cancelled_rows = list(result.scalars().all())
+        if not cancelled_rows:
+            return 0
+
+        for row in cancelled_rows:
+            await self.db.delete(row)
+        await self.db.flush()
+        return len(cancelled_rows)
 
     async def get_custom_cake(self, cake_id: uuid.UUID) -> CustomCake | None:
         """Get a single custom cake by ID."""
