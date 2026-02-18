@@ -59,8 +59,8 @@ class Settings(BaseSettings):
 
     # ── Gemini (AI) ──────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
-    GEMINI_IMAGE_MODEL: str = "gemini-3-pro-image-preview"
-    GEMINI_TEXT_MODEL: str = "gemini-3-pro-preview"
+    GEMINI_IMAGE_MODEL: str = "gemini-2.0-flash-exp-image-generation"
+    GEMINI_TEXT_MODEL: str = "gemini-2.0-flash"
 
     # ── SMTP ─────────────────────────────────────────────────────────────
     SMTP_HOST: str = ""

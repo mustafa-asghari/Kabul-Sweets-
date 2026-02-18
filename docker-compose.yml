@@ -204,7 +204,7 @@ services:
   admin_frontend:
     profiles: ["admin"]
     build:
-      context: ./admin_frontend/mantine-analytics-dashboard
+      context: ./admin_frontend
       dockerfile: Dockerfile
     container_name: kabul_sweets_admin_frontend
     restart: unless-stopped
