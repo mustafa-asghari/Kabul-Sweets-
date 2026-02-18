@@ -250,9 +250,29 @@ class ImageProcessingService:
         try:
             # Extract base64 data from the data URL
             if image.original_url.startswith("data:"):
-                # Format: data:image/jpeg;base64,/9j/4AAQ...
-                b64_data = image.original_url.split(",", 1)[1]
-                mime_type = image.original_url.split(";")[0].split(":")[1]
+                header_part, b64_data = image.original_url.split(",", 1)
+                mime_type = header_part.split(";")[0].split(":")[1]
+                
+                # OPTIMIZATION: Resize image if strictly too large (e.g. > 1600px)
+                # This drastically speeds up Gemini uploads and processing.
+                if len(b64_data) > 3 * 1024 * 1024:  # If > 3MB roughly
+                    try:
+                        img_bytes = base64.b64decode(b64_data)
+                        with Image.open(io.BytesIO(img_bytes)) as pil_img:
+                            max_dim = max(pil_img.size)
+                            if max_dim > 1600:
+                                scale = 1600 / max_dim
+                                new_w = int(pil_img.width * scale)
+                                new_h = int(pil_img.height * scale)
+                                resized_pil = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                                
+                                buf = io.BytesIO()
+                                save_fmt = "PNG" if "png" in mime_type.lower() else "JPEG"
+                                resized_pil.save(buf, format=save_fmt, quality=85, optimize=True)
+                                b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+                                logger.info("Resized original image for Gemini: %s -> %dx%d", pil_img.size, new_w, new_h)
+                    except Exception as resize_err:
+                        logger.warning("Failed to optimization-resize image: %s", str(resize_err))
             else:
                 return {"error": "Unsupported image format"}
 
@@ -513,8 +533,8 @@ class ImageProcessingService:
             },
         }
 
-        max_attempts = 3
-        timeout = httpx.Timeout(120.0, connect=20.0)
+        max_attempts = 2
+        timeout = httpx.Timeout(60.0, connect=10.0)
         last_error: str | None = None
 
         for attempt in range(1, max_attempts + 1):
@@ -649,6 +669,13 @@ class ImageProcessingService:
 
             pixels = rgb.load()
             total_pixels = width * height
+            
+            # Optimization: If image is huge, resize it for analysis
+            analysis_scale = 1.0
+            if total_pixels > 2000 * 2000:
+                logger.info("Image too large for full BFS analysis (%dx%d). Skipping normalization.", width, height)
+                return image_b64, mime_type, False
+                
             visited = bytearray(total_pixels)
             queue: deque[tuple[int, int]] = deque()
 
@@ -788,14 +815,15 @@ class ImageProcessingService:
             if crop_w < 2 or crop_h < 2:
                 return image_b64, mime_type, False
 
-            output_side = min(max(max(width, height), FRAME_MIN_OUTPUT_SIDE), FRAME_MAX_OUTPUT_SIDE)
+            output_side = min(max(max(width, height), 800), 1200)  # Capped at 1200px
             target_subject = max(1, int(output_side * FRAME_TARGET_OCCUPANCY))
             scale = min(target_subject / crop_w, target_subject / crop_h)
             resized_w = max(1, int(round(crop_w * scale)))
             resized_h = max(1, int(round(crop_h * scale)))
 
             resampling = getattr(Image, "Resampling", Image)
-            resized = subject_crop.resize((resized_w, resized_h), resampling.LANCZOS)
+            # Use BILLINEAR for speed instead of LANCZOS if it's slow
+            resized = subject_crop.resize((resized_w, resized_h), resampling.BILINEAR)
 
             canvas = Image.new("RGB", (output_side, output_side), (255, 255, 255))
             paste_x = (output_side - resized_w) // 2
@@ -805,18 +833,18 @@ class ImageProcessingService:
             output_buffer = io.BytesIO()
             target_mime = mime_type.lower()
             if "png" in target_mime:
-                canvas.save(output_buffer, format="PNG", optimize=True)
+                canvas.save(output_buffer, format="PNG", optimize=False, compress_level=6)
                 output_mime = "image/png"
             elif "webp" in target_mime:
-                canvas.save(output_buffer, format="WEBP", quality=95, method=6)
+                canvas.save(output_buffer, format="WEBP", quality=85, method=4)
                 output_mime = "image/webp"
             else:
                 canvas.save(
                     output_buffer,
                     format="JPEG",
-                    quality=95,
-                    optimize=True,
-                    progressive=True,
+                    quality=85,
+                    optimize=False,
+                    progressive=False,
                 )
                 output_mime = "image/jpeg"
 
