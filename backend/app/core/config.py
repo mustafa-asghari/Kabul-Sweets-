@@ -106,6 +106,13 @@ class Settings(BaseSettings):
     # ── Logging ──────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def coerce_database_url(cls, v: str) -> str:
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
