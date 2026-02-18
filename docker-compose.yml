@@ -1,4 +1,225 @@
-name: backend
+version: '3.8'
 
-include:
-  - ./backend/docker-compose.yml
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: kabul_sweets_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: kabul_sweets_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+      REDIS_URL: ${DOCKER_REDIS_URL}
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
+      FRONTEND_URL: ${FRONTEND_URL}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # ── Celery Worker (Background Jobs) ─────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_celery_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+      REDIS_URL: ${DOCKER_REDIS_URL}
+      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      FRONTEND_URL: ${FRONTEND_URL}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_app:celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--queues=default,email,alerts,analytics",
+      ]
+
+  # ── Celery Beat (Scheduled Jobs) ────────────────────────────────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_celery_beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+      REDIS_URL: ${DOCKER_REDIS_URL}
+      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      FRONTEND_URL: ${FRONTEND_URL}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_app:celery_app",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
+
+  # ── Customer Frontend (Optional) ────────────────────────────────────
+  frontend:
+    profiles: ["frontend"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL}
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      api:
+        condition: service_started
+
+  # ── Admin Frontend (Optional) ───────────────────────────────────────
+  admin_frontend:
+    profiles: ["admin"]
+    build:
+      context: ./admin_frontend/mantine-analytics-dashboard
+      dockerfile: Dockerfile
+    container_name: kabul_sweets_admin_frontend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL}
+      API_URL: ${API_URL}
+      NEXT_TELEMETRY_DISABLED: "1"
+      HUSKY: "0"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
