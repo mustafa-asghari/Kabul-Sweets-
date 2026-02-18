@@ -79,46 +79,71 @@ CATEGORY_PROMPTS = {
 
     ImageCategory.SWEET: (
         "Transform this sweet/confection into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Arrange the sweets elegantly, centered with balanced studio lighting and soft realistic shadow underneath. "
+        "Preserve the original design exactly (shape, colors, decorations, texture, and details). "
+        "Do not redesign, simplify, or replace decorations. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
+        "Place the sweets centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: subject must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
+        "Do NOT add any plate, tray, platter, props, table textures, or decorative scene elements. "
         "Enhance the texture details — show the shimmer of sugar, the richness of nuts, the smooth fudge surface. "
+        "Do NOT add any text, lettering, logo, watermark, or random lines on the product. "
         "Keep proportions, colours, and traditional plating accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, premium confectionery advertisement style."
     ),
 
     ImageCategory.PASTRY: (
         "Transform this pastry into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Place the pastry centered with balanced studio lighting and soft realistic shadow underneath. "
+        "Preserve the original pastry design exactly (shape, colors, layers, texture, and details). "
+        "Do not redesign, simplify, or replace decorations. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
+        "Place the pastry centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: subject must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
+        "Do NOT add any plate, tray, props, table textures, or decorative scene elements. "
         "Enhance the flaky layers, golden crispy texture, and powdered sugar details. "
+        "Do NOT add any text, lettering, logo, watermark, or random lines on the product. "
         "Keep proportions, colours, and the delicate form accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, artisan bakery advertisement style."
     ),
 
     ImageCategory.COOKIE: (
         "Transform these cookies/baklava into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
+        "Preserve the original design exactly (shape, colors, patterns, texture, and details). "
+        "Do not redesign, simplify, or replace decorations. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
         "Arrange the cookies/baklava in an appealing layout, centered with balanced studio lighting "
-        "and soft realistic shadow underneath. "
+        "and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: subject must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
+        "Do NOT add any plate, tray, props, table textures, or decorative scene elements. "
         "Enhance the intricate patterns, golden baked surfaces, pistachio and walnut details. "
+        "Do NOT add any text, lettering, logo, watermark, or random lines on the product. "
         "Keep proportions, colours, and traditional decorative patterns accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, luxury bakery advertisement style."
     ),
 
     ImageCategory.BREAD: (
         "Transform this bread into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Place the bread centered with balanced studio lighting and soft realistic shadow underneath. "
+        "Preserve the original bread exactly (shape, colors, crust, texture, and details). "
+        "Do not redesign, simplify, or replace any features. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
+        "Place the bread centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: subject must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
+        "Do NOT add any cutting board, plate, tray, props, table textures, or decorative scene elements. "
         "Enhance the crust texture, golden-brown colour, and stuffing details if visible. "
+        "Do NOT add any text, lettering, logo, watermark, or random lines on the product. "
         "Keep proportions, colours, and artisan qualities accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, artisan bread advertisement style."
     ),
 
     ImageCategory.DRINK: (
         "Transform this beverage/tea into a professional e-commerce product photo. "
-        "Remove the entire background and replace with a clean pure white background (#FFFFFF). "
-        "Place the product centered with balanced studio lighting and soft realistic shadow underneath. "
+        "Preserve the original packaging and product exactly (shape, colors, label, and details). "
+        "Do not redesign, simplify, or replace any features. "
+        "Use a clean studio background (pure white or very light neutral gray is acceptable). "
+        "Place the product centered with balanced studio lighting and NO shadow on the background, NO floor shadow, and NO reflection. "
+        "Use a consistent camera distance and framing: subject must be fully visible, with balanced white space around the subject (roughly 80-85% frame occupancy). "
+        "Do NOT add any tray, props, table textures, or decorative scene elements. "
         "Enhance the packaging details, label text clarity, and overall presentation. "
+        "Do NOT add any extra text, lettering, logo, watermark, or random lines on the product. "
         "Keep proportions, colours, and branding accurate and realistic. "
         "Commercial food photography, ultra high resolution, sharp focus, premium product advertisement style."
     ),
