@@ -16,24 +16,43 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
 
   # ── Redis ────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: kabul_sweets_redis
     restart: unless-stopped
+    command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   # ── Backend API ──────────────────────────────────────────────────────
   api:
@@ -53,16 +72,10 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
       ADMIN_FRONTEND_URL: ${ADMIN_FRONTEND_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
       CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
       CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
       CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
-      FRONTEND_URL: ${FRONTEND_URL}
-      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
-      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
-      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
-      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
-      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
-      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
       GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
@@ -73,16 +86,47 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
       STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      TELEGRAM_ADMIN_CHAT_IDS: ${TELEGRAM_ADMIN_CHAT_IDS}
+      TELEGRAM_ACTING_ADMIN_EMAIL: ${TELEGRAM_ACTING_ADMIN_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN}
+      ML_USE_XGBOOST: ${ML_USE_XGBOOST}
+      XGBOOST_MODEL_PATH: ${XGBOOST_MODEL_PATH}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command:
+      [
+        "uvicorn", "app.main:app",
+        "--host", "0.0.0.0",
+        "--port", "8000",
+        "--workers", "4",
+        "--loop", "uvloop",
+        "--http", "httptools",
+        "--proxy-headers",
+        "--forwarded-allow-ips", "*"
+      ]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # ── Celery Worker (Background Jobs) ─────────────────────────────────
   celery_worker:
@@ -96,18 +140,12 @@ services:
       REDIS_URL: ${DOCKER_REDIS_URL}
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
-      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
-      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       FRONTEND_URL: ${FRONTEND_URL}
-      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
-      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
-      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
-      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
-      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
-      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
+      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
       GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
@@ -118,10 +156,22 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
       STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      TELEGRAM_ADMIN_CHAT_IDS: ${TELEGRAM_ADMIN_CHAT_IDS}
+      TELEGRAM_ACTING_ADMIN_EMAIL: ${TELEGRAM_ACTING_ADMIN_EMAIL}
+      ML_USE_XGBOOST: ${ML_USE_XGBOOST}
+      XGBOOST_MODEL_PATH: ${XGBOOST_MODEL_PATH}
     depends_on:
       db:
         condition: service_healthy
@@ -130,12 +180,20 @@ services:
     command:
       [
         "celery",
-        "-A",
-        "app.celery_app:celery_app",
+        "-A", "app.celery_app:celery_app",
         "worker",
         "--loglevel=INFO",
-        "--queues=default,email,alerts,analytics",
+        "--concurrency=4",
+        "--queues=default,email,alerts,analytics"
       ]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2.5G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
 
   # ── Celery Beat (Scheduled Jobs) ────────────────────────────────────
   celery_beat:
@@ -149,18 +207,12 @@ services:
       REDIS_URL: ${DOCKER_REDIS_URL}
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
-      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
-      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       FRONTEND_URL: ${FRONTEND_URL}
-      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
-      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
-      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
-      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
-      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
-      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
+      CELERY_TASK_ALWAYS_EAGER: ${CELERY_TASK_ALWAYS_EAGER}
+      CELERY_BROKER_URL: ${DOCKER_CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${DOCKER_CELERY_RESULT_BACKEND}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_IMAGE_MODEL: ${GEMINI_IMAGE_MODEL}
       GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL}
@@ -171,10 +223,19 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME}
       SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_BASE_URL: ${MAILGUN_BASE_URL}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_FROM_NAME: ${MAILGUN_FROM_NAME}
+      MAILGUN_TIMEOUT_SECONDS: ${MAILGUN_TIMEOUT_SECONDS}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
       STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
       STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ADMIN_CHAT_IDS: ${TELEGRAM_ADMIN_CHAT_IDS}
+      ML_USE_XGBOOST: ${ML_USE_XGBOOST}
     depends_on:
       db:
         condition: service_healthy
@@ -183,14 +244,21 @@ services:
     command:
       [
         "celery",
-        "-A",
-        "app.celery_app:celery_app",
+        "-A", "app.celery_app:celery_app",
         "beat",
         "--loglevel=INFO",
-        "--schedule=/tmp/celerybeat-schedule",
+        "--schedule=/tmp/celerybeat-schedule"
       ]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 384M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
 
-  # ── Customer Frontend (Optional) ────────────────────────────────────
+  # ── Customer Frontend ────────────────────────────────────────────────
   frontend:
     profiles: ["frontend"]
     build:
@@ -207,8 +275,16 @@ services:
     depends_on:
       api:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 768M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
 
-  # ── Admin Frontend (Optional) ───────────────────────────────────────
+  # ── Admin Frontend ───────────────────────────────────────────────────
   admin_frontend:
     profiles: ["admin"]
     build:
@@ -219,14 +295,22 @@ services:
     ports:
       - "3001:3001"
     environment:
+      API_URL: ${API_URL}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
       INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL}
-      API_URL: ${API_URL}
       NEXT_TELEMETRY_DISABLED: "1"
       HUSKY: "0"
     depends_on:
       api:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 768M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
 
 volumes:
   postgres_data:
