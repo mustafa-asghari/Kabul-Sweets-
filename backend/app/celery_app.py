@@ -12,12 +12,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-APP_ENV = os.getenv("APP_ENV", "development")
+# Import settings for centralised config. Fall back to os.getenv for
+# Redis URL resolution which needs to run before Settings validation
+# in some deployment scenarios (e.g. Celery worker bootstrap).
+try:
+    from app.core.config import get_settings as _get_settings
+    _cfg = _get_settings()
+    APP_ENV = _cfg.APP_ENV
+    _eager_env = _cfg.CELERY_TASK_ALWAYS_EAGER
+except Exception:
+    _cfg = None
+    APP_ENV = os.getenv("APP_ENV", "development")
+    _eager_env = os.getenv("CELERY_TASK_ALWAYS_EAGER", "")
+
 TASK_ALWAYS_EAGER = (
-    os.getenv(
-        "CELERY_TASK_ALWAYS_EAGER",
-        "true" if APP_ENV.lower() != "production" else "false",
-    ).lower()
+    (_eager_env or ("true" if APP_ENV.lower() != "production" else "false"))
+    .lower()
     == "true"
 )
 
