@@ -5,9 +5,11 @@ Simple script to set Telegram Webhook without loading the full app config.
 import httpx
 import sys
 
-# Replace these values as needed
-TELEGRAM_BOT_TOKEN = "8373208403:AAHVVb7dEC6DOh2xJOSMTzdhONRtyL2q8EU"
-TELEGRAM_WEBHOOK_SECRET = "4c931af77b7ffcc5f0f970c10f6680bca9d827d3c195721725f38b96e2437ac9"
+import os
+
+# Secrets should be environment variables, not hardcoded
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or "8373208403:CHANGE_ME"
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip() or "CHANGE_ME"
 BACKEND_URL = "https://api.kabulsweets.com"
 
 def set_webhook():
