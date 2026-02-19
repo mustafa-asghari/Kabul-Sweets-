@@ -67,6 +67,13 @@ def _resolve_redis_base_url() -> str:
         return redis_url
     if docker_redis_url:
         return docker_redis_url
+    import sys
+    print(
+        "[celery_app] FATAL: No Redis URL found. "
+        "Set REDIS_URL or DOCKER_REDIS_URL in environment variables.",
+        file=sys.stderr,
+        flush=True,
+    )
     raise RuntimeError(
         "Missing Redis configuration. Set REDIS_URL or DOCKER_REDIS_URL."
     )
@@ -107,6 +114,10 @@ CELERY_RESULT_BACKEND = _resolve_celery_url(
     "DOCKER_CELERY_RESULT_BACKEND",
     db=2,
 )
+
+import sys as _sys
+_broker_host = urlparse(CELERY_BROKER_URL).hostname or "unknown"
+print(f"[celery_app] Broker host: {_broker_host} | APP_ENV: {APP_ENV} | EAGER: {TASK_ALWAYS_EAGER}", file=_sys.stderr, flush=True)
 
 
 class _SyncBoundTask:

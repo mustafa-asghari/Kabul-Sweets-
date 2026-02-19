@@ -161,6 +161,23 @@ function OrdersPageContent() {
           token: accessToken,
         }),
       ]);
+
+      // Surface any fetch errors so they're visible (don't silently show empty)
+      if (!background) {
+        const errors: string[] = [];
+        if (ordersResult.status === "rejected") {
+          const reason = ordersResult.reason;
+          errors.push(`Orders: ${reason instanceof ApiError ? reason.detail : reason instanceof Error ? reason.message : "failed"}`);
+        }
+        if (cakesResult.status === "rejected") {
+          const reason = cakesResult.reason;
+          errors.push(`Custom cakes: ${reason instanceof ApiError ? reason.detail : reason instanceof Error ? reason.message : "failed"}`);
+        }
+        if (errors.length > 0) {
+          setError(errors.join(" | "));
+        }
+      }
+
       const rawOrders = ordersResult.status === "fulfilled" ? ordersResult.value : [];
       const rawCakes = cakesResult.status === "fulfilled" ? cakesResult.value : [];
       const ordersData = Array.isArray(rawOrders) ? rawOrders : [];
@@ -425,10 +442,13 @@ function OrdersPageContent() {
             </div>
           ) : loading ? (
             <p className="text-sm text-gray-500">Loading orders...</p>
-          ) : error ? (
-            <p className="text-sm text-red-600">{error}</p>
           ) : (
             <>
+              {error ? (
+                <div className="rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
               <section className="space-y-4">
                 <h2 className="text-xl font-extrabold tracking-tight text-black">Product Orders</h2>
                 {orders.length === 0 ? (
