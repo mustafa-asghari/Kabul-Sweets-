@@ -35,6 +35,7 @@ dependencies = [
     "celery[redis]>=5.4.0",
     # Email
     "aiosmtplib>=3.0.0",
+    "resend>=2.1.0",
     # Templating (for email/SMS templates)
     "jinja2>=3.1.0",
     # HTTP Client (for AI API calls)
