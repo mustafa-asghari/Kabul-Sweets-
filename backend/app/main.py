@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
@@ -109,6 +110,9 @@ def create_app() -> FastAPI:
         redoc_url=None if settings.is_production else "/redoc",
         lifespan=lifespan,
     )
+
+    # ── Compression ─────────────────────────────────────────────────────
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     # ── Security Middleware ──────────────────────────────────────────────
     from app.core.security_middleware import apply_security_middleware

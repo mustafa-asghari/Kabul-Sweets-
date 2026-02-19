@@ -23,6 +23,7 @@ from app.schemas.product import (
     VariantUpdate,
 )
 from app.schemas.user import MessageResponse
+from app.services.cache_service import CacheService, CACHE_TTL
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -62,6 +63,19 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
 ):
     """Browse products (public). Only shows active products."""
+    cache_key = CacheService._make_key(
+        "product_list",
+        category=category,
+        is_featured=is_featured,
+        is_cake=is_cake,
+        search=search,
+        skip=skip,
+        limit=limit,
+    )
+    cached = await CacheService.get(cache_key)
+    if cached is not None:
+        return cached
+
     service = ProductService(db)
     products = await service.list_products(
         category=category,
@@ -74,7 +88,10 @@ async def list_products(
     )
     for product in products:
         await _sanitize_negative_stock(product, db)
-    return products
+
+    serialized = [ProductListResponse.model_validate(p).model_dump(mode="json") for p in products]
+    await CacheService.set(cache_key, serialized, ttl=CACHE_TTL["product_list"])
+    return serialized
 
 
 @router.get("/count")
