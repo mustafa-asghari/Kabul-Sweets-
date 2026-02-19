@@ -143,6 +143,8 @@ class Settings(BaseSettings):
                 parsed = json.loads(v)
             except json.JSONDecodeError:
                 parsed = [item.strip() for item in v.split(",") if item.strip()]
+        else:
+            parsed = v
         
         if isinstance(parsed, (int, float)):
             parsed = [parsed]

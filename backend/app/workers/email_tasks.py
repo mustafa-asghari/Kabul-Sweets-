@@ -6,12 +6,24 @@ Uses Mailgun API when configured, with SMTP fallback.
 
 import logging
 import smtplib
+import socket  # Added for IPv6 workaround
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import quote
 
 import httpx
+
+# ── Force IPv4 ───────────────────────────────────────────────────────────────
+# Railway/Docker sometimes fails on IPv6 for SMTP.
+# We patch getaddrinfo to only return IPv4 (AF_INET) results.
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
+# ─────────────────────────────────────────────────────────────────────────────
 
 from app.celery_app import celery_app
 from app.core.config import get_settings
@@ -149,6 +161,11 @@ def _send_email(
                 part["Content-Disposition"] = f'attachment; filename="{filename}"'
                 msg.attach(part)
 
+        if not SMTP_HOST or not SMTP_PORT or not SMTP_USER or not SMTP_PASSWORD:
+            logger.error(f"SMTP Config Missing: Host={SMTP_HOST}, Port={SMTP_PORT}, User={SMTP_USER}")
+            return False
+
+        logger.info(f"Connecting to SMTP: {SMTP_HOST}:{SMTP_PORT} as {SMTP_USER}")
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT_SECONDS)
         try:
             server.starttls()
@@ -168,7 +185,9 @@ def _send_email(
         return True
     except Exception as e:
         logger.error("❌ Email send failed to %s: %s", to_email, str(e))
-        raise
+        # If we raise here, Celery might retry indefinitely on config errors.
+        # Returning False allows the task to simply fail once.
+        return False
 
 
 # ── Celery Tasks ─────────────────────────────────────────────────────────────

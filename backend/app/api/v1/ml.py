@@ -249,8 +249,16 @@ async def get_my_custom_cakes(
 ):
     """Get your custom cake submissions."""
     service = CustomCakeService(db)
+
+    logger.info(f"Fetching custom cakes for user {current_user.id}")
+
     await service.purge_cancelled_cakes_for_customer(current_user.id)
     cakes = await service.list_custom_cakes(customer_id=current_user.id)
+    
+    logger.info(f"Found {len(cakes)} custom cakes for user {current_user.id}")
+    for cake in cakes:
+        logger.info(f"Cake {cake.id}: Status={cake.status.value}, Flavor={cake.flavor}")
+
     return [
         {
             "id": str(c.id),
