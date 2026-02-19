@@ -1096,9 +1096,9 @@ function CustomCakesPageContent() {
                       <input
                         type="text"
                         maxLength={200}
-                        value={form.cake_message}
+                        value={form.cake_message ?? ""}
                         onChange={(event) => updateForm("cake_message", event.target.value)}
-                        placeholder="Happy Birthday Mustafa"
+                        placeholder="Happy Birthday"
                         className="mt-2 w-full rounded-xl border border-[#e8dccb] bg-white px-4 py-3 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-accent/25"
                       />
                     </label>
