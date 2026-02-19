@@ -576,10 +576,9 @@ async def get_image_details(
 @router.get("/{image_id}/original")
 async def get_original_image(
     image_id: uuid.UUID,
-    admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """[Admin] Get the original image data (base64)."""
+    """Get the original image data. Public — image IDs are unguessable UUIDs."""
     result = await db.execute(
         select(ProcessedImage).where(ProcessedImage.id == image_id)
     )
