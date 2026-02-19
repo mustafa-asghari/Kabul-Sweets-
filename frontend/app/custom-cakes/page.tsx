@@ -148,8 +148,8 @@ function fileToDataUrl(file: File) {
   });
 }
 
-function statusBadge(status: string) {
-  const normalized = status.toLowerCase();
+function statusBadge(status: string | null | undefined) {
+  const normalized = (status ?? "").toLowerCase();
   if (normalized === "pending_review") return "bg-[#f6e5b9] text-[#7a5608]";
   if (normalized === "approved_awaiting_payment") return "bg-[#d8e8ff] text-[#17529e]";
   if (normalized === "paid") return "bg-[#d8f3dc] text-[#17613d]";
@@ -159,8 +159,8 @@ function statusBadge(status: string) {
   return "bg-[#ece8de] text-[#4a4640]";
 }
 
-function statusLabel(status: string) {
-  return status.replace(/_/g, " ");
+function statusLabel(status: string | null | undefined) {
+  return (status ?? "unknown").replace(/_/g, " ");
 }
 
 interface SelectOption {
