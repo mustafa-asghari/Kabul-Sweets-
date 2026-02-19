@@ -153,7 +153,7 @@ function OrdersPageContent() {
       setError(null);
     }
     try {
-      const [rawOrders, rawCakes] = await Promise.all([
+      const [ordersResult, cakesResult] = await Promise.allSettled([
         apiRequest<OrderSummary[]>("/api/v1/orders/my-orders", {
           token: accessToken,
         }),
@@ -161,6 +161,8 @@ function OrdersPageContent() {
           token: accessToken,
         }),
       ]);
+      const rawOrders = ordersResult.status === "fulfilled" ? ordersResult.value : [];
+      const rawCakes = cakesResult.status === "fulfilled" ? cakesResult.value : [];
       const ordersData = Array.isArray(rawOrders) ? rawOrders : [];
       const cakesData = Array.isArray(rawCakes) ? rawCakes : [];
       const visibleCakes = cakesData.filter((cake) => cake.status !== "cancelled");

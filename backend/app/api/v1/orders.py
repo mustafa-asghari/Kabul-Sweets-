@@ -256,6 +256,22 @@ async def approve_order(
         order.status = OrderStatus.PENDING_APPROVAL
         await db.flush()
         await db.refresh(order)
+
+        # Notify customer by email that their order is approved and ready to pay
+        try:
+            from app.workers.email_tasks import send_order_approval_email
+            send_order_approval_email.delay({
+                "order_id": str(order.id),
+                "order_number": order.order_number,
+                "customer_name": order.customer_name,
+                "customer_email": order.customer_email,
+                "total": str(order.total),
+                "pickup_date": str(order.pickup_date.date()) if order.pickup_date else None,
+                "pickup_time_slot": order.pickup_time_slot,
+            })
+        except Exception as exc:
+            logger.warning("Failed to queue order approval email: %s", exc)
+
         return {"success": True, "message": "Order approved and awaiting customer payment"}
 
     if order.status != OrderStatus.PENDING_APPROVAL:

@@ -378,6 +378,62 @@ def send_custom_cake_payment_email(self, data: dict):
     bind=True,
     max_retries=3,
     default_retry_delay=120,
+    name="app.workers.email_tasks.send_order_approval_email",
+)
+def send_order_approval_email(self, order_data: dict):
+    """Notify customer their order has been approved and is ready to pay."""
+    try:
+        pickup_text = ""
+        if order_data.get("pickup_date"):
+            pickup_text = f"<p style=\"margin: 5px 0;\"><strong>Pickup:</strong> {order_data.get('pickup_date')}"
+            if order_data.get("pickup_time_slot"):
+                pickup_text += f" ({order_data.get('pickup_time_slot')})"
+            pickup_text += "</p>"
+
+        orders_link = _frontend_link("/orders")
+        html = f"""
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #faf7f2; padding: 40px 30px; border-radius: 12px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">Kabul Sweets</h1>
+                <p style="color: #27ae60; font-weight: 600; margin-top: 5px;">✅ Order Approved!</p>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Great news, {order_data.get('customer_name', 'Valued Customer')}!</h2>
+                <p style="color: #444;">Your order has been reviewed and approved. Please complete your payment to confirm it.</p>
+                <div style="border-top: 1px solid #eee; margin: 20px 0; padding-top: 15px;">
+                    <p style="margin: 5px 0;"><strong>Order:</strong> {order_data.get('order_number', '')}</p>
+                    <p style="margin: 5px 0;"><strong>Total:</strong> ${order_data.get('total', '0.00')} AUD</p>
+                    {pickup_text}
+                </div>
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="{orders_link}"
+                       style="background: #1a1a2e; color: white; padding: 14px 35px; border-radius: 25px; text-decoration: none; font-weight: 600; font-size: 16px;">
+                        Pay Now
+                    </a>
+                </div>
+                <p style="color: #999; font-size: 13px; text-align: center; margin-top: 16px;">
+                    Go to My Orders and click "Pay Now" to complete your payment.
+                </p>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 25px;">
+                Kabul Sweets — Authentic Afghan Bakery
+            </p>
+        </div>
+        """
+        _send_email(
+            to_email=order_data.get("customer_email", ""),
+            subject=f"Order Approved — {order_data.get('order_number', '')} | Kabul Sweets",
+            html_body=html,
+        )
+    except Exception as exc:
+        logger.error("Order approval email failed: %s", str(exc))
+        self.retry(exc=exc)
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
     name="app.workers.email_tasks.send_order_rejection_email",
 )
 def send_order_rejection_email(self, order_data: dict):

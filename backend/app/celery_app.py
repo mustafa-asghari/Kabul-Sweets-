@@ -178,15 +178,6 @@ if Celery is not None:
         task_always_eager=TASK_ALWAYS_EAGER,
         task_eager_propagates=True,
 
-        # Task routing
-        task_routes={
-            "app.workers.email_tasks.*": {"queue": "email"},
-            "app.workers.telegram_tasks.*": {"queue": "alerts"},
-            "app.workers.analytics_tasks.*": {"queue": "analytics"},
-            "app.workers.cart_tasks.*": {"queue": "default"},
-            "app.workers.trend_tasks.*": {"queue": "analytics"},
-        },
-
         # Worker settings
         worker_prefetch_multiplier=1,
         worker_max_tasks_per_child=1000,
