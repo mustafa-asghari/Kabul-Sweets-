@@ -143,10 +143,14 @@ class Settings(BaseSettings):
                 parsed = json.loads(v)
             except json.JSONDecodeError:
                 parsed = [item.strip() for item in v.split(",") if item.strip()]
+        
+        if isinstance(parsed, (int, float)):
+            parsed = [parsed]
         elif isinstance(v, (list, tuple, set)):
             parsed = list(v)
-        else:
-            parsed = [v]
+        elif not isinstance(parsed, list):
+             # Fallback for unexpected types
+            parsed = [parsed]
 
         if not parsed:
             return []
