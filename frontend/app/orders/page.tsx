@@ -54,7 +54,7 @@ interface ProductLookupResponse {
   slug: string;
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string | null | undefined) {
   switch (status) {
     case "pending_approval":
       return "Approved - Awaiting Payment";
@@ -69,11 +69,11 @@ function statusLabel(status: string) {
     case "completed":
       return "Completed";
     default:
-      return status.replace(/_/g, " ");
+      return (status ?? "unknown").replace(/_/g, " ");
   }
 }
 
-function cakeStatusLabel(status: string) {
+function cakeStatusLabel(status: string | null | undefined) {
   switch (status) {
     case "pending_review":
       return "Pending Review";
@@ -90,7 +90,7 @@ function cakeStatusLabel(status: string) {
     case "cancelled":
       return "Cancelled";
     default:
-      return status.replace(/_/g, " ");
+      return (status ?? "unknown").replace(/_/g, " ");
   }
 }
 
@@ -153,7 +153,7 @@ function OrdersPageContent() {
       setError(null);
     }
     try {
-      const [ordersData, cakesData] = await Promise.all([
+      const [rawOrders, rawCakes] = await Promise.all([
         apiRequest<OrderSummary[]>("/api/v1/orders/my-orders", {
           token: accessToken,
         }),
@@ -161,6 +161,8 @@ function OrdersPageContent() {
           token: accessToken,
         }),
       ]);
+      const ordersData = Array.isArray(rawOrders) ? rawOrders : [];
+      const cakesData = Array.isArray(rawCakes) ? rawCakes : [];
       const visibleCakes = cakesData.filter((cake) => cake.status !== "cancelled");
 
       const detailPairs = await Promise.all(
@@ -220,8 +222,10 @@ function OrdersPageContent() {
       if (!background) {
         if (fetchError instanceof ApiError) {
           setError(fetchError.detail);
+        } else if (fetchError instanceof Error) {
+          setError(fetchError.message);
         } else {
-          setError("Unable to load orders.");
+          setError("Unable to load orders. Please refresh the page.");
         }
         setOrders([]);
         setCustomCakes([]);
