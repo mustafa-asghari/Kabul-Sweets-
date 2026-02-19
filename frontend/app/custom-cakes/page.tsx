@@ -858,7 +858,7 @@ function CustomCakesPageContent() {
           flavor: form.flavor,
           diameter_inches: form.diameter_inches,
           decoration_description: form.decoration_description.trim() || null,
-          cake_message: form.cake_message.trim() || null,
+          cake_message: (form.cake_message ?? "").trim() || null,
           ingredients: {
             desired_servings: form.desired_servings,
             selected_size_inches: form.diameter_inches,
