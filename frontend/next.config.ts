@@ -20,6 +20,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    const internalApiBase = (
+      process.env.INTERNAL_API_BASE_URL || "http://api:8000"
+    ).replace(/\/+$/, "");
+    return [
+      {
+        source: "/api/v1/images/:path*",
+        destination: `${internalApiBase}/api/v1/images/:path*`,
+      },
+    ];
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 14,
