@@ -26,6 +26,7 @@ export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -57,6 +58,7 @@ export default function Navbar() {
         setCartOpen(false);
         setAuthOpen(false);
         setProfileOpen(false);
+        setMobileMenuOpen(false);
       }
     };
 
@@ -190,6 +192,18 @@ export default function Navbar() {
               <span className="material-symbols-outlined text-[22px]">search</span>
             </button>
 
+            {/* Mobile menu toggle — only visible on small screens */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              className="md:hidden text-gray-500 hover:text-black transition"
+              aria-label="Open menu"
+            >
+              <span className="material-symbols-outlined text-[24px]">
+                {mobileMenuOpen ? "close" : "menu"}
+              </span>
+            </button>
+
             <button
               type="button"
               onClick={handleAuthClick}
@@ -256,6 +270,109 @@ export default function Navbar() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile slide-down menu */}
+      {mobileMenuOpen ? (
+        <div className="md:hidden fixed inset-0 z-[70]">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          {/* Menu panel */}
+          <div className="absolute top-0 left-0 right-0 bg-[#faf8f4] shadow-xl rounded-b-3xl px-6 pt-6 pb-8 z-10">
+            <div className="flex items-center justify-between mb-6">
+              <Link
+                href="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-lg font-extrabold tracking-tight text-black"
+              >
+                Kabul <span className="text-accent">Sweets</span>_
+              </Link>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-gray-500 hover:text-black transition"
+                aria-label="Close menu"
+              >
+                <span className="material-symbols-outlined text-[24px]">close</span>
+              </button>
+            </div>
+
+            <nav className="flex flex-col gap-1">
+              {navLinks.map((link) => {
+                const isActive = pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`rounded-xl px-4 py-3 text-[15px] font-medium transition ${
+                      isActive
+                        ? "bg-black text-white"
+                        : "text-gray-700 hover:bg-[#f0ece3]"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+              {isAuthenticated ? (
+                <Link
+                  href="/orders"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`rounded-xl px-4 py-3 text-[15px] font-medium transition ${
+                    pathname === "/orders"
+                      ? "bg-black text-white"
+                      : "text-gray-700 hover:bg-[#f0ece3]"
+                  }`}
+                >
+                  Orders
+                </Link>
+              ) : null}
+            </nav>
+
+            <div className="mt-6 border-t border-[#e8e2d6] pt-5 flex flex-col gap-3">
+              {isAuthenticated && user ? (
+                <>
+                  <div className="px-1">
+                    <p className="text-sm font-semibold text-black">{user.full_name}</p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  </div>
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-xl px-4 py-3 text-[15px] font-medium text-gray-700 hover:bg-[#f0ece3] transition"
+                  >
+                    Account
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setMobileMenuOpen(false);
+                      await logout();
+                    }}
+                    className="text-left rounded-xl px-4 py-3 text-[15px] font-medium text-red-600 hover:bg-red-50 transition"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setAuthOpen(true);
+                  }}
+                  className="w-full rounded-full bg-black py-3 text-sm font-semibold text-white hover:bg-[#222] transition"
+                >
+                  Login / Sign up
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {searchOpen ? (
         <div
