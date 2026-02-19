@@ -28,6 +28,7 @@ const Logo = ({ href, showText = true, ...others }: LogoProps) => {
           height={showText ? 32 : 24}
           width={showText ? 32 : 24}
           alt="Kabul Sweets logo"
+          unoptimized
         />
         {showText && (
           <Text fw={800}>

@@ -196,39 +196,44 @@ class CustomCakeService:
         from app.services.stripe_service import StripeService
         from app.models.user import User
 
-        customer = await self.db.execute(
-            select(User).where(User.id == cake.customer_id)
-        )
-        customer_user = customer.scalar_one_or_none()
-        customer_email = customer_user.email if customer_user else None
+        try:
+            customer = await self.db.execute(
+                select(User).where(User.id == cake.customer_id)
+            )
+            customer_user = customer.scalar_one_or_none()
+            customer_email = customer_user.email if customer_user else None
 
-        description = (
-            f'{cake.flavor} cake, {cake.diameter_inches}" {cake.shape}, '
-            f'{cake.layers} layer(s), {cake.decoration_complexity.value} decoration'
-        )
+            description = (
+                f'{cake.flavor} cake, {cake.diameter_inches}" {cake.shape}, '
+                f'{cake.layers} layer(s), {cake.decoration_complexity.value} decoration'
+            )
 
-        payment_result = await StripeService.create_payment_link(
-            custom_cake_id=str(cake_id),
-            description=description,
-            amount=normalized_price,
-            customer_email=customer_email,
-        )
-        cake.checkout_url = payment_result.get("checkout_url")
-        cake.payment_intent_id = payment_result.get("session_id")
-        await self.db.flush()
+            payment_result = await StripeService.create_payment_link(
+                custom_cake_id=str(cake_id),
+                description=description,
+                amount=normalized_price,
+                customer_email=customer_email,
+            )
+            cake.checkout_url = payment_result.get("checkout_url")
+            cake.payment_intent_id = payment_result.get("session_id")
+            await self.db.flush()
 
-        # Send payment link email to customer
-        if customer_email:
-            from app.workers.email_tasks import send_custom_cake_payment_email
-            send_custom_cake_payment_email.delay({
-                "customer_email": customer_email,
-                "customer_name": customer_user.full_name if customer_user else "Valued Customer",
-                "cake_description": description,
-                "predicted_price": str(cake.predicted_price) if cake.predicted_price is not None else None,
-                "final_price": str(normalized_price),
-                "payment_url": payment_result["checkout_url"],
-                "custom_cake_id": str(cake_id),
-            })
+            # Send payment link email to customer
+            if customer_email:
+                from app.workers.email_tasks import send_custom_cake_payment_email
+                send_custom_cake_payment_email.delay({
+                    "customer_email": customer_email,
+                    "customer_name": customer_user.full_name if customer_user else "Valued Customer",
+                    "cake_description": description,
+                    "predicted_price": str(cake.predicted_price) if cake.predicted_price is not None else None,
+                    "final_price": str(normalized_price),
+                    "payment_url": payment_result["checkout_url"],
+                    "custom_cake_id": str(cake_id),
+                })
+        except Exception as e:
+            logger.error("Failed to generate payment link or send email: %s", str(e))
+            # Treat Stripe errors as blocking for approval flow (since checkout is needed)
+            return {"error": f"Payment system error: {str(e)}"}
 
         logger.info("Custom cake %s approved at $%s — payment link sent", cake_id, normalized_price)
 
