@@ -106,6 +106,19 @@ export async function apiPost<T>(
   return res.json();
 }
 
+
+export async function apiPostFormData<T>(
+  endpoint: string,
+  formData: FormData
+): Promise<ApiResponse<T>> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  return res.json();
+}
+
 export async function apiPatch<T>(
   endpoint: string,
   body: unknown,

@@ -16,12 +16,13 @@ import {
   TextInput,
   Textarea,
   Title,
+  FileButton,
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 
-import { apiPost } from '@/lib/hooks/useApi';
+import { apiPost, apiPostFormData } from '@/lib/hooks/useApi';
 import type { ProductCreate, VariantCreate } from '@/types/products';
 
 const CATEGORY_OPTIONS = [
@@ -43,6 +44,7 @@ export const NewProductDrawer = ({
   ...drawerProps
 }: NewProductDrawerProps) => {
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [variants, setVariants] = useState<VariantCreate[]>([]);
 
   const form = useForm({
@@ -156,11 +158,68 @@ export const NewProductDrawer = ({
             placeholder="Brief description (max 500 chars)"
             {...form.getInputProps('short_description')}
           />
-          <TextInput
-            label="Thumbnail URL"
-            placeholder="https://..."
-            {...form.getInputProps('thumbnail')}
-          />
+          <Stack gap="xs">
+            <TextInput
+              label="Thumbnail URL"
+              placeholder="https://..."
+              {...form.getInputProps('thumbnail')}
+            />
+            <FileButton
+              onChange={async (files) => {
+                const file = Array.isArray(files) ? files[0] : files;
+                if (!file) return;
+
+                setUploading(true);
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                  const res = await apiPostFormData<{ image_id: string }>(
+                    '/api/images',
+                    formData
+                  );
+
+                  if (res.data?.image_id) {
+                    const url = `/api/v1/images/${res.data.image_id}/original`;
+                    form.setFieldValue('thumbnail', url);
+                    if (!form.values.image_urls) {
+                      form.setFieldValue('image_urls', url);
+                    } else {
+                      form.setFieldValue('image_urls', form.values.image_urls + '\n' + url);
+                    }
+                    notifications.show({
+                      title: 'Success',
+                      message: 'Image uploaded successfully',
+                      color: 'green',
+                    });
+                  } else {
+                    throw new Error('Upload failed');
+                  }
+                } catch (error) {
+                  notifications.show({
+                    title: 'Error',
+                    message: 'Failed to upload image',
+                    color: 'red',
+                  });
+                } finally {
+                  setUploading(false);
+                }
+              }}
+              accept="image/png,image/jpeg,image/webp"
+            >
+              {(props) => (
+                <Button
+                  {...props}
+                  variant="light"
+                  size="xs"
+                  loading={uploading}
+                  leftSection={!uploading && <IconPlus size={14} />}
+                >
+                  Upload Thumbnail
+                </Button>
+              )}
+            </FileButton>
+          </Stack>
           <Textarea
             label="Image URLs"
             placeholder="One URL per line, or comma separated"
