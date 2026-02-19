@@ -94,7 +94,7 @@ interface CakeFormState {
   diameter_inches: number;
   desired_servings: number;
   decoration_description: string;
-  cake_message: string;
+  cake_message: string | null;
   requested_date: string;
   time_slot: string;
 }
