@@ -39,9 +39,19 @@ MAILGUN_FROM_EMAIL = (_settings.MAILGUN_FROM_EMAIL or "").strip()
 MAILGUN_FROM_NAME = (_settings.MAILGUN_FROM_NAME or "").strip()
 MAILGUN_TIMEOUT_SECONDS = _settings.MAILGUN_TIMEOUT_SECONDS
 
+# Resend Config
+RESEND_API_KEY = (_settings.RESEND_API_KEY or "").strip()
+
+import os  # Ensure os is imported for env access
+
 # SMTP config from settings
 SMTP_HOST = (_settings.SMTP_HOST or "").strip()
-SMTP_PORT = _settings.SMTP_PORT
+
+try:
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+except (ValueError, TypeError):
+    SMTP_PORT = 587
+
 SMTP_USER = (_settings.SMTP_USER or "").strip()
 SMTP_PASSWORD = (_settings.SMTP_PASSWORD or "").strip()
 SMTP_FROM_EMAIL = (_settings.SMTP_FROM_EMAIL or "").strip()
@@ -113,17 +123,74 @@ def _send_email_via_mailgun(
     return True
 
 
+def _resend_configured() -> bool:
+    return bool(RESEND_API_KEY)
+
+
+def _send_email_via_resend(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachments: list[tuple[str, bytes]] | None = None,
+) -> bool:
+    import resend
+    import base64
+
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY is missing")
+
+    resend.api_key = RESEND_API_KEY
+    
+    # Resend requires a verified domain or 'onboarding@resend.dev' for testing
+    # Default to SMTP_FROM_EMAIL if set, or a safe default
+    from_email = SMTP_FROM_EMAIL or "onboarding@resend.dev"
+    from_name = SMTP_FROM_NAME or "Kabul Sweets"
+
+    params = {
+        "from": f"{from_name} <{from_email}>",
+        "to": [to_email],
+        "subject": subject,
+        "html": html_body,
+    }
+
+    if attachments:
+        resend_attachments = []
+        for filename, file_bytes in attachments:
+            # Resend expects base64 encoded content for attachments (via API)
+            # Official python SDK might handle bytes, but let's be safe: 
+            # documentation says: "content": [int list] or buffer.
+            # Using list of integers for safety with the python client.
+            resend_attachments.append({
+                "filename": filename,
+                "content": list(file_bytes),
+            })
+        params["attachments"] = resend_attachments
+
+    try:
+        r = resend.Emails.send(params)
+        # Resend returns a dict with 'id'. If error, it raises Exception.
+        logger.info(f"✅ Email sent via Resend: {r.get('id')}")
+        return True
+    except Exception as e:
+        logger.error(f"Resend API Error: {str(e)}")
+        raise e
+
+
 def _send_email(
     to_email: str,
     subject: str,
     html_body: str,
     attachments: list[tuple[str, bytes]] | None = None,
 ) -> bool:
-    """Send an email. Mailgun API is preferred; SMTP is fallback.
+    """Send email. Priority: Resend > Mailgun > SMTP."""
+    
+    if _resend_configured():
+        try:
+            return _send_email_via_resend(to_email, subject, html_body, attachments)
+        except Exception as e:
+            logger.error(f"Resend failed, falling back to other methods: {e}")
+            # Fallthrough to Mailgun/SMTP
 
-    Args:
-        attachments: Optional list of (filename, file_bytes) tuples.
-    """
     if _mailgun_configured():
         try:
             return _send_email_via_mailgun(to_email, subject, html_body, attachments)

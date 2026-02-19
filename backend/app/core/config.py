@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     MAILGUN_FROM_NAME: str = ""
     MAILGUN_TIMEOUT_SECONDS: float = 15.0
 
+    # ── Resend ───────────────────────────────────────────────────────────
+    RESEND_API_KEY: str = ""
+
     # ── Stripe ───────────────────────────────────────────────────────────
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""

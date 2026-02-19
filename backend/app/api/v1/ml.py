@@ -216,6 +216,9 @@ async def submit_custom_cake(
         requested_date=requested_date,
         time_slot=data.time_slot,
     )
+    
+    # Commit the transaction to save the cake
+    await db.commit()
 
     try:
         from app.workers.telegram_tasks import send_admin_custom_cake_pending_alert
@@ -430,6 +433,8 @@ async def approve_custom_cake(
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    
+    await db.commit()
     return result
 
 
@@ -449,6 +454,8 @@ async def reject_custom_cake(
     )
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    
+    await db.commit()
     return result
 
 
@@ -470,4 +477,6 @@ async def update_custom_cake_status(
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    
+    await db.commit()
     return result
