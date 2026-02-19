@@ -146,6 +146,12 @@ def _send_email_via_resend(
     from_email = SMTP_FROM_EMAIL or "onboarding@resend.dev"
     from_name = SMTP_FROM_NAME or "Kabul Sweets"
 
+    # Fix: If using Gmail address with Resend, force testing domain because
+    # you cannot verify gmail.com ownership.
+    if "@gmail.com" in from_email:
+        logger.warning(f"Cannot send via Resend using {from_email}. Switching to onboarding@resend.dev")
+        from_email = "onboarding@resend.dev"
+
     params = {
         "from": f"{from_name} <{from_email}>",
         "to": [to_email],
