@@ -8,7 +8,7 @@ import {
   fetchStoreProductBySlug,
 } from "@/lib/storefront-api";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-render at most every 5 minutes
 
 interface ProductPageProps {
   params: Promise<{

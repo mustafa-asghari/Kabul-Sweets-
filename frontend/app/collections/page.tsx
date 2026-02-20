@@ -6,10 +6,10 @@ import ActionBanner from "@/components/ActionBanner";
 import ScrollReveal from "@/components/ScrollReveal";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-render at most every 5 minutes
 
 export default async function CollectionsPage() {
-  const products = await fetchStoreProducts({ limit: 100 });
+  const products = await fetchStoreProducts({ limit: 30 });
   const collections = getCollectionsFromProducts(products);
 
   return (

@@ -248,7 +248,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
         headers: {
           Accept: "application/json",
         },
-        cache: "no-store",
+        next: { revalidate: 300 },
       });
       if (!response.ok) {
         continue;
@@ -313,8 +313,9 @@ export async function fetchRelatedStoreProducts(
     return filteredSameCategory.slice(0, limit);
   }
 
-  const allProducts = await fetchStoreProducts({ limit: 100 });
-  return allProducts.filter((item) => item.slug !== product.slug).slice(0, limit);
+  // Fallback: fetch a small cross-category set (cached, so no extra cost)
+  const fallback = await fetchStoreProducts({ limit: 20 });
+  return fallback.filter((item) => item.slug !== product.slug).slice(0, limit);
 }
 
 export function getProductCategoriesFromProducts(products: StorefrontProduct[]) {

@@ -633,7 +633,7 @@ function CustomCakesPageContent() {
       if (document.visibilityState === "visible") {
         loadMyRequests(true);
       }
-    }, 8000);
+    }, 30000); // poll every 30s — cake status doesn't change second-by-second
 
     return () => window.clearInterval(interval);
   }, [authLoading, isAuthenticated, accessToken, loadMyRequests]);
