@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   Button,
@@ -78,6 +78,12 @@ export const EditProductDrawer = ({
   );
   const fullProduct = fullProductData?.data;
 
+  // Track which product ID we have already initialised the form for.
+  // This prevents fullProduct's async arrival (or any later re-fetch) from
+  // clobbering field values the user has already edited (e.g. a newly
+  // uploaded thumbnail URL).
+  const initialisedForRef = useRef<string | null>(null);
+
   const form = useForm({
     mode: 'controlled',
     initialValues: {
@@ -100,24 +106,35 @@ export const EditProductDrawer = ({
   });
 
   useEffect(() => {
-    if (product) {
-      form.setValues({
-        name: product.name || '',
-        description: fullProduct?.description || '',
-        short_description: product.short_description || '',
-        thumbnail: fullProduct?.thumbnail || '',
-        image_urls: (fullProduct?.images || []).join('\n'),
-        category: product.category || 'other',
-        base_price: Number(product.base_price) || 0,
-        is_cake: product.is_cake || false,
-        is_featured: product.is_featured || false,
-        is_active: product.is_active ?? true,
-      });
-
-      const sourceVariants = fullProduct?.variants || product.variants || [];
-      setVariants(sourceVariants.map(toEditableVariant));
-      setDeletedVariantIds([]);
+    // Reset so the next product open re-initialises the form.
+    if (!product) {
+      initialisedForRef.current = null;
+      return;
     }
+
+    // Wait until we have the full product data before populating.
+    // Only do this ONCE per product (identified by its id) so that
+    // subsequent re-fetches of fullProduct don't overwrite user edits.
+    if (initialisedForRef.current === product.id) return;
+    if (!fullProduct) return;
+
+    initialisedForRef.current = product.id;
+
+    form.setValues({
+      name: product.name || '',
+      description: fullProduct.description || '',
+      short_description: product.short_description || '',
+      thumbnail: fullProduct.thumbnail || '',
+      image_urls: (fullProduct.images || []).join('\n'),
+      category: product.category || 'other',
+      base_price: Number(product.base_price) || 0,
+      is_cake: product.is_cake || false,
+      is_featured: product.is_featured || false,
+      is_active: product.is_active ?? true,
+    });
+
+    setVariants((fullProduct.variants ?? product.variants ?? []).map(toEditableVariant));
+    setDeletedVariantIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, fullProduct]);
 
