@@ -4,6 +4,7 @@ import type {
   StorefrontCollection,
   StorefrontProduct,
 } from "@/lib/storefront-types";
+import { normalizeProductImageUrl } from "@/lib/image-utils";
 
 interface ApiVariant {
   id: string;
@@ -136,12 +137,8 @@ function normalizeImageSrc(value: string, categoryKey: string) {
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
-    // Rewrite admin-only /original URLs to the public /serve endpoint.
-    // These were stored before the public serving endpoint existed.
-    if (/^\/api\/v1\/images\/[^/]+\/original$/.test(trimmed)) {
-      return trimmed.slice(0, -"/original".length) + "/serve";
-    }
-    return trimmed;
+    // Delegate /original → /serve rewrite to the shared utility.
+    return normalizeProductImageUrl(trimmed, categoryKey);
   }
   if (trimmed.length === 0) {
     return CATEGORY_FALLBACK_IMAGES[categoryKey] || CATEGORY_FALLBACK_IMAGES.other;
