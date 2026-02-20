@@ -10,7 +10,6 @@ import {
 } from "react";
 import { ApiError, apiRequest } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
-import { resolveProductImageUrl } from "@/lib/image-utils";
 
 interface ServerCartItem {
   id: string;
@@ -99,8 +98,24 @@ function asPrice(value: string | number | null | undefined) {
   return 0;
 }
 
+function normalizeImageUrl(value: string | null | undefined): string {
+  if (!value || value.trim().length === 0) return "/products/pastry-main.png";
+  const trimmed = value.trim();
+  // Rewrite admin-only /original to the public /serve endpoint.
+  if (/^\/api\/v1\/images\/[^/]+\/original$/.test(trimmed)) {
+    return trimmed.slice(0, -"/original".length) + "/serve";
+  }
+  return trimmed;
+}
+
 function resolveProductImage(product: ServerProduct) {
-  return resolveProductImageUrl(product.thumbnail, product.images);
+  if (product.thumbnail && product.thumbnail.trim().length > 0) {
+    return normalizeImageUrl(product.thumbnail);
+  }
+  if (Array.isArray(product.images) && product.images[0]) {
+    return normalizeImageUrl(product.images[0]);
+  }
+  return "/products/pastry-main.png";
 }
 
 function mapCartLines(items: ServerCartItem[], products: Map<string, ServerProduct>): CartLine[] {
