@@ -74,7 +74,7 @@ async def run_migration() -> None:
                 """
                 SELECT id, images
                 FROM products
-                WHERE images::text LIKE '%/original%'
+                WHERE CAST(images AS text) LIKE '%/original%'
                 """
             )
         )
@@ -87,7 +87,7 @@ async def run_migration() -> None:
             if new_images != list(row.images):
                 import json
                 await session.execute(
-                    text("UPDATE products SET images = :imgs::jsonb WHERE id = :id"),
+                    text("UPDATE products SET images = CAST(:imgs AS jsonb) WHERE id = :id"),
                     {"imgs": json.dumps(new_images), "id": str(row.id)},
                 )
                 print(f"  images   {row.id}: rewrote {len(new_images)} URL(s)")

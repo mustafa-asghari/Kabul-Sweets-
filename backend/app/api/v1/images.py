@@ -632,7 +632,7 @@ async def migrate_image_urls(
 
     # ── Fix images JSONB array ───────────────────────────────────────────────
     result = await db.execute(
-        text("SELECT id, images FROM products WHERE images::text LIKE '%/original%'")
+        text("SELECT id, images FROM products WHERE CAST(images AS text) LIKE '%/original%'")
     )
     rows = result.fetchall()
     images_count = 0
@@ -645,7 +645,7 @@ async def migrate_image_urls(
         ]
         if new_images != list(row.images):
             await db.execute(
-                text("UPDATE products SET images = :imgs::jsonb WHERE id = :id"),
+                text("UPDATE products SET images = CAST(:imgs AS jsonb) WHERE id = :id"),
                 {"imgs": json.dumps(new_images), "id": str(row.id)},
             )
             images_count += 1
