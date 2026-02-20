@@ -7,6 +7,7 @@ import {
   Divider,
   Drawer,
   DrawerProps,
+  FileButton,
   Group,
   LoadingOverlay,
   NumberInput,
@@ -19,9 +20,9 @@ import {
 } from '@mantine/core';
 import { isNotEmpty, useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconUpload } from '@tabler/icons-react';
 
-import { apiPatch, apiDelete, apiPost, useApiGet } from '@/lib/hooks/useApi';
+import { apiPatch, apiDelete, apiPost, apiPostFormData, useApiGet } from '@/lib/hooks/useApi';
 import type { ProductListItem, Product, ProductVariant } from '@/types/products';
 
 const CATEGORY_OPTIONS = [
@@ -67,6 +68,7 @@ export const EditProductDrawer = ({
   ...drawerProps
 }: EditProductDrawerProps) => {
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [variants, setVariants] = useState<EditableVariant[]>([]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
 
@@ -302,11 +304,68 @@ export const EditProductDrawer = ({
             placeholder="Brief description"
             {...form.getInputProps('short_description')}
           />
-          <TextInput
-            label="Thumbnail URL"
-            placeholder="https://..."
-            {...form.getInputProps('thumbnail')}
-          />
+          <Stack gap="xs">
+            <TextInput
+              label="Thumbnail URL"
+              placeholder="https://… or upload below"
+              {...form.getInputProps('thumbnail')}
+            />
+            <FileButton
+              onChange={async (files) => {
+                const file = Array.isArray(files) ? files[0] : files;
+                if (!file) return;
+
+                setUploading(true);
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                  const res = await apiPostFormData<{ image_id: string }>(
+                    '/api/images',
+                    formData
+                  );
+
+                  if (res.data?.image_id) {
+                    const url = `/api/v1/images/${res.data.image_id}/original`;
+                    form.setFieldValue('thumbnail', url);
+                    const current = form.values.image_urls.trim();
+                    form.setFieldValue(
+                      'image_urls',
+                      current ? `${current}\n${url}` : url
+                    );
+                    notifications.show({
+                      title: 'Image uploaded',
+                      message: 'Thumbnail updated successfully.',
+                      color: 'green',
+                    });
+                  } else {
+                    throw new Error('Upload failed');
+                  }
+                } catch {
+                  notifications.show({
+                    title: 'Upload failed',
+                    message: 'Could not upload image. Please try again.',
+                    color: 'red',
+                  });
+                } finally {
+                  setUploading(false);
+                }
+              }}
+              accept="image/png,image/jpeg,image/webp"
+            >
+              {(props) => (
+                <Button
+                  {...props}
+                  variant="light"
+                  size="xs"
+                  loading={uploading}
+                  leftSection={!uploading && <IconUpload size={14} />}
+                >
+                  Upload Thumbnail
+                </Button>
+              )}
+            </FileButton>
+          </Stack>
           <Textarea
             label="Image URLs"
             placeholder="One URL per line, or comma separated"
