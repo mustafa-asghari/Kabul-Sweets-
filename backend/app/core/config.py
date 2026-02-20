@@ -103,8 +103,20 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     APP_VERSION: str = "0.1.0"
 
+    # ── AWS S3 (image storage — no blobs in the DB) ──────────────────────
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+    AWS_ENDPOINT_URL: str = ""          # blank = real AWS; set for MinIO/LocalStack
+    S3_BUCKET_NAME: str = "kabul-sweets-media"
+    S3_PRESIGNED_URL_TTL: int = 86400   # 24 h — public product images
+    S3_ADMIN_URL_TTL: int = 3600        # 1 h  — admin-only originals
+
     # ── Rate Limiting ────────────────────────────────────────────────────
-    RATE_LIMIT_PER_MINUTE: int = 60
+    RATE_LIMIT_PER_MINUTE: int = 60          # default for most endpoints
+    RATE_LIMIT_AUTH_PER_MINUTE: int = 10     # login / register / password-reset
+    RATE_LIMIT_UPLOAD_PER_MINUTE: int = 20   # image uploads (per authenticated user)
+    RATE_LIMIT_ORDER_PER_MINUTE: int = 30    # order creation (per user)
 
     # ── Logging ──────────────────────────────────────────────────────────
     LOG_LEVEL: str = "INFO"
