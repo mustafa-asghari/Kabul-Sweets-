@@ -491,12 +491,20 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
     if (!open || !isAuthenticated || !accessToken) {
       if (!isAuthenticated) {
         setCustomCakes([]);
+        lastCustomCakesFetchRef.current = 0;
       }
+      return;
+    }
+
+    // Skip re-fetch if data was loaded within the last 30 seconds
+    const CACHE_TTL_MS = 30_000;
+    if (Date.now() - lastCustomCakesFetchRef.current < CACHE_TTL_MS) {
       return;
     }
 
     let cancelled = false;
     setLoadingCustomCakes(true);
+    lastCustomCakesFetchRef.current = Date.now();
 
     apiRequest<CustomCakeCartSummary[]>("/api/v1/custom-cakes/my-cakes", {
       token: accessToken,
@@ -509,6 +517,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
       .catch(() => {
         if (!cancelled) {
           setCustomCakes([]);
+          lastCustomCakesFetchRef.current = 0; // allow retry on error
         }
       })
       .finally(() => {
