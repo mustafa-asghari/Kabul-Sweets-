@@ -567,75 +567,8 @@ async def publish_image_as_product(
     }
 
 
-# ── View/List ────────────────────────────────────────────────────────────────
-@router.get("/{image_id}")
-async def get_image_details(
-    image_id: uuid.UUID,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """[Admin] Get image details (without raw image data)."""
-    service = ImageProcessingService(db)
-    result = await service.get_image(image_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return result
+# ── Category prompts info ─────────────────────────────────────────────────────
 
-
-@router.get("/{image_id}/original")
-async def get_original_image(
-    image_id: uuid.UUID,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """[Admin] Get the original image data (base64)."""
-    result = await db.execute(
-        select(ProcessedImage).where(ProcessedImage.id == image_id)
-    )
-    image = result.scalar_one_or_none()
-    if not image or not image.original_url:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    return _decode_data_url_to_response(image.original_url)
-
-
-@router.get("/{image_id}/processed")
-async def get_processed_image(
-    image_id: uuid.UUID,
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """[Admin] Get the Gemini-processed image data (base64)."""
-    result = await db.execute(
-        select(ProcessedImage).where(ProcessedImage.id == image_id)
-    )
-    image = result.scalar_one_or_none()
-    if not image or not image.processed_url:
-        raise HTTPException(status_code=404, detail="Processed image not found")
-
-    return _decode_data_url_to_response(image.processed_url)
-
-
-@router.get("/")
-async def list_images(
-    product_id: uuid.UUID | None = Query(None),
-    custom_cake_id: uuid.UUID | None = Query(None),
-    status: str | None = Query(None),
-    include_published: bool = Query(False),
-    admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """[Admin] List all uploaded images with optional filters."""
-    service = ImageProcessingService(db)
-    return await service.list_images(
-        product_id=product_id,
-        custom_cake_id=custom_cake_id,
-        status=status,
-        include_published=include_published,
-    )
-
-
-# ── Category Prompts Info ────────────────────────────────────────────────────
 @router.get("/categories/prompts")
 async def get_category_prompts(admin: User = Depends(require_admin)):
     """[Admin] View the AI prompts used for each product category."""
