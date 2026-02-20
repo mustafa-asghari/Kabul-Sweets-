@@ -44,6 +44,8 @@ dependencies = [
     "reportlab>=4.0.0",
     # Image processing
     "pillow>=11.0.0",
+    # Object storage (S3 — all images stored here, not in the DB)
+    "boto3>=1.35.0",
     # Monitoring
     "sentry-sdk[fastapi,sqlalchemy]>=2.0.0",
 ]
