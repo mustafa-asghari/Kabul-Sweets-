@@ -572,6 +572,7 @@ class ImageProcessingService:
                 "admin_chosen": img.admin_chosen,
                 "processing_attempts": img.processing_attempts,
                 "has_processed": bool(img.processed_url),
+                "error": img.error_message,
                 "created_at": img.created_at.isoformat(),
             }
             for img in images

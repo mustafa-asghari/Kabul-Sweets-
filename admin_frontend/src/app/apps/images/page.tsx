@@ -255,12 +255,17 @@ function Images() {
                 </div>
               </div>
 
-              <Text size="sm" lineClamp={1}>
-                ID: {img.id?.slice(0, 8)}
+              <Text size="sm" lineClamp={1} title={img.original_filename}>
+                {img.original_filename || `ID: ${img.id?.slice(0, 8)}`}
               </Text>
               <Text size="xs" c="dimmed">
                 Product: {img.product_id?.slice(0, 8) || 'None'}
               </Text>
+              {img.status === 'failed' && img.error && (
+                <Text size="xs" c="red" lineClamp={2} title={img.error}>
+                  {img.error}
+                </Text>
+              )}
 
               {/* Actions */}
               <Group grow>

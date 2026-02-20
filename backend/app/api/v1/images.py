@@ -254,7 +254,7 @@ async def process_image(
 
     image.processing_status = "processing"
     image.error_message = None
-    await db.flush()
+    await db.commit()
 
     background_tasks.add_task(_run_process_image_task, data.image_id, category.value, data.custom_prompt)
 
@@ -299,7 +299,7 @@ async def process_batch(
         queued_ids.append(str(image_id))
         background_tasks.add_task(_run_process_image_task, image_id, cat.value, custom_prompt)
 
-    await db.flush()
+    await db.commit()
     return {
         "total": len(image_ids), "queued": len(queued_ids), "missing": len(missing_ids),
         "queued_image_ids": queued_ids, "missing_image_ids": missing_ids,
@@ -338,7 +338,7 @@ async def reject_and_reprocess(
     image.admin_chosen = None
     image.rejection_reason = data.custom_prompt
     image.error_message = None
-    await db.flush()
+    await db.commit()
 
     background_tasks.add_task(
         _run_reprocess_image_task, data.image_id, data.custom_prompt, cat.value if cat else None
