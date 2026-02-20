@@ -180,7 +180,7 @@ export const NewProductDrawer = ({
                   );
 
                   if (res.data?.image_id) {
-                    const url = `/api/v1/images/${res.data.image_id}/original`;
+                    const url = `/api/v1/images/${res.data.image_id}/serve`;
                     form.setFieldValue('thumbnail', url);
                     if (!form.values.image_urls) {
                       form.setFieldValue('image_urls', url);

@@ -326,7 +326,7 @@ export const EditProductDrawer = ({
                   );
 
                   if (res.data?.image_id) {
-                    const url = `/api/v1/images/${res.data.image_id}/original`;
+                    const url = `/api/v1/images/${res.data.image_id}/serve`;
                     form.setFieldValue('thumbnail', url);
                     const current = form.values.image_urls.trim();
                     form.setFieldValue(

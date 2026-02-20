@@ -413,6 +413,29 @@ async def get_public_selected_image(
     )
 
 
+@router.get("/{image_id}/serve")
+async def serve_image_public(
+    image_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public image endpoint for product thumbnails stored in S3.
+    Returns HTTP 307 redirect to a time-limited S3 pre-signed URL (24 h TTL).
+    Blocked for private custom cake order images (custom_cake_id set).
+    """
+    result = await db.execute(select(ProcessedImage).where(ProcessedImage.id == image_id))
+    image = result.scalar_one_or_none()
+    if not image or not image.original_url:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if image.custom_cake_id:
+        raise HTTPException(status_code=403, detail="Image not available")
+
+    from app.core.config import get_settings
+    return await ImageProcessingService.build_serve_response(
+        image.original_url, ttl=get_settings().S3_PRESIGNED_URL_TTL
+    )
+
+
 @router.get("/{image_id}/original")
 async def get_original_image(
     image_id: uuid.UUID,

@@ -136,6 +136,11 @@ function normalizeImageSrc(value: string, categoryKey: string) {
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
+    // Rewrite admin-only /original URLs to the public /serve endpoint.
+    // These were stored before the public serving endpoint existed.
+    if (/^\/api\/v1\/images\/[^/]+\/original$/.test(trimmed)) {
+      return trimmed.slice(0, -"/original".length) + "/serve";
+    }
     return trimmed;
   }
   if (trimmed.length === 0) {
