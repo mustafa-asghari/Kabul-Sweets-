@@ -460,6 +460,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [customCakes, setCustomCakes] = useState<CustomCakeCartSummary[]>([]);
   const [loadingCustomCakes, setLoadingCustomCakes] = useState(false);
+  const lastCustomCakesFetchRef = useRef<number>(0);
   const minimumPickupDate = useMemo(() => {
     return getBusinessNowParts().dateValue;
   }, []);
