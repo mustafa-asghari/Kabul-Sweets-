@@ -253,7 +253,7 @@ function OrdersPageContent() {
       if (document.visibilityState === "visible") {
         fetchOrders(true);
       }
-    }, 8000);
+    }, 30000); // poll every 30s — order status doesn't change second-by-second
 
     return () => window.clearInterval(interval);
   }, [authLoading, isAuthenticated, accessToken, fetchOrders]);
