@@ -121,6 +121,14 @@ function normalizeCategoryKey(value: string | null | undefined) {
   return (value || "other").toLowerCase().trim();
 }
 
+/** Rewrite /original paths to /serve on any URL (relative or absolute joined path). */
+function rewriteOriginalPath(pathname: string): string {
+  if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(pathname)) {
+    return pathname.replace(/\/original([?#].*)?$/, "/serve$1");
+  }
+  return pathname;
+}
+
 function normalizeImageSrc(value: string, categoryKey: string) {
   const trimmed = value.trim();
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -128,7 +136,11 @@ function normalizeImageSrc(value: string, categoryKey: string) {
       const source = new URL(trimmed);
       const internal = new URL(getInternalApiBaseUrl());
       if (source.origin === internal.origin) {
-        return `${getPublicApiBaseUrl()}${source.pathname}${source.search}${source.hash}`;
+        // Strip the internal host and rewrite /original → /serve in the pathname.
+        const normalizedPath = rewriteOriginalPath(
+          `${source.pathname}${source.search}${source.hash}`
+        );
+        return `${getPublicApiBaseUrl()}${normalizedPath}`;
       }
     } catch {
       // Keep original URL when parsing fails.
@@ -136,12 +148,7 @@ function normalizeImageSrc(value: string, categoryKey: string) {
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
-    // Rewrite admin-only /original URLs to the public /serve endpoint.
-    // These were stored before the public serving endpoint existed.
-    if (/^\/api\/v1\/images\/[^/]+\/original$/.test(trimmed)) {
-      return trimmed.slice(0, -"/original".length) + "/serve";
-    }
-    return trimmed;
+    return rewriteOriginalPath(trimmed);
   }
   if (trimmed.length === 0) {
     return CATEGORY_FALLBACK_IMAGES[categoryKey] || CATEGORY_FALLBACK_IMAGES.other;

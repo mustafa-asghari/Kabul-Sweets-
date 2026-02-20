@@ -101,10 +101,29 @@ function asPrice(value: string | number | null | undefined) {
 function normalizeImageUrl(value: string | null | undefined): string {
   if (!value || value.trim().length === 0) return "/products/pastry-main.png";
   const trimmed = value.trim();
-  // Rewrite admin-only /original to the public /serve endpoint.
-  if (/^\/api\/v1\/images\/[^/]+\/original$/.test(trimmed)) {
-    return trimmed.slice(0, -"/original".length) + "/serve";
+
+  // Relative path: rewrite /original → /serve.
+  if (trimmed.startsWith("/")) {
+    if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(trimmed)) {
+      return trimmed.replace(/\/original([?#].*)?$/, "/serve$1");
+    }
+    return trimmed;
   }
+
+  // Absolute URL: rewrite /original → /serve in the pathname too.
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const url = new URL(trimmed);
+      if (/^\/api\/v1\/images\/[^/?#]+\/original$/.test(url.pathname)) {
+        url.pathname = url.pathname.replace(/\/original$/, "/serve");
+        return url.toString();
+      }
+    } catch {
+      // malformed URL, fall through
+    }
+    return trimmed;
+  }
+
   return trimmed;
 }
 
