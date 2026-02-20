@@ -165,53 +165,52 @@ function OrdersPageContent() {
       const cakesData = Array.isArray(rawCakes) ? rawCakes : [];
       const visibleCakes = cakesData.filter((cake) => cake.status !== "cancelled");
 
-      const detailPairs = await Promise.all(
+      // Fetch order details and product slugs in one combined pass.
+      // Each order's slug fetches start as soon as that order's details arrive,
+      // not after ALL orders' details are done (eliminates the 3-phase waterfall).
+      const orderResults = await Promise.all(
         ordersData.map(async (order) => {
+          let items: OrderItemSummary[] = [];
           try {
             const detail = await apiRequest<OrderDetailResponse>(
               `/api/v1/orders/my-orders/${order.id}`,
-              {
-                token: accessToken,
-              }
+              { token: accessToken }
             );
-            return [order.id, detail.items || []] as const;
+            items = detail.items || [];
           } catch {
-            return [order.id, [] as OrderItemSummary[]] as const;
+            // keep items empty on error
           }
+
+          const productIds = [
+            ...new Set(
+              items
+                .map((item) => item.product_id)
+                .filter((value): value is string => Boolean(value))
+            ),
+          ];
+
+          const slugPairs = await Promise.all(
+            productIds.map(async (productId) => {
+              try {
+                const product = await apiRequest<ProductLookupResponse>(
+                  `/api/v1/products/${productId}`
+                );
+                return [productId, product.slug] as const;
+              } catch {
+                return [productId, ""] as const;
+              }
+            })
+          );
+
+          return { order: { ...order, items }, slugPairs };
         })
       );
 
-      const orderItemsByOrderId = new Map<string, OrderItemSummary[]>(detailPairs);
-      const ordersWithItems = ordersData.map((order) => ({
-        ...order,
-        items: orderItemsByOrderId.get(order.id) || [],
-      }));
-
-      const uniqueProductIds = [
-        ...new Set(
-          ordersWithItems.flatMap((order) =>
-            (order.items || [])
-              .map((item) => item.product_id)
-              .filter((value): value is string => Boolean(value))
-          )
-        ),
-      ];
-
-      const productSlugPairs = await Promise.all(
-        uniqueProductIds.map(async (productId) => {
-          try {
-            const product = await apiRequest<ProductLookupResponse>(`/api/v1/products/${productId}`);
-            return [productId, product.slug] as const;
-          } catch {
-            return [productId, ""] as const;
-          }
-        })
-      );
-
+      const ordersWithItems = orderResults.map((r) => r.order);
       const nextProductSlugById: Record<string, string> = {};
-      for (const [productId, slug] of productSlugPairs) {
-        if (slug) {
-          nextProductSlugById[productId] = slug;
+      for (const { slugPairs } of orderResults) {
+        for (const [productId, slug] of slugPairs) {
+          if (slug) nextProductSlugById[productId] = slug;
         }
       }
 
