@@ -12,8 +12,6 @@ import {
   getProductCategoriesFromProducts,
 } from "@/lib/storefront-api";
 
-export const dynamic = "force-dynamic";
-
 interface ShopPageProps {
   searchParams: Promise<{
     category?: string;

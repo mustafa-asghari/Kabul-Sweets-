@@ -11,10 +11,10 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { formatPrice, supportBenefits } from "@/data/storefront";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // re-render at most every 5 minutes
 
 export default async function Home() {
-  const allProducts = await fetchStoreProducts({ limit: 100 });
+  const allProducts = await fetchStoreProducts({ limit: 30 });
   const featuredProducts = (allProducts.filter((product) => product.isFeatured).length > 0
     ? allProducts.filter((product) => product.isFeatured)
     : allProducts
