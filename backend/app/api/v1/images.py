@@ -590,6 +590,75 @@ async def publish_image_as_product(
     }
 
 
+# ── One-time URL migration ────────────────────────────────────────────────────
+
+import json
+import re as _re
+
+_ORIGINAL_PATTERN = _re.compile(
+    r"(/api/v1/images/[0-9a-f\-]+)/original\b", _re.IGNORECASE
+)
+
+
+def _rewrite_url(url: str) -> str:
+    return _ORIGINAL_PATTERN.sub(r"\1/serve", url)
+
+
+@router.post("/migrate-urls")
+async def migrate_image_urls(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [Admin] One-time migration: rewrite /original → /serve in product thumbnail
+    and images columns.  Safe to call multiple times (idempotent).
+    """
+    from sqlalchemy import text
+
+    # ── Fix thumbnail column ─────────────────────────────────────────────────
+    result = await db.execute(
+        text("SELECT id, thumbnail FROM products WHERE thumbnail LIKE '%/original%'")
+    )
+    rows = result.fetchall()
+    thumbnail_count = 0
+    for row in rows:
+        new_thumb = _rewrite_url(row.thumbnail)
+        if new_thumb != row.thumbnail:
+            await db.execute(
+                text("UPDATE products SET thumbnail = :t WHERE id = :id"),
+                {"t": new_thumb, "id": str(row.id)},
+            )
+            thumbnail_count += 1
+
+    # ── Fix images JSONB array ───────────────────────────────────────────────
+    result = await db.execute(
+        text("SELECT id, images FROM products WHERE images::text LIKE '%/original%'")
+    )
+    rows = result.fetchall()
+    images_count = 0
+    for row in rows:
+        if not row.images:
+            continue
+        new_images = [
+            _rewrite_url(url) if isinstance(url, str) else url
+            for url in row.images
+        ]
+        if new_images != list(row.images):
+            await db.execute(
+                text("UPDATE products SET images = :imgs::jsonb WHERE id = :id"),
+                {"imgs": json.dumps(new_images), "id": str(row.id)},
+            )
+            images_count += 1
+
+    await db.commit()
+
+    return {
+        "message": "Migration complete",
+        "thumbnails_updated": thumbnail_count,
+        "image_arrays_updated": images_count,
+    }
+
+
 # ── Category prompts info ─────────────────────────────────────────────────────
 
 @router.get("/categories/prompts")

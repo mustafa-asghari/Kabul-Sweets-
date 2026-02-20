@@ -30,6 +30,7 @@ import {
 } from '@/components';
 import { useApiGet, apiPost } from '@/lib/hooks/useApi';
 import { PATH_DASHBOARD } from '@/routes';
+import { IconDatabase } from '@tabler/icons-react';
 
 const PROCESSING_STATUSES = new Set(['processing', 'reprocessing']);
 
@@ -46,6 +47,7 @@ const items = [
 function Images() {
   const { data, loading, error, refetch } = useApiGet<any[]>('/api/images');
   const [uploading, setUploading] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Poll every 4 seconds while any image is still processing
@@ -99,6 +101,31 @@ function Images() {
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleMigrateUrls = async () => {
+    if (!window.confirm(
+      'This will rewrite all old /original image URLs to /serve in the database.\n\nSafe to run multiple times. Continue?'
+    )) return;
+    setMigrating(true);
+    try {
+      const res = await fetch('/api/images/migrate-urls', { method: 'POST', credentials: 'include' });
+      const result = await res.json();
+      if (result.succeeded === false) throw new Error(result.message);
+      notifications.show({
+        title: 'Migration complete',
+        message: `${result.data?.thumbnails_updated ?? 0} thumbnail(s) and ${result.data?.image_arrays_updated ?? 0} image array(s) updated.`,
+        color: 'green',
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Migration failed',
+        message: err instanceof Error ? err.message : 'Unknown error',
+        color: 'red',
+      });
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -322,7 +349,22 @@ function Images() {
           content="Manage product images with AI processing"
         />
       </>
-      <PageHeader title="Image Processing" breadcrumbItems={items} />
+      <PageHeader
+        title="Image Processing"
+        breadcrumbItems={items}
+        actionButton={
+          <Button
+            size="xs"
+            variant="light"
+            color="orange"
+            leftSection={<IconDatabase size={14} />}
+            loading={migrating}
+            onClick={handleMigrateUrls}
+          >
+            Fix Legacy URLs
+          </Button>
+        }
+      />
 
       <Surface p="md" mb="md">
         <Dropzone
