@@ -5,6 +5,14 @@ Uses Google Gemini for AI-powered product photo enhancement.
 Each image is processed in a SEPARATE API call (isolated context).
 Category-specific prompts for different product types.
 Admin can reject results and add custom prompts for re-processing.
+
+Storage
+-------
+All image bytes (original uploads and Gemini results) are stored in AWS S3.
+The database only keeps the S3 object key — never raw base64 blobs.
+
+Backward compatibility: existing rows that contain "data:image/…;base64,…" strings
+are served directly so old records keep working without a migration.
 """
 
 import asyncio
@@ -24,12 +32,12 @@ logger = get_logger("image_processing")
 settings = get_settings()
 
 GEMINI_API_KEY = settings.GEMINI_API_KEY.strip()
-GEMINI_MODEL = (settings.GEMINI_IMAGE_MODEL or "gemini-3-pro-image-preview").strip()
+GEMINI_MODEL = (settings.GEMINI_IMAGE_MODEL or "gemini-2.0-flash-exp-image-generation").strip()
 
 try:
     from PIL import Image
-except Exception:  # pragma: no cover - optional fallback
-    Image = None
+except Exception:
+    Image = None  # pragma: no cover
 
 PURE_WHITE_BG_MIN_CHANNEL = 250
 PURE_WHITE_BG_MIN_RATIO = 0.995
@@ -154,10 +162,44 @@ class ImageProcessingService:
     """
     Processes product images using Google Gemini.
     Each image is processed in its own isolated API call — no shared context.
+
+    Storage model
+    ─────────────
+    • New records  → original_url / processed_url hold S3 object keys
+                     (e.g. "images/originals/550e8400….jpg")
+    • Legacy records → original_url / processed_url hold base64 data URLs
+                     (e.g. "data:image/jpeg;base64,…")
+    Both formats are supported transparently.
     """
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ── Internal helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_s3_key(value: str | None) -> bool:
+        """Return True if the value is an S3 key rather than a base64 data URL."""
+        return bool(value) and not value.startswith("data:")
+
+    @staticmethod
+    async def _bytes_from_url(url: str, content_type: str | None) -> tuple[bytes, str]:
+        """
+        Return (raw_bytes, mime_type) whether the url is an S3 key or a base64 data URL.
+        """
+        if url.startswith("data:"):
+            # Legacy base64 format
+            header, b64 = url.split(",", 1)
+            mime = header.split(";")[0].split(":")[1]
+            return base64.b64decode(b64), mime
+        else:
+            # S3 key
+            from app.services.storage_service import get_storage
+            data = await get_storage().download(url)
+            mime = content_type or "image/jpeg"
+            return data, mime
+
+    # ── Upload ───────────────────────────────────────────────────────────────
 
     async def upload_and_save_image(
         self,
@@ -169,18 +211,24 @@ class ImageProcessingService:
         uploaded_by: uuid.UUID | None = None,
     ) -> dict:
         """
-        Save an uploaded image to the database.
-        Does NOT process it yet — that happens in a separate call.
+        Upload an image to S3 and record its metadata in the database.
+        The database stores only the S3 key — no base64.
         """
         from app.models.ml import ProcessedImage
+        from app.services.storage_service import StorageService, get_storage
 
-        # Encode image as base64 for storage
-        image_b64 = base64.b64encode(image_data).decode("utf-8")
+        image_id = uuid.uuid4()
+        storage = get_storage()
+
+        # Build S3 key and upload
+        s3_key = StorageService.key_for_original(image_id, content_type)
+        await storage.upload(s3_key, image_data, content_type)
 
         image = ProcessedImage(
+            id=image_id,
             product_id=product_id,
             custom_cake_id=custom_cake_id,
-            original_url=f"data:{content_type};base64,{image_b64}",
+            original_url=s3_key,          # S3 key, not base64
             processing_type="enhancement",
             processing_status="uploaded",
             original_size_bytes=len(image_data),
@@ -192,15 +240,17 @@ class ImageProcessingService:
         await self.db.flush()
         await self.db.refresh(image)
 
-        logger.info("Image uploaded: %s (%d bytes)", filename, len(image_data))
+        logger.info("Image uploaded to S3: %s (%d bytes) → %s", filename, len(image_data), s3_key)
 
         return {
             "image_id": str(image.id),
             "filename": filename,
             "size_bytes": len(image_data),
             "status": "uploaded",
-            "message": "Image saved. Use /process endpoint to enhance it.",
+            "message": "Image saved to S3. Use /process to enhance it with AI.",
         }
+
+    # ── Process ──────────────────────────────────────────────────────────────
 
     async def process_image(
         self,
@@ -209,17 +259,13 @@ class ImageProcessingService:
         custom_prompt: str | None = None,
     ) -> dict:
         """
-        Process a SINGLE image with Gemini.
-        Each call is completely isolated — no shared context window.
-
-        Args:
-            image_id: The saved image to process
-            category: Product category (determines the base prompt)
-            custom_prompt: Optional admin override/addition to the prompt
+        Process a SINGLE image with Gemini AI.
+        Downloads from S3 (or reads legacy base64), sends to Gemini,
+        uploads the result back to S3, and stores only the key in the DB.
         """
         from app.models.ml import ProcessedImage
+        from app.services.storage_service import StorageService, get_storage
 
-        # Fetch the image from DB
         result = await self.db.execute(
             select(ProcessedImage).where(ProcessedImage.id == image_id)
         )
@@ -230,53 +276,48 @@ class ImageProcessingService:
         if not image.original_url:
             return {"error": "No original image data found"}
 
-        # Mark as processing
         image.processing_status = "processing"
         await self.db.flush()
 
-        # Build the prompt
+        # Build the Gemini prompt
         base_prompt = CATEGORY_PROMPTS.get(category, CATEGORY_PROMPTS[ImageCategory.CAKE])
-
-        if custom_prompt:
-            # Admin added a custom prompt on top
-            full_prompt = f"{base_prompt}\n\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}"
-        else:
-            full_prompt = base_prompt
-
-        # Store which prompt was used
+        full_prompt = (
+            f"{base_prompt}\n\nADDITIONAL INSTRUCTIONS:\n{custom_prompt}"
+            if custom_prompt
+            else base_prompt
+        )
         image.prompt_used = full_prompt
         image.category_used = category.value
 
         try:
-            # Extract base64 data from the data URL
-            if image.original_url.startswith("data:"):
-                header_part, b64_data = image.original_url.split(",", 1)
-                mime_type = header_part.split(";")[0].split(":")[1]
-                
-                # OPTIMIZATION: Resize image if strictly too large (e.g. > 1600px)
-                # This drastically speeds up Gemini uploads and processing.
-                if len(b64_data) > 3 * 1024 * 1024:  # If > 3MB roughly
-                    try:
-                        img_bytes = base64.b64decode(b64_data)
-                        with Image.open(io.BytesIO(img_bytes)) as pil_img:
-                            max_dim = max(pil_img.size)
-                            if max_dim > 1600:
-                                scale = 1600 / max_dim
-                                new_w = int(pil_img.width * scale)
-                                new_h = int(pil_img.height * scale)
-                                resized_pil = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
-                                
-                                buf = io.BytesIO()
-                                save_fmt = "PNG" if "png" in mime_type.lower() else "JPEG"
-                                resized_pil.save(buf, format=save_fmt, quality=85, optimize=True)
-                                b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-                                logger.info("Resized original image for Gemini: %s -> %dx%d", pil_img.size, new_w, new_h)
-                    except Exception as resize_err:
-                        logger.warning("Failed to optimization-resize image: %s", str(resize_err))
-            else:
-                return {"error": "Unsupported image format"}
+            # ── 1. Get original image bytes ────────────────────────────────
+            image_bytes, mime_type = await self._bytes_from_url(
+                image.original_url, image.content_type
+            )
 
-            # Call Gemini API — SEPARATE CONTEXT for each image
+            # ── 2. Resize for Gemini if needed (> 3 MB) ───────────────────
+            b64_data = base64.b64encode(image_bytes).decode("utf-8")
+            if len(b64_data) > 3 * 1024 * 1024 and Image is not None:
+                try:
+                    with Image.open(io.BytesIO(image_bytes)) as pil_img:
+                        max_dim = max(pil_img.size)
+                        if max_dim > 1600:
+                            scale = 1600 / max_dim
+                            new_w = int(pil_img.width * scale)
+                            new_h = int(pil_img.height * scale)
+                            resized = pil_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                            buf = io.BytesIO()
+                            fmt = "PNG" if "png" in mime_type.lower() else "JPEG"
+                            resized.save(buf, format=fmt, quality=85, optimize=True)
+                            b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+                            logger.info(
+                                "Resized image for Gemini: %dx%d → %dx%d",
+                                pil_img.width, pil_img.height, new_w, new_h,
+                            )
+                except Exception as resize_err:
+                    logger.warning("Could not resize image for Gemini: %s", resize_err)
+
+            # ── 3. Call Gemini ─────────────────────────────────────────────
             processed_b64, error = await self._call_gemini(
                 image_b64=b64_data,
                 mime_type=mime_type,
@@ -289,22 +330,32 @@ class ImageProcessingService:
                 await self.db.flush()
                 return {"error": error, "image_id": str(image_id)}
 
-            # Normalize subject framing so published cards stay visually consistent.
-            processed_b64, mime_type, framing_changed = self._normalize_image_framing(
-                processed_b64,
-                mime_type,
+            # ── 4. Normalise framing ────────────────────────────────────────
+            processed_b64, output_mime, framing_changed = self._normalize_image_framing(
+                processed_b64, mime_type
             )
 
-            # Store processed result
-            image.processed_url = f"data:{mime_type};base64,{processed_b64}"
-            image.processed_size_bytes = len(base64.b64decode(processed_b64))
+            # ── 5. Upload processed image to S3 ───────────────────────────
+            processed_bytes = base64.b64decode(processed_b64)
+            storage = get_storage()
+
+            if self._is_s3_key(image.original_url):
+                # New-format record: upload processed bytes to S3
+                processed_key = StorageService.key_for_processed(image_id, output_mime)
+                await storage.upload(processed_key, processed_bytes, output_mime)
+                image.processed_url = processed_key
+            else:
+                # Legacy record: keep result as base64 for backward compat
+                image.processed_url = f"data:{output_mime};base64,{processed_b64}"
+
+            image.processed_size_bytes = len(processed_bytes)
             image.processing_status = "completed"
             image.error_message = None
             image.processing_attempts = (image.processing_attempts or 0) + 1
             await self.db.flush()
 
             logger.info(
-                "Image processed: %s (%s → %s bytes)",
+                "Image processed: %s (orig=%s → processed=%s bytes)",
                 image_id,
                 image.original_size_bytes,
                 image.processed_size_bytes,
@@ -317,17 +368,18 @@ class ImageProcessingService:
                 "processed_size": image.processed_size_bytes,
                 "category": category.value,
                 "custom_prompt_used": bool(custom_prompt),
-                "white_background_retries": 0,
                 "framing_normalized": framing_changed,
             }
 
-        except Exception as e:
+        except Exception as exc:
             image.processing_status = "failed"
-            image.error_message = str(e)
+            image.error_message = str(exc)
             image.processing_attempts = (image.processing_attempts or 0) + 1
             await self.db.flush()
-            logger.error("Image processing failed for %s: %s", image_id, str(e))
-            return {"error": str(e), "image_id": str(image_id)}
+            logger.error("Image processing failed for %s: %s", image_id, exc)
+            return {"error": str(exc), "image_id": str(image_id)}
+
+    # ── Reject & reprocess ───────────────────────────────────────────────────
 
     async def reject_and_reprocess(
         self,
@@ -335,11 +387,7 @@ class ImageProcessingService:
         custom_prompt: str,
         category: ImageCategory | None = None,
     ) -> dict:
-        """
-        Admin rejects the processed image and re-processes with a custom prompt.
-        The custom prompt is ADDED ON TOP of the base category prompt.
-        Creates a fresh Gemini API call (new context).
-        """
+        """Admin rejects a result and re-processes with a custom prompt."""
         from app.models.ml import ProcessedImage
 
         result = await self.db.execute(
@@ -349,30 +397,24 @@ class ImageProcessingService:
         if not image:
             return {"error": "Image not found"}
 
-        # Use existing category or provided one
         cat = category or ImageCategory(image.category_used or "cake")
 
-        # Mark as re-processing
         image.processing_status = "reprocessing"
-        image.admin_chosen = None  # Reset admin choice
+        image.admin_chosen = None
         image.rejection_reason = custom_prompt
         await self.db.flush()
 
         logger.info("Re-processing image %s with custom prompt", image_id)
-
-        # Re-process with custom prompt on top
         return await self.process_image(
             image_id=image_id,
             category=cat,
             custom_prompt=custom_prompt,
         )
 
-    async def admin_choose_image(
-        self,
-        image_id: uuid.UUID,
-        choice: str,  # "original" or "processed"
-    ) -> dict:
-        """Admin chooses which version to use (original or processed)."""
+    # ── Admin choose ─────────────────────────────────────────────────────────
+
+    async def admin_choose_image(self, image_id: uuid.UUID, choice: str) -> dict:
+        """Admin selects which version (original / processed) to publish."""
         from app.models.ml import ProcessedImage
 
         result = await self.db.execute(
@@ -397,8 +439,10 @@ class ImageProcessingService:
             "message": f"Admin chose the {choice} version",
         }
 
+    # ── Get / list / delete ──────────────────────────────────────────────────
+
     async def get_image(self, image_id: uuid.UUID) -> dict | None:
-        """Get image details and data."""
+        """Return image metadata (no raw data, no S3 keys exposed)."""
         from app.models.ml import ProcessedImage
 
         result = await self.db.execute(
@@ -428,8 +472,9 @@ class ImageProcessingService:
         }
 
     async def delete_image(self, image_id: uuid.UUID) -> bool:
-        """Delete an uploaded/processed image record."""
+        """Delete both the DB record and the associated S3 objects."""
         from app.models.ml import ProcessedImage
+        from app.services.storage_service import get_storage
 
         result = await self.db.execute(
             select(ProcessedImage).where(ProcessedImage.id == image_id)
@@ -438,17 +483,59 @@ class ImageProcessingService:
         if not image:
             return False
 
+        storage = get_storage()
+
+        # Delete S3 objects (silently skip failures to avoid blocking DB delete)
+        for url in (image.original_url, image.processed_url):
+            if url and self._is_s3_key(url):
+                try:
+                    await storage.delete(url)
+                except Exception as exc:
+                    logger.warning("Failed to delete S3 object %s: %s", url, exc)
+
         await self.db.delete(image)
         await self.db.flush()
         logger.info("Image deleted: %s", image_id)
         return True
 
+    # ── Serving helpers ──────────────────────────────────────────────────────
+
     @staticmethod
     def resolve_selected_image_url(image) -> tuple[str | None, str]:
-        """Return selected image data URL and selected source."""
+        """Return (url_or_key, selected_source) based on admin_chosen."""
         if image.admin_chosen == "processed" and image.processed_url:
             return image.processed_url, "processed"
         return image.original_url, "original"
+
+    @staticmethod
+    async def build_serve_response(url: str, content_type: str | None = None, ttl: int = 86400):
+        """
+        Build a FastAPI response for an image URL that may be either:
+          - a base64 data URL (legacy) → decode and return bytes directly
+          - an S3 object key (new)     → generate pre-signed URL → HTTP 307 redirect
+        """
+        import base64 as b64_module
+
+        from fastapi.responses import RedirectResponse, Response
+
+        if url.startswith("data:"):
+            # Legacy: decode base64 and serve inline
+            try:
+                mime = url.split(";")[0].split(":")[1]
+                raw = b64_module.b64decode(url.split(",", 1)[1])
+                return Response(
+                    content=raw,
+                    media_type=mime,
+                    headers={"Cache-Control": f"public, max-age={ttl}"},
+                )
+            except Exception:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=500, detail="Failed to decode legacy image data")
+        else:
+            # New format: redirect to a time-limited S3 pre-signed URL
+            from app.services.storage_service import get_storage
+            presigned = await get_storage().presigned_url(url, ttl=ttl)
+            return RedirectResponse(url=presigned, status_code=307)
 
     async def list_images(
         self,
@@ -458,7 +545,7 @@ class ImageProcessingService:
         include_published: bool = False,
         limit: int = 50,
     ) -> list[dict]:
-        """List images with optional filters."""
+        """List images with optional filters (no raw data returned)."""
         from app.models.ml import ProcessedImage
 
         query = select(ProcessedImage).order_by(desc(ProcessedImage.created_at))
@@ -490,6 +577,8 @@ class ImageProcessingService:
             for img in images
         ]
 
+    # ── Gemini API call ──────────────────────────────────────────────────────
+
     async def _call_gemini(
         self,
         image_b64: str,
@@ -497,33 +586,26 @@ class ImageProcessingService:
         prompt: str,
     ) -> tuple[str | None, str | None]:
         """
-        Call Google Gemini API with a SINGLE image.
-        Each call is COMPLETELY ISOLATED — fresh context, no memory.
-
-        Returns: (processed_image_b64, error_message)
+        Single, isolated Gemini API call.
+        Returns (processed_image_b64, error_message).
         """
         if not GEMINI_API_KEY:
-            logger.warning("Gemini API key not configured — returning mock result")
+            logger.warning("Gemini API key not configured — skipping image processing")
             return None, "Gemini API key not configured. Set GEMINI_API_KEY in .env"
 
         import httpx
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta"
+            f"/models/{GEMINI_MODEL}:generateContent"
+        )
 
-        # Build request — each image is a SEPARATE, ISOLATED call
         payload = {
             "contents": [
                 {
                     "parts": [
-                        {
-                            "inlineData": {
-                                "mimeType": mime_type,
-                                "data": image_b64,
-                            }
-                        },
-                        {
-                            "text": prompt,
-                        },
+                        {"inlineData": {"mimeType": mime_type, "data": image_b64}},
+                        {"text": prompt},
                     ]
                 }
             ],
@@ -546,85 +628,73 @@ class ImageProcessingService:
                         json=payload,
                     )
 
-                # Retry transient upstream statuses
                 if response.status_code in (429, 500, 502, 503, 504):
                     error_body = response.text[:500] if response.text else "Unknown"
                     last_error = f"Gemini API error ({response.status_code}): {error_body}"
                     if attempt < max_attempts:
-                        wait_seconds = 1.5 * (2 ** (attempt - 1))
+                        wait = 1.5 * (2 ** (attempt - 1))
                         logger.warning(
-                            "Gemini transient HTTP %d (attempt %d/%d). Retrying in %.1fs",
-                            response.status_code,
-                            attempt,
-                            max_attempts,
-                            wait_seconds,
+                            "Gemini transient %d (attempt %d/%d). Retry in %.1fs",
+                            response.status_code, attempt, max_attempts, wait,
                         )
-                        await asyncio.sleep(wait_seconds)
+                        await asyncio.sleep(wait)
                         continue
-                    logger.error("Gemini API error (%d): %s", response.status_code, error_body)
                     return None, last_error
 
                 response.raise_for_status()
                 data = response.json()
 
-                # Extract the generated image from response
                 candidates = data.get("candidates", [])
                 if not candidates:
                     return None, "No response from Gemini"
 
                 parts = candidates[0].get("content", {}).get("parts", [])
 
-                # Find the image part in the response
                 for part in parts:
                     if "inlineData" in part:
                         return part["inlineData"]["data"], None
 
-                # If no image returned, check for text response
                 for part in parts:
                     if "text" in part:
                         return None, f"Gemini returned text instead of image: {part['text'][:200]}"
 
                 return None, "Gemini response contained no image data"
 
-            except httpx.HTTPStatusError as e:
-                error_body = e.response.text[:500] if e.response else "Unknown"
-                last_error = f"Gemini API error ({e.response.status_code}): {error_body}"
-                logger.error("Gemini API error (%d): %s", e.response.status_code, error_body)
+            except httpx.HTTPStatusError as exc:
+                body = exc.response.text[:500] if exc.response else "Unknown"
+                last_error = f"Gemini API error ({exc.response.status_code}): {body}"
+                logger.error("Gemini HTTP error %d: %s", exc.response.status_code, body)
                 return None, last_error
+
             except (
                 httpx.RemoteProtocolError,
                 httpx.ReadError,
                 httpx.ReadTimeout,
                 httpx.ConnectError,
                 httpx.WriteError,
-            ) as e:
-                last_error = f"Gemini API call failed: {str(e)}"
+            ) as exc:
+                last_error = f"Gemini transport error: {exc}"
                 if attempt < max_attempts:
-                    wait_seconds = 1.5 * (2 ** (attempt - 1))
+                    wait = 1.5 * (2 ** (attempt - 1))
                     logger.warning(
-                        "Gemini transport error on attempt %d/%d: %s. Retrying in %.1fs",
-                        attempt,
-                        max_attempts,
-                        str(e),
-                        wait_seconds,
+                        "Gemini transport error attempt %d/%d: %s. Retry in %.1fs",
+                        attempt, max_attempts, exc, wait,
                     )
-                    await asyncio.sleep(wait_seconds)
+                    await asyncio.sleep(wait)
                     continue
-                logger.error("Gemini API call failed after %d attempts: %s", max_attempts, str(e))
-                return None, last_error
-            except Exception as e:
-                last_error = f"Gemini API call failed: {str(e)}"
-                logger.error("Gemini API call failed: %s", str(e))
                 return None, last_error
 
-        return None, last_error or "Gemini API call failed for unknown reason"
+            except Exception as exc:
+                logger.error("Gemini call failed: %s", exc)
+                return None, f"Gemini call failed: {exc}"
+
+        return None, last_error or "Gemini call failed for unknown reason"
+
+    # ── Framing normalisation ────────────────────────────────────────────────
 
     @staticmethod
     def normalize_public_data_url(data_url: str) -> tuple[str, bool]:
-        """
-        Normalize a data URL image into a consistent product frame.
-        Returns (possibly_updated_data_url, changed).
-        """
+        """Normalise a legacy base64 data URL. Returns (url, changed)."""
         if not data_url.startswith("data:"):
             return data_url, False
 
@@ -634,9 +704,8 @@ class ImageProcessingService:
         except Exception:
             return data_url, False
 
-        normalized_b64, normalized_mime, changed = ImageProcessingService._normalize_image_framing(
-            image_b64,
-            mime_type,
+        normalized_b64, normalized_mime, changed = (
+            ImageProcessingService._normalize_image_framing(image_b64, mime_type)
         )
         if not changed:
             return data_url, False
@@ -648,8 +717,8 @@ class ImageProcessingService:
         mime_type: str,
     ) -> tuple[str, str, bool]:
         """
-        Enforce a pure-white background and place the subject onto a square frame
-        with consistent "farther" occupancy for visual consistency across cards.
+        Enforce a pure-white background and place the subject on a square frame
+        with consistent occupancy for visual consistency across product cards.
         """
         if Image is None:
             return image_b64, mime_type, False
@@ -667,15 +736,16 @@ class ImageProcessingService:
             if width < 16 or height < 16:
                 return image_b64, mime_type, False
 
-            pixels = rgb.load()
             total_pixels = width * height
-            
-            # Optimization: If image is huge, resize it for analysis
-            analysis_scale = 1.0
+
             if total_pixels > 2000 * 2000:
-                logger.info("Image too large for full BFS analysis (%dx%d). Skipping normalization.", width, height)
+                logger.info(
+                    "Image too large for BFS analysis (%dx%d). Skipping normalisation.",
+                    width, height,
+                )
                 return image_b64, mime_type, False
-                
+
+            pixels = rgb.load()
             visited = bytearray(total_pixels)
             queue: deque[tuple[int, int]] = deque()
 
@@ -686,30 +756,16 @@ class ImageProcessingService:
                 value = max(px)
                 chroma = max(px) - min(px)
                 return (
-                    (
-                        px[0] >= BG_SEED_MIN_CHANNEL
-                        and px[1] >= BG_SEED_MIN_CHANNEL
-                        and px[2] >= BG_SEED_MIN_CHANNEL
-                    )
-                    or (
-                        value >= BG_SEED_MIN_CHANNEL
-                        and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA
-                    )
+                    (px[0] >= BG_SEED_MIN_CHANNEL and px[1] >= BG_SEED_MIN_CHANNEL and px[2] >= BG_SEED_MIN_CHANNEL)
+                    or (value >= BG_SEED_MIN_CHANNEL and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA)
                 )
 
             def is_expand_bg(px: tuple[int, int, int]) -> bool:
                 value = max(px)
                 chroma = max(px) - min(px)
                 return (
-                    (
-                        px[0] >= BG_EXPAND_MIN_CHANNEL
-                        and px[1] >= BG_EXPAND_MIN_CHANNEL
-                        and px[2] >= BG_EXPAND_MIN_CHANNEL
-                    )
-                    or (
-                        value >= BG_EXPAND_NEUTRAL_MIN_VALUE
-                        and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA
-                    )
+                    (px[0] >= BG_EXPAND_MIN_CHANNEL and px[1] >= BG_EXPAND_MIN_CHANNEL and px[2] >= BG_EXPAND_MIN_CHANNEL)
+                    or (value >= BG_EXPAND_NEUTRAL_MIN_VALUE and chroma <= BG_EXPAND_NEUTRAL_MAX_CHROMA)
                 )
 
             for x in range(width):
@@ -723,7 +779,6 @@ class ImageProcessingService:
                 if is_seed_bg(pixels[width - 1, y]):
                     queue.append((width - 1, y))
 
-            background_count = 0
             while queue:
                 x, y = queue.popleft()
                 idx = to_index(x, y)
@@ -732,8 +787,6 @@ class ImageProcessingService:
                 if not is_expand_bg(pixels[x, y]):
                     continue
                 visited[idx] = 1
-                background_count += 1
-
                 if x > 0:
                     queue.append((x - 1, y))
                 if x < width - 1:
@@ -744,36 +797,23 @@ class ImageProcessingService:
                     queue.append((x, y + 1))
 
             def detect_subject_bounds(ignore_neutral_light: bool) -> tuple[int, int, int, int, int]:
-                left = width
-                top = height
-                right = -1
-                bottom = -1
+                left, top, right, bottom = width, height, -1, -1
                 subject_pixels = 0
-
                 for y in range(height):
                     row_start = y * width
                     for x in range(width):
                         r, g, b = pixels[x, y]
                         value = max(r, g, b)
                         chroma = max(r, g, b) - min(r, g, b)
-
                         if (
                             ignore_neutral_light
                             and (
                                 visited[row_start + x]
-                                or (
-                                    value >= SUBJECT_IGNORE_NEUTRAL_MIN_VALUE
-                                    and chroma <= SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA
-                                )
+                                or (value >= SUBJECT_IGNORE_NEUTRAL_MIN_VALUE and chroma <= SUBJECT_IGNORE_NEUTRAL_MAX_CHROMA)
                             )
                         ):
                             continue
-
-                        if (
-                            r < SUBJECT_DETECT_MAX_CHANNEL
-                            or g < SUBJECT_DETECT_MAX_CHANNEL
-                            or b < SUBJECT_DETECT_MAX_CHANNEL
-                        ):
+                        if r < SUBJECT_DETECT_MAX_CHANNEL or g < SUBJECT_DETECT_MAX_CHANNEL or b < SUBJECT_DETECT_MAX_CHANNEL:
                             subject_pixels += 1
                             if x < left:
                                 left = x
@@ -783,19 +823,16 @@ class ImageProcessingService:
                                 top = y
                             if y > bottom:
                                 bottom = y
-
                 return left, top, right, bottom, subject_pixels
 
-            left, top, right, bottom, strict_subject_pixels = detect_subject_bounds(
-                ignore_neutral_light=True
-            )
-            strict_area_ratio = strict_subject_pixels / total_pixels if total_pixels else 0.0
+            left, top, right, bottom, strict_pixels = detect_subject_bounds(ignore_neutral_light=True)
+            strict_area_ratio = strict_pixels / total_pixels if total_pixels else 0.0
             strict_bbox_ratio = 0.0
             if right >= left and bottom >= top:
                 strict_bbox_ratio = ((right - left + 1) * (bottom - top + 1)) / total_pixels
 
             if (
-                strict_subject_pixels == 0
+                strict_pixels == 0
                 or strict_area_ratio < SUBJECT_STRICT_MIN_AREA_RATIO
                 or strict_bbox_ratio < SUBJECT_STRICT_MIN_BBOX_AREA_RATIO
             ):
@@ -805,47 +842,39 @@ class ImageProcessingService:
                 subject_crop = rgb
             else:
                 margin = max(2, int(min(width, height) * FRAME_SUBJECT_MARGIN_RATIO))
-                crop_left = max(0, left - margin)
-                crop_top = max(0, top - margin)
-                crop_right = min(width, right + margin + 1)
-                crop_bottom = min(height, bottom + margin + 1)
-                subject_crop = rgb.crop((crop_left, crop_top, crop_right, crop_bottom))
+                subject_crop = rgb.crop((
+                    max(0, left - margin),
+                    max(0, top - margin),
+                    min(width, right + margin + 1),
+                    min(height, bottom + margin + 1),
+                ))
 
             crop_w, crop_h = subject_crop.size
             if crop_w < 2 or crop_h < 2:
                 return image_b64, mime_type, False
 
-            output_side = min(max(max(width, height), 800), 1200)  # Capped at 1200px
+            output_side = min(max(max(width, height), 800), 1200)
             target_subject = max(1, int(output_side * FRAME_TARGET_OCCUPANCY))
             scale = min(target_subject / crop_w, target_subject / crop_h)
             resized_w = max(1, int(round(crop_w * scale)))
             resized_h = max(1, int(round(crop_h * scale)))
 
             resampling = getattr(Image, "Resampling", Image)
-            # Use BILLINEAR for speed instead of LANCZOS if it's slow
             resized = subject_crop.resize((resized_w, resized_h), resampling.BILINEAR)
 
             canvas = Image.new("RGB", (output_side, output_side), (255, 255, 255))
-            paste_x = (output_side - resized_w) // 2
-            paste_y = (output_side - resized_h) // 2
-            canvas.paste(resized, (paste_x, paste_y))
+            canvas.paste(resized, ((output_side - resized_w) // 2, (output_side - resized_h) // 2))
 
-            output_buffer = io.BytesIO()
+            buf = io.BytesIO()
             target_mime = mime_type.lower()
             if "png" in target_mime:
-                canvas.save(output_buffer, format="PNG", optimize=False, compress_level=6)
+                canvas.save(buf, format="PNG", optimize=False, compress_level=6)
                 output_mime = "image/png"
             elif "webp" in target_mime:
-                canvas.save(output_buffer, format="WEBP", quality=85, method=4)
+                canvas.save(buf, format="WEBP", quality=85, method=4)
                 output_mime = "image/webp"
             else:
-                canvas.save(
-                    output_buffer,
-                    format="JPEG",
-                    quality=85,
-                    optimize=False,
-                    progressive=False,
-                )
+                canvas.save(buf, format="JPEG", quality=85, optimize=False, progressive=False)
                 output_mime = "image/jpeg"
 
             changed = (
@@ -856,17 +885,14 @@ class ImageProcessingService:
             if not changed:
                 return image_b64, mime_type, False
 
-            normalized_b64 = base64.b64encode(output_buffer.getvalue()).decode("utf-8")
-            return normalized_b64, output_mime, True
+            return base64.b64encode(buf.getvalue()).decode("utf-8"), output_mime, True
+
         except Exception as exc:
-            logger.warning("Image framing normalization skipped: %s", str(exc))
+            logger.warning("Image framing normalisation skipped: %s", exc)
             return image_b64, mime_type, False
 
     def _background_is_pure_white(self, image_b64: str) -> tuple[bool, dict]:
-        """
-        Check border pixels to verify if the generated background is pure white.
-        Uses only border strips to avoid evaluating the cake itself.
-        """
+        """Check border pixels to verify if the generated background is pure white."""
         if Image is None:
             return True, {"check_skipped": True, "reason": "Pillow unavailable"}
 
@@ -888,7 +914,6 @@ class ImageProcessingService:
                     and px[2] >= PURE_WHITE_BG_MIN_CHANNEL
                 )
 
-            # Top and bottom strips
             for y in range(strip):
                 for x in range(width):
                     total_count += 1
@@ -901,28 +926,25 @@ class ImageProcessingService:
                     if is_white(pixels[x, y]):
                         white_count += 1
 
-            # Left and right strips (excluding already-counted corners)
             for y in range(strip, height - strip):
                 for x in range(strip):
                     total_count += 1
                     if is_white(pixels[x, y]):
                         white_count += 1
-
                 for x in range(width - strip, width):
                     total_count += 1
                     if is_white(pixels[x, y]):
                         white_count += 1
 
-            ratio = (white_count / total_count) if total_count else 0.0
-            metrics = {
+            ratio = white_count / total_count if total_count else 0.0
+            return ratio >= PURE_WHITE_BG_MIN_RATIO, {
                 "white_ratio": round(ratio, 4),
                 "threshold": PURE_WHITE_BG_MIN_RATIO,
                 "min_channel": PURE_WHITE_BG_MIN_CHANNEL,
                 "strip_px": strip,
                 "image_size": f"{width}x{height}",
             }
-            return ratio >= PURE_WHITE_BG_MIN_RATIO, metrics
 
         except Exception as exc:
-            logger.warning("White background check failed: %s", str(exc))
+            logger.warning("White background check failed: %s", exc)
             return True, {"check_skipped": True, "reason": "check_error"}
