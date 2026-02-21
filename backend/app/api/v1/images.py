@@ -413,6 +413,101 @@ async def get_public_selected_image(
     )
 
 
+@router.get("/{image_id}/serve")
+async def serve_image_public(
+    image_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public image endpoint for product thumbnails uploaded via the admin panel.
+    Returns HTTP 307 redirect to a time-limited S3 pre-signed URL (24 h TTL).
+    Blocked for private custom cake order images (custom_cake_id set).
+
+    Used when a product thumbnail is set directly to /api/v1/images/{id}/serve.
+    Serves the admin-chosen version if one exists, otherwise the original upload.
+    """
+    result = await db.execute(select(ProcessedImage).where(ProcessedImage.id == image_id))
+    image = result.scalar_one_or_none()
+    if not image or not image.original_url:
+        raise HTTPException(status_code=404, detail="Image not found")
+    if image.custom_cake_id:
+        raise HTTPException(status_code=403, detail="Image not available")
+
+    from app.core.config import get_settings
+    # Prefer the admin-chosen version (original or processed); fall back to original
+    url_to_serve, _ = ImageProcessingService.resolve_selected_image_url(image)
+    return await ImageProcessingService.build_serve_response(
+        url_to_serve or image.original_url, ttl=get_settings().S3_PRESIGNED_URL_TTL
+    )
+
+
+# ── One-time URL migration ────────────────────────────────────────────────────
+
+import json as _json
+import re as _re
+
+_ORIGINAL_PATTERN = _re.compile(
+    r"(/api/v1/images/[0-9a-f\-]+)/original\b", _re.IGNORECASE
+)
+
+
+def _rewrite_url(url: str) -> str:
+    return _ORIGINAL_PATTERN.sub(r"\1/serve", url)
+
+
+@router.post("/migrate-urls")
+async def migrate_image_urls(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [Admin] One-time migration: rewrite /original \u2192 /serve in product thumbnail
+    and images columns. Safe to call multiple times (idempotent).
+    """
+    from sqlalchemy import text
+
+    result = await db.execute(
+        text("SELECT id, thumbnail FROM products WHERE thumbnail LIKE '%/original%'")
+    )
+    rows = result.fetchall()
+    thumbnail_count = 0
+    for row in rows:
+        new_thumb = _rewrite_url(row.thumbnail)
+        if new_thumb != row.thumbnail:
+            await db.execute(
+                text("UPDATE products SET thumbnail = :t WHERE id = :id"),
+                {"t": new_thumb, "id": str(row.id)},
+            )
+            thumbnail_count += 1
+
+    result = await db.execute(
+        text("SELECT id, images FROM products WHERE CAST(images AS text) LIKE '%/original%'")
+    )
+    rows = result.fetchall()
+    images_count = 0
+    for row in rows:
+        if not row.images:
+            continue
+        new_images = [
+            _rewrite_url(url) if isinstance(url, str) else url
+            for url in row.images
+        ]
+        if new_images != list(row.images):
+            await db.execute(
+                text("UPDATE products SET images = CAST(:imgs AS jsonb) WHERE id = :id"),
+                {"imgs": _json.dumps(new_images), "id": str(row.id)},
+            )
+            images_count += 1
+
+    await db.commit()
+
+    return {
+        "message": "Migration complete",
+        "thumbnails_updated": thumbnail_count,
+        "image_arrays_updated": images_count,
+    }
+
+
 @router.get("/{image_id}/original")
 async def get_original_image(
     image_id: uuid.UUID,
