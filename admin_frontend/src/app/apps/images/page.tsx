@@ -262,6 +262,45 @@ function Images() {
                 Product: {img.product_id?.slice(0, 8) || 'None'}
               </Text>
 
+              {/* Public thumbnail URL to copy into the product form */}
+              <div>
+                <Text size="xs" c="dimmed" mb={4}>
+                  Thumbnail URL (paste into product form):
+                </Text>
+                <Group gap={4} wrap="nowrap">
+                  <Text
+                    size="xs"
+                    ff="monospace"
+                    style={{
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      background: 'var(--mantine-color-gray-1)',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                    }}
+                  >
+                    {img.admin_chosen
+                      ? `/api/v1/images/${img.id}/selected/public`
+                      : `/api/v1/images/${img.id}/serve`}
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() =>
+                      navigator.clipboard.writeText(
+                        img.admin_chosen
+                          ? `/api/v1/images/${img.id}/selected/public`
+                          : `/api/v1/images/${img.id}/serve`
+                      )
+                    }
+                  >
+                    Copy
+                  </Button>
+                </Group>
+              </div>
+
               {/* Actions */}
               <Group grow>
                 <Button
