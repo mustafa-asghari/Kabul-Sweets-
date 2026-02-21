@@ -98,41 +98,33 @@ function asPrice(value: string | number | null | undefined) {
   return 0;
 }
 
-function normalizeImageUrl(value: string | null | undefined): string {
-  if (!value || value.trim().length === 0) return "/products/pastry-main.png";
-  const trimmed = value.trim();
-
-  // Relative path: rewrite /original → /serve.
-  if (trimmed.startsWith("/")) {
-    if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(trimmed)) {
-      return trimmed.replace(/\/original([?#].*)?$/, "/serve$1");
-    }
-    return trimmed;
-  }
-
-  // Absolute URL: rewrite /original → /serve in the pathname too.
+function rewriteImageUrl(url: string): string {
+  const trimmed = url.trim();
+  // Absolute URL: strip host if it points to the backend API proxy path
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
-      const url = new URL(trimmed);
-      if (/^\/api\/v1\/images\/[^/?#]+\/original$/.test(url.pathname)) {
-        url.pathname = url.pathname.replace(/\/original$/, "/serve");
-        return url.toString();
+      const parsed = new URL(trimmed);
+      // Treat any absolute URL whose path starts with /api/v1/images/ as internal
+      if (/^\/api\/v1\/images\//.test(parsed.pathname)) {
+        return parsed.pathname.replace(/\/original([?#].*)?$/, "/serve$1") + parsed.search + parsed.hash;
       }
     } catch {
-      // malformed URL, fall through
+      // fall through to relative handling
     }
-    return trimmed;
   }
-
+  // Relative path: rewrite /original → /serve
+  if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(trimmed)) {
+    return trimmed.replace(/\/original([?#].*)?$/, "/serve$1");
+  }
   return trimmed;
 }
 
 function resolveProductImage(product: ServerProduct) {
   if (product.thumbnail && product.thumbnail.trim().length > 0) {
-    return normalizeImageUrl(product.thumbnail);
+    return rewriteImageUrl(product.thumbnail);
   }
   if (Array.isArray(product.images) && product.images[0]) {
-    return normalizeImageUrl(product.images[0]);
+    return rewriteImageUrl(product.images[0]);
   }
   return "/products/pastry-main.png";
 }

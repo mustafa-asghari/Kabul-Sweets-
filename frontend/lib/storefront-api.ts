@@ -121,12 +121,9 @@ function normalizeCategoryKey(value: string | null | undefined) {
   return (value || "other").toLowerCase().trim();
 }
 
-/** Rewrite /original paths to /serve on any URL (relative or absolute joined path). */
-function rewriteOriginalPath(pathname: string): string {
-  if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(pathname)) {
-    return pathname.replace(/\/original([?#].*)?$/, "/serve$1");
-  }
-  return pathname;
+/** Rewrite /original → /serve so public pages don't hit the admin-only endpoint. */
+function rewriteImagePath(pathname: string): string {
+  return pathname.replace(/\/original([?#].*)?$/, "/serve$1");
 }
 
 function normalizeImageSrc(value: string, categoryKey: string) {
@@ -136,11 +133,10 @@ function normalizeImageSrc(value: string, categoryKey: string) {
       const source = new URL(trimmed);
       const internal = new URL(getInternalApiBaseUrl());
       if (source.origin === internal.origin) {
-        // Strip the internal host and rewrite /original → /serve in the pathname.
-        const normalizedPath = rewriteOriginalPath(
-          `${source.pathname}${source.search}${source.hash}`
-        );
-        return `${getPublicApiBaseUrl()}${normalizedPath}`;
+        // Strip the internal host and rewrite /original → /serve.
+        // Return a relative path so Next.js routes it through the local proxy
+        // (avoids needing backend hostname in next.config remotePatterns).
+        return rewriteImagePath(`${source.pathname}${source.search}${source.hash}`);
       }
     } catch {
       // Keep original URL when parsing fails.
@@ -148,7 +144,7 @@ function normalizeImageSrc(value: string, categoryKey: string) {
     return trimmed;
   }
   if (trimmed.startsWith("/")) {
-    return rewriteOriginalPath(trimmed);
+    return rewriteImagePath(trimmed);
   }
   if (trimmed.length === 0) {
     return CATEGORY_FALLBACK_IMAGES[categoryKey] || CATEGORY_FALLBACK_IMAGES.other;
