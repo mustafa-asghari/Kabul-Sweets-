@@ -98,12 +98,33 @@ function asPrice(value: string | number | null | undefined) {
   return 0;
 }
 
+function rewriteImageUrl(url: string): string {
+  const trimmed = url.trim();
+  // Absolute URL: strip host if it points to the backend API proxy path
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const parsed = new URL(trimmed);
+      // Treat any absolute URL whose path starts with /api/v1/images/ as internal
+      if (/^\/api\/v1\/images\//.test(parsed.pathname)) {
+        return parsed.pathname.replace(/\/original([?#].*)?$/, "/serve$1") + parsed.search + parsed.hash;
+      }
+    } catch {
+      // fall through to relative handling
+    }
+  }
+  // Relative path: rewrite /original → /serve
+  if (/^\/api\/v1\/images\/[^/?#]+\/original([?#].*)?$/.test(trimmed)) {
+    return trimmed.replace(/\/original([?#].*)?$/, "/serve$1");
+  }
+  return trimmed;
+}
+
 function resolveProductImage(product: ServerProduct) {
   if (product.thumbnail && product.thumbnail.trim().length > 0) {
-    return product.thumbnail;
+    return rewriteImageUrl(product.thumbnail);
   }
   if (Array.isArray(product.images) && product.images[0]) {
-    return product.images[0];
+    return rewriteImageUrl(product.images[0]);
   }
   return "/products/pastry-main.png";
 }
