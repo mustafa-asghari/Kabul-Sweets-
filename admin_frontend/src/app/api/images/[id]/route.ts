@@ -7,10 +7,7 @@ export async function GET(
 ) {
   const { id } = await params;
   const result = await apiClient(`/images/${id}`);
-
-  return NextResponse.json(result, {
-    status: result.succeeded ? 200 : 404,
-  });
+  return NextResponse.json(result, { status: result.succeeded ? 200 : 404 });
 }
 
 export async function POST(
@@ -44,8 +41,14 @@ export async function POST(
     method: 'POST',
     body: JSON.stringify({ image_id: id, ...rest }),
   });
+  return NextResponse.json(result, { status: result.succeeded ? 200 : 400 });
+}
 
-  return NextResponse.json(result, {
-    status: result.succeeded ? 200 : 400,
-  });
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const result = await apiClient(`/images/${id}`, { method: 'DELETE' });
+  return NextResponse.json(result, { status: result.succeeded ? 200 : 404 });
 }
