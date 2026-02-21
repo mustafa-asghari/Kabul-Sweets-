@@ -19,6 +19,7 @@ import {
   IconDatabase,
   IconMoodEmpty,
   IconPhoto,
+  IconTrash,
   IconUpload,
   IconX,
 } from '@tabler/icons-react';
@@ -179,6 +180,23 @@ function Images() {
       notifications.show({
         title: 'Error',
         message: err instanceof Error ? err.message : 'Failed to select',
+        color: 'red',
+      });
+    }
+  };
+
+  const handleDelete = async (imageId: string) => {
+    if (!window.confirm('Delete this image? This removes it from S3 and the database permanently.')) return;
+    try {
+      const res = await fetch(`/api/images/${imageId}`, { method: 'DELETE', credentials: 'include' });
+      const result = await res.json();
+      if (result.succeeded === false) throw new Error(result.message);
+      notifications.show({ title: 'Deleted', message: 'Image deleted successfully', color: 'red' });
+      refetch();
+    } catch (err) {
+      notifications.show({
+        title: 'Delete failed',
+        message: err instanceof Error ? err.message : 'Unknown error',
         color: 'red',
       });
     }
@@ -348,6 +366,15 @@ function Images() {
                   onClick={() => handleProcess(img.id, 'cake')}
                 >
                   AI Process
+                </Button>
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="red"
+                  leftSection={<IconTrash size={12} />}
+                  onClick={() => handleDelete(img.id)}
+                >
+                  Delete
                 </Button>
               </Group>
 
