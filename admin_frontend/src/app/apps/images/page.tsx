@@ -16,6 +16,7 @@ import {
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
 import {
+  IconDatabase,
   IconMoodEmpty,
   IconPhoto,
   IconUpload,
@@ -46,6 +47,8 @@ const items = [
 function Images() {
   const { data, loading, error, refetch } = useApiGet<any[]>('/api/images');
   const [uploading, setUploading] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [migratingS3, setMigratingS3] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Poll every 4 seconds while any image is still processing
@@ -100,6 +103,38 @@ function Images() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleMigrateUrls = async () => {
+    if (!window.confirm('Rewrite all /original product thumbnail URLs to /serve in the database?\n\nSafe to run multiple times.')) return;
+    setMigrating(true);
+    try {
+      const res = await fetch('/api/images/migrate-urls', { method: 'POST', credentials: 'include' });
+      const result = await res.json();
+      notifications.show({
+        title: 'URL migration complete',
+        message: `${result.data?.thumbnails_updated ?? 0} thumbnail(s) updated.`,
+        color: 'green',
+      });
+    } catch (err) {
+      notifications.show({ title: 'Failed', message: err instanceof Error ? err.message : 'Error', color: 'red' });
+    } finally { setMigrating(false); }
+  };
+
+  const handleMigrateBase64ToS3 = async () => {
+    if (!window.confirm('Upload all base64 DB images to S3?\n\nThis fixes Gemini results saving to DB. May take a while.')) return;
+    setMigratingS3(true);
+    try {
+      const res = await fetch('/api/images/migrate-base64-to-s3', { method: 'POST', credentials: 'include' });
+      const result = await res.json();
+      notifications.show({
+        title: 'S3 migration complete',
+        message: `${result.data?.images_migrated ?? 0} image(s) moved to S3. ${result.data?.errors ?? 0} error(s).`,
+        color: result.data?.errors > 0 ? 'yellow' : 'green',
+      });
+    } catch (err) {
+      notifications.show({ title: 'Failed', message: err instanceof Error ? err.message : 'Error', color: 'red' });
+    } finally { setMigratingS3(false); }
   };
 
   const handleProcess = async (imageId: string, category: string) => {
@@ -356,7 +391,24 @@ function Images() {
           content="Manage product images with AI processing"
         />
       </>
-      <PageHeader title="Image Processing" breadcrumbItems={items} />
+      <PageHeader
+        title="Image Processing"
+        breadcrumbItems={items}
+        actionButton={
+          <Group gap="xs">
+            <Button size="xs" variant="light" color="violet"
+              leftSection={<IconDatabase size={14} />}
+              loading={migratingS3} onClick={handleMigrateBase64ToS3}>
+              Upload DB Images to S3
+            </Button>
+            <Button size="xs" variant="light" color="orange"
+              leftSection={<IconDatabase size={14} />}
+              loading={migrating} onClick={handleMigrateUrls}>
+              Fix Legacy URLs
+            </Button>
+          </Group>
+        }
+      />
 
       <Surface p="md" mb="md">
         <Dropzone

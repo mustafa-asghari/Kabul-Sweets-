@@ -508,6 +508,82 @@ async def migrate_image_urls(
     }
 
 
+@router.post("/migrate-base64-to-s3")
+async def migrate_base64_images_to_s3(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [Admin] One-time migration: upload legacy base64 image data to S3 and replace
+    the DB column with the S3 key.
+
+    WHY THIS MATTERS: when original_url is a base64 data URL, process_image() stores
+    the Gemini result back to the DB as base64 too (the 'legacy' branch). After this
+    migration, all images have S3 keys and Gemini results will always go to S3.
+
+    Safe to call multiple times — already-migrated rows are skipped.
+    """
+    from app.models.ml import ProcessedImage
+    from app.services.storage_service import StorageService, get_storage
+
+    storage = get_storage()
+
+    result = await db.execute(
+        select(ProcessedImage).where(
+            ProcessedImage.original_url.like("data:%")
+        )
+    )
+    images = result.scalars().all()
+
+    migrated = 0
+    errors = 0
+
+    for image in images:
+        try:
+            # ── Migrate original ─────────────────────────────────────────────
+            if image.original_url and image.original_url.startswith("data:"):
+                try:
+                    mime = image.original_url.split(";")[0].split(":")[1]
+                except (IndexError, AttributeError):
+                    mime = image.content_type or "image/jpeg"
+                import base64
+                raw = base64.b64decode(image.original_url.split(",", 1)[1])
+                key = StorageService.key_for_original(image.id, mime)
+                await storage.upload(key, raw, mime)
+                image.original_url = key
+                logger.info("Migrated original to S3: %s → %s", image.id, key)
+
+            # ── Migrate processed (if exists) ────────────────────────────────
+            if image.processed_url and image.processed_url.startswith("data:"):
+                try:
+                    mime = image.processed_url.split(";")[0].split(":")[1]
+                except (IndexError, AttributeError):
+                    mime = image.content_type or "image/jpeg"
+                import base64
+                raw = base64.b64decode(image.processed_url.split(",", 1)[1])
+                key = StorageService.key_for_processed(image.id, mime)
+                await storage.upload(key, raw, mime)
+                image.processed_url = key
+                logger.info("Migrated processed to S3: %s → %s", image.id, key)
+
+            migrated += 1
+
+        except Exception as exc:
+            logger.error("Failed to migrate image %s: %s", image.id, exc)
+            errors += 1
+            continue
+
+    await db.commit()
+
+    return {
+        "message": "Base64 → S3 migration complete",
+        "images_migrated": migrated,
+        "errors": errors,
+    }
+
+
+
+
 @router.get("/{image_id}/original")
 async def get_original_image(
     image_id: uuid.UUID,
