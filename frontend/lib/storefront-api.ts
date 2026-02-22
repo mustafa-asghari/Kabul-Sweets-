@@ -131,13 +131,19 @@ function normalizeImageSrc(value: string, categoryKey: string) {
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     try {
       const source = new URL(trimmed);
-      const internal = new URL(getInternalApiBaseUrl());
-      if (source.origin === internal.origin) {
-        // Strip the internal host and rewrite /original → /serve.
-        // Return a relative path so Next.js routes it through the local proxy
-        // (avoids needing backend hostname in next.config remotePatterns).
-        return rewriteImagePath(`${source.pathname}${source.search}${source.hash}`);
+      const pathname = source.pathname;
+      // Rewrite /original → /serve for ANY URL that looks like our image API,
+      // regardless of host (covers mismatched INTERNAL_API_BASE_URL in prod).
+      if (/\/api\/v1\/images\/[^/?#]+\/original([?#]|$)/.test(pathname)) {
+        return rewriteImagePath(pathname + source.search + source.hash);
       }
+      // For other internal URLs: strip the host if origins match.
+      try {
+        const internal = new URL(getInternalApiBaseUrl());
+        if (source.origin === internal.origin) {
+          return rewriteImagePath(`${pathname}${source.search}${source.hash}`);
+        }
+      } catch { /* ignore */ }
     } catch {
       // Keep original URL when parsing fails.
     }
