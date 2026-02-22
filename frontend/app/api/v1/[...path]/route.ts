@@ -57,8 +57,16 @@ async function proxy(
   const apiPath = path.map(encodeURIComponent).join("/");
   const query = request.nextUrl.search;
   const method = request.method.toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD" ? undefined : await request.blob();
+
+  // Only read body if the request actually has content.
+  // Sending an empty body on DELETE can confuse FastAPI.
+  const hasBody =
+    method !== "GET" &&
+    method !== "HEAD" &&
+    (Number(request.headers.get("content-length") ?? 0) > 0 ||
+      !!request.headers.get("transfer-encoding"));
+  const body = hasBody ? await request.blob() : undefined;
+
   const reqHeaders = copyRequestHeaders(request.headers);
   const candidates = getBackendCandidates();
 
