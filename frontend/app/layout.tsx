@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import AppProviders from "@/components/AppProviders";
 import "./globals.css";
 
@@ -20,13 +21,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://lh3.googleusercontent.com" />
-      </head>
-      <body className={`${inter.className} min-h-screen flex flex-col bg-cream text-[#111]`}>
-        <AppProviders>{children}</AppProviders>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <head>
+          <link rel="preconnect" href="https://lh3.googleusercontent.com" />
+        </head>
+        <body className={`${inter.className} min-h-screen flex flex-col bg-cream text-[#111]`}>
+          <AppProviders>{children}</AppProviders>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
