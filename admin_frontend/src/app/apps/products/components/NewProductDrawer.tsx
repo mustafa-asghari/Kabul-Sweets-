@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import {
   Button,
@@ -37,14 +37,16 @@ const CATEGORY_OPTIONS = [
 
 type NewProductDrawerProps = Omit<DrawerProps, 'title' | 'children'> & {
   onProductCreated?: () => void;
+  initialThumbnailUrl?: string;
 };
 
 export const NewProductDrawer = ({
   onProductCreated,
+  initialThumbnailUrl,
   ...drawerProps
 }: NewProductDrawerProps) => {
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [variants, setVariants] = useState<VariantCreate[]>([]);
 
   const form = useForm({
@@ -53,8 +55,8 @@ export const NewProductDrawer = ({
       name: '',
       description: '',
       short_description: '',
-      thumbnail: '',
-      image_urls: '',
+      thumbnail: initialThumbnailUrl || '',
+      image_urls: initialThumbnailUrl || '',
       category: 'cake',
       base_price: 0,
       is_cake: false,
@@ -66,6 +68,18 @@ export const NewProductDrawer = ({
       base_price: (v) => (v <= 0 ? 'Price must be greater than 0' : null),
     },
   });
+
+  useEffect(() => {
+    if (drawerProps.opened) {
+      setPendingFile(null);
+      if (initialThumbnailUrl) {
+        form.setFieldValue('thumbnail', initialThumbnailUrl);
+        form.setFieldValue('image_urls', initialThumbnailUrl);
+      } else {
+        form.reset();
+      }
+    }
+  }, [drawerProps.opened, initialThumbnailUrl]);
 
   const addVariant = () => {
     setVariants([
@@ -93,12 +107,34 @@ export const NewProductDrawer = ({
   const handleSubmit = async (values: typeof form.values) => {
     setLoading(true);
     try {
+      let finalThumbnail = values.thumbnail.trim();
+      let finalImageUrls = values.image_urls;
+
+      if (pendingFile) {
+        const formData = new FormData();
+        formData.append('file', pendingFile);
+
+        const res = await apiPostFormData<{ image_id: string }>(
+          '/api/images',
+          formData
+        );
+
+        if (res.data?.image_id) {
+          const url = `/api/v1/images/${res.data.image_id}/serve`;
+          finalThumbnail = url;
+          if (!finalImageUrls) finalImageUrls = url;
+          else finalImageUrls = finalImageUrls + '\n' + url;
+        } else {
+          throw new Error('Failed to upload thumbnail image');
+        }
+      }
+
       const payload: ProductCreate = {
         name: values.name,
         description: values.description,
         short_description: values.short_description,
-        thumbnail: values.thumbnail.trim() || undefined,
-        images: values.image_urls
+        thumbnail: finalThumbnail || undefined,
+        images: finalImageUrls
           .split(/[\n,]/)
           .map((url) => url.trim())
           .filter(Boolean),
@@ -122,6 +158,7 @@ export const NewProductDrawer = ({
       });
 
       form.reset();
+      setPendingFile(null);
       setVariants([]);
       drawerProps.onClose?.();
       onProductCreated?.();
@@ -164,61 +201,36 @@ export const NewProductDrawer = ({
               placeholder="https://..."
               {...form.getInputProps('thumbnail')}
             />
-            <FileButton
-              onChange={async (files) => {
-                const file = Array.isArray(files) ? files[0] : files;
-                if (!file) return;
-
-                setUploading(true);
-                const formData = new FormData();
-                formData.append('file', file);
-
-                try {
-                  const res = await apiPostFormData<{ image_id: string }>(
-                    '/api/images',
-                    formData
-                  );
-
-                  if (res.data?.image_id) {
-                    const url = `/api/v1/images/${res.data.image_id}/serve`;
-                    form.setFieldValue('thumbnail', url);
-                    if (!form.values.image_urls) {
-                      form.setFieldValue('image_urls', url);
-                    } else {
-                      form.setFieldValue('image_urls', form.values.image_urls + '\n' + url);
-                    }
-                    notifications.show({
-                      title: 'Success',
-                      message: 'Image uploaded successfully',
-                      color: 'green',
-                    });
-                  } else {
-                    throw new Error('Upload failed');
-                  }
-                } catch (error) {
-                  notifications.show({
-                    title: 'Error',
-                    message: 'Failed to upload image',
-                    color: 'red',
-                  });
-                } finally {
-                  setUploading(false);
-                }
-              }}
-              accept="image/png,image/jpeg,image/webp"
-            >
-              {(props) => (
+            <Group gap="xs">
+              <FileButton
+                onChange={(files) => {
+                  const file = Array.isArray(files) ? files[0] : files;
+                  if (file) setPendingFile(file);
+                }}
+                accept="image/png,image/jpeg,image/webp"
+              >
+                {(props) => (
+                  <Button
+                    {...props}
+                    variant="light"
+                    size="xs"
+                    leftSection={<IconPlus size={14} />}
+                  >
+                    {pendingFile ? `Selected: ${pendingFile.name}` : 'Upload Thumbnail (Queue)'}
+                  </Button>
+                )}
+              </FileButton>
+              {pendingFile && (
                 <Button
-                  {...props}
-                  variant="light"
+                  variant="subtle"
+                  color="red"
                   size="xs"
-                  loading={uploading}
-                  leftSection={!uploading && <IconPlus size={14} />}
+                  onClick={() => setPendingFile(null)}
                 >
-                  Upload Thumbnail
+                  Remove
                 </Button>
               )}
-            </FileButton>
+            </Group>
           </Stack>
           <Textarea
             label="Image URLs"

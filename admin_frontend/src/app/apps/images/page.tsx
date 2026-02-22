@@ -12,6 +12,8 @@ import {
   Stack,
   Text,
   Title,
+  Modal,
+  Image,
 } from '@mantine/core';
 import { Dropzone, IMAGE_MIME_TYPE } from '@mantine/dropzone';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +24,8 @@ import {
   IconTrash,
   IconUpload,
   IconX,
+  IconEye,
+  IconPlus,
 } from '@tabler/icons-react';
 
 import {
@@ -30,6 +34,7 @@ import {
   PageHeader,
   Surface,
 } from '@/components';
+import { NewProductDrawer } from '../products/components/NewProductDrawer';
 import { useApiGet, apiPost } from '@/lib/hooks/useApi';
 import { PATH_DASHBOARD } from '@/routes';
 
@@ -50,6 +55,8 @@ function Images() {
   const [uploading, setUploading] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [migratingS3, setMigratingS3] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [createProductUrl, setCreateProductUrl] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Poll every 4 seconds while any image is still processing
@@ -359,6 +366,31 @@ function Images() {
                 <Button
                   size="xs"
                   variant="light"
+                  color="blue"
+                  leftSection={<IconEye size={12} />}
+                  onClick={() => setPreviewUrl(img.admin_chosen
+                    ? `/api/v1/images/${img.id}/selected/public`
+                    : `/api/v1/images/${img.id}/serve`)}
+                >
+                  Preview
+                </Button>
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="violet"
+                  leftSection={<IconPlus size={12} />}
+                  onClick={() => setCreateProductUrl(img.admin_chosen
+                    ? `/api/v1/images/${img.id}/selected/public`
+                    : `/api/v1/images/${img.id}/serve`)}
+                >
+                  Add Product
+                </Button>
+              </Group>
+
+              <Group grow>
+                <Button
+                  size="xs"
+                  variant="light"
                   disabled={
                     PROCESSING_STATUSES.has(img.status) ||
                     img.status === 'completed'
@@ -472,6 +504,22 @@ function Images() {
       </Surface>
 
       {renderContent()}
+
+      <Modal
+        opened={!!previewUrl}
+        onClose={() => setPreviewUrl(null)}
+        title="Image Preview"
+        size="xl"
+      >
+        {previewUrl && <Image src={previewUrl} alt="Preview" width="100%" height="auto" />}
+      </Modal>
+
+      <NewProductDrawer
+        opened={!!createProductUrl}
+        onClose={() => setCreateProductUrl(null)}
+        onProductCreated={() => setCreateProductUrl(null)}
+        initialThumbnailUrl={createProductUrl || ''}
+      />
     </>
   );
 }
