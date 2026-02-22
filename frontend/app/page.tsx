@@ -11,7 +11,8 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { formatPrice, supportBenefits } from "@/data/storefront";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export const revalidate = 300; // re-render at most every 5 minutes
+// Always render fresh — products change in real-time via the admin panel.
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const allProducts = await fetchStoreProducts({ limit: 30 });
