@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import jwt as jose_jwt
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -85,6 +85,7 @@ async def register(
 async def login(
     login_data: LoginRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -141,6 +142,7 @@ async def login(
     except Exception as e:
         logger.warning("Could not store refresh token in Redis: %s", str(e))
 
+    response.headers["Cache-Control"] = "no-store, no-cache, private"
     logger.info("User logged in: %s", user.email)
     return Token(
         access_token=access_token,
@@ -302,9 +304,14 @@ async def reset_password(
 # ── Get Current User ────────────────────────────────────────────────────────
 @router.get("/me", response_model=UserResponse)
 async def get_me(
+    response: Response,
     current_user: User = Depends(get_current_user),
 ):
     """Get the current authenticated user's profile."""
+    # Prevent Cloudflare / any CDN from caching this personal endpoint.
+    response.headers["Cache-Control"] = "no-store, no-cache, private, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Vary"] = "Authorization"
     return current_user
 
 
@@ -353,6 +360,7 @@ async def _get_clerk_jwks(iss: str) -> dict:
 async def clerk_exchange(
     body: ClerkExchangeRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -530,5 +538,6 @@ async def clerk_exchange(
     except Exception as exc:
         logger.warning("Could not store refresh token in Redis: %s", exc)
 
+    response.headers["Cache-Control"] = "no-store, no-cache, private"
     logger.info("Clerk exchange: user %s signed in (clerk_id=%s)", user.email, clerk_user_id)
     return Token(access_token=access_token, refresh_token=refresh_token)
