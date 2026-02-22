@@ -1071,20 +1071,34 @@ async def _send_first_reference_image(
 
 
 async def _resolve_acting_admin(db: AsyncSession) -> User:
-    query = select(User).where(
-        User.is_active.is_(True),
-        User.role.in_([UserRole.ADMIN, UserRole.STAFF]),
-    ).order_by(User.created_at.asc())
-
     if settings.TELEGRAM_ACTING_ADMIN_EMAIL:
-        query = select(User).where(
-            User.is_active.is_(True),
-            User.email == settings.TELEGRAM_ACTING_ADMIN_EMAIL,
-            User.role.in_([UserRole.ADMIN, UserRole.STAFF]),
+        preferred_result = await db.execute(
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                User.email == settings.TELEGRAM_ACTING_ADMIN_EMAIL,
+                User.role.in_([UserRole.ADMIN, UserRole.STAFF]),
+            )
+            .limit(1)
+        )
+        preferred_admin = preferred_result.scalars().first()
+        if preferred_admin:
+            return preferred_admin
+        logger.warning(
+            "TELEGRAM_ACTING_ADMIN_EMAIL '%s' not found or inactive; using fallback admin.",
+            settings.TELEGRAM_ACTING_ADMIN_EMAIL,
         )
 
-    result = await db.execute(query)
-    admin = result.scalar_one_or_none()
+    result = await db.execute(
+        select(User)
+        .where(
+            User.is_active.is_(True),
+            User.role.in_([UserRole.ADMIN, UserRole.STAFF]),
+        )
+        .order_by(User.created_at.asc(), User.id.asc())
+        .limit(1)
+    )
+    admin = result.scalars().first()
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
