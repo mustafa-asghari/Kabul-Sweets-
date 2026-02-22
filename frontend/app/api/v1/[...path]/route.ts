@@ -2,18 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const backendBaseUrl = (() => {
-  const fallback = "http://localhost:8000";
-  const url =
-    process.env.INTERNAL_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.API_BASE_URL;
-  return (url || fallback).replace(/\/+$/, "");
-})();
-
-function buildTargetUrl(pathSegments: string[], query: string) {
-  const apiPath = pathSegments.map(encodeURIComponent).join("/");
-  return `${backendBaseUrl}/api/v1/${apiPath}${query}`;
+/** Same candidate list as storefront-api.ts — try each until one works. */
+function getBackendCandidates(): string[] {
+  const seen = new Set<string>();
+  const candidates = [
+    process.env.INTERNAL_API_BASE_URL || "",
+    process.env.NEXT_PUBLIC_API_BASE_URL || "",
+    process.env.API_BASE_URL || "",
+    "http://api:8000",
+    "http://localhost:8000",
+  ];
+  return candidates
+    .map((u) => u.replace(/\/+$/, ""))
+    .filter((u) => {
+      if (!u || seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    });
 }
 
 function copyRequestHeaders(source: Headers) {
@@ -48,34 +53,40 @@ async function proxy(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  try {
-    const { path } = await params;
-    const targetUrl = buildTargetUrl(path, request.nextUrl.search);
-    const method = request.method.toUpperCase();
-    // Blob remains replayable across 307/308 redirects in Node/Undici.
-    const body =
-      method === "GET" || method === "HEAD" ? undefined : await request.blob();
+  const { path } = await params;
+  const apiPath = path.map(encodeURIComponent).join("/");
+  const query = request.nextUrl.search;
+  const method = request.method.toUpperCase();
+  const body =
+    method === "GET" || method === "HEAD" ? undefined : await request.blob();
+  const reqHeaders = copyRequestHeaders(request.headers);
+  const candidates = getBackendCandidates();
 
-    const upstream = await fetch(targetUrl, {
-      method,
-      headers: copyRequestHeaders(request.headers),
-      body,
-      // Follow backend slash-normalization redirects on the server side.
-      redirect: "follow",
-      cache: "no-store",
-    });
-
-    const responseBody = await upstream.arrayBuffer();
-    return new NextResponse(responseBody, {
-      status: upstream.status,
-      headers: copyResponseHeaders(upstream.headers),
-    });
-  } catch {
-    return NextResponse.json(
-      { detail: "Backend service is unavailable. Please try again shortly." },
-      { status: 503 }
-    );
+  for (const base of candidates) {
+    const targetUrl = `${base}/api/v1/${apiPath}${query}`;
+    try {
+      const upstream = await fetch(targetUrl, {
+        method,
+        headers: reqHeaders,
+        body,
+        redirect: "follow",
+        cache: "no-store",
+      });
+      const responseBody = await upstream.arrayBuffer();
+      return new NextResponse(responseBody, {
+        status: upstream.status,
+        headers: copyResponseHeaders(upstream.headers),
+      });
+    } catch {
+      // Try next candidate
+      continue;
+    }
   }
+
+  return NextResponse.json(
+    { detail: "Backend service is unavailable. Please try again shortly." },
+    { status: 503 }
+  );
 }
 
 export async function GET(
