@@ -4,6 +4,7 @@ Public: browse products. Admin: full CRUD + inventory management.
 """
 
 import asyncio
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -141,8 +142,28 @@ async def get_low_stock(
 
 
 async def _invalidate_and_notify(product_id: str | None = None):
-    """Bust the backend Redis product cache after any product write."""
+    """
+    1. Bust the backend Redis cache.
+    2. Ping the Next.js storefront to drop its 'products' cache tag instantly.
+    Both are fire-and-forget — admin response is never delayed.
+    """
     await CacheService.invalidate_product(product_id)
+
+    storefront_url = os.getenv("STOREFRONT_URL", "http://localhost:3000").rstrip("/")
+    secret = os.getenv("REVALIDATION_SECRET", "")
+    try:
+        import httpx
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if secret:
+            headers["Authorization"] = f"Bearer {secret}"
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(
+                f"{storefront_url}/api/revalidate",
+                json={"tags": ["products"]},
+                headers=headers,
+            )
+    except Exception:
+        pass  # Non-critical — 1-hour ISR fallback still applies
 
 
 # ── Admin CRUD ───────────────────────────────────────────────────────────────

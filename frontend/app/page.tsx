@@ -11,7 +11,7 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { formatPrice, supportBenefits } from "@/data/storefront";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export const revalidate = 10;
+export const revalidate = 3600; // bust instantly via revalidateTag on admin changes
 
 export default async function Home() {
   const allProducts = await fetchStoreProducts({ limit: 30 });

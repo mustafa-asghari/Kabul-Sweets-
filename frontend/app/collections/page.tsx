@@ -6,7 +6,7 @@ import ActionBanner from "@/components/ActionBanner";
 import ScrollReveal from "@/components/ScrollReveal";
 import { fetchStoreProducts, getCollectionsFromProducts } from "@/lib/storefront-api";
 
-export const revalidate = 10;
+export const revalidate = 3600;
 
 export default async function CollectionsPage() {
   const products = await fetchStoreProducts({ limit: 30 });

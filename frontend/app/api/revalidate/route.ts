@@ -4,19 +4,15 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * POST /api/revalidate
  *
- * On-demand cache invalidation webhook.
- * Called by the admin backend after any product/image create, update, or delete.
+ * On-demand cache invalidation — called by the backend after any product
+ * create, update, or delete.  Instantly busts the "products" Next.js cache
+ * tag so the next visitor gets fresh, re-rendered HTML.
  *
- * Protected by a shared secret: REVALIDATION_SECRET env var.
- * Example call from backend:
- *   POST https://kabulsweets.com.au/api/revalidate
- *   Authorization: Bearer <REVALIDATION_SECRET>
- *   Body: { "tags": ["products"] }   ← optional, defaults to ["products"]
+ * Protected by REVALIDATION_SECRET env var (optional but recommended).
  */
 export async function POST(request: NextRequest) {
     const secret = process.env.REVALIDATION_SECRET;
 
-    // If a secret is configured, enforce it.
     if (secret) {
         const auth = request.headers.get("authorization") ?? "";
         const token = auth.startsWith("Bearer ") ? auth.slice(7) : auth;
@@ -32,7 +28,7 @@ export async function POST(request: NextRequest) {
             tags = body.tags;
         }
     } catch {
-        // No body / not JSON — use default tags
+        // no body / not JSON — use default tags
     }
 
     for (const tag of tags) {
