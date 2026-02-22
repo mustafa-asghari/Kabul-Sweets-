@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select, update, and_, func
+from sqlalchemy import select, update, delete as sql_delete, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -114,8 +114,26 @@ class CartService:
         return await self._cart_to_dict(cart)
 
     async def remove_item(self, customer_id: uuid.UUID, item_id: uuid.UUID) -> dict:
-        """Remove item from cart."""
-        return await self.update_item(customer_id, item_id, 0)
+        """Remove item from cart using direct SQL to avoid ORM identity-map issues."""
+        cart = await self.get_or_create_cart(customer_id)
+
+        result = await self.db.execute(
+            sql_delete(CartItem)
+            .where(
+                CartItem.id == item_id,
+                CartItem.cart_id == cart.id,
+            )
+            .returning(CartItem.id)
+        )
+        deleted = result.fetchone()
+        if not deleted:
+            return {"error": "Item not found in cart"}
+
+        # Expire identity map so _cart_to_dict reads fresh state from DB
+        self.db.expire_all()
+        cart.last_activity = datetime.now(timezone.utc)
+        await self.db.flush()
+        return await self._cart_to_dict(cart)
 
     async def get_cart(self, customer_id: uuid.UUID) -> dict:
         """Get customer's active cart."""
@@ -257,9 +275,12 @@ class CartService:
         }
 
     async def _cart_to_dict(self, cart: Cart) -> dict:
-        """Convert cart to dictionary."""
+        """Convert cart to dictionary, skipping orphaned items (deleted products)."""
+        from app.models.product import Product  # local import to avoid circular
         result = await self.db.execute(
-            select(CartItem).where(CartItem.cart_id == cart.id)
+            select(CartItem)
+            .join(Product, Product.id == CartItem.product_id)
+            .where(CartItem.cart_id == cart.id)
         )
         items = result.scalars().all()
 
