@@ -82,11 +82,14 @@ async function proxy(
       });
       const responseBody = await upstream.arrayBuffer();
       const responseHeaders = copyResponseHeaders(upstream.headers);
-      // Never let Cloudflare or any CDN cache API responses — they are
-      // user-specific and dynamic. Without this, Cloudflare "Cache Everything"
-      // would cache the cart and block deletes/updates.
-      responseHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      responseHeaders.set(
+        "Cache-Control",
+        "private, no-store, no-cache, must-revalidate"
+      );
       responseHeaders.set("Pragma", "no-cache");
+      // Vary by Authorization so Railway's Varnish/Fastly CDN never shares
+      // one user's API response (e.g. cart) with another user.
+      responseHeaders.set("Vary", "Authorization, Cookie");
       return new NextResponse(responseBody, {
         status: upstream.status,
         headers: responseHeaders,
