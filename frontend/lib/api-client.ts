@@ -85,6 +85,9 @@ export async function apiRequest<T>(
     try {
       payload = JSON.parse(text) as unknown;
     } catch {
+      if (response.headers.get("content-type")?.includes("application/json")) {
+        throw new ApiError(response.status, "Failed to parse API response (data may be truncated)");
+      }
       payload = text;
     }
   }
