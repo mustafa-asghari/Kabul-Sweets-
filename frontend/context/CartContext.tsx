@@ -186,7 +186,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCartError(null);
 
     try {
-      const cart = await apiRequest<ServerCartResponse>(`/api/v1/cart/?_t=${Date.now()}`, {
+      const cart = await apiRequest<ServerCartResponse>(`/api/v1/cart?_t=${Date.now()}`, {
         token: accessToken,
       });
       setRawItems(cart.items);
@@ -222,7 +222,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           )
         );
         // Re-fetch the cleaned cart
-        const cleanCart = await apiRequest<ServerCartResponse>(`/api/v1/cart/?_t=${Date.now()}`, { token: accessToken });
+        const cleanCart = await apiRequest<ServerCartResponse>(`/api/v1/cart?_t=${Date.now()}`, { token: accessToken });
         setRawItems(cleanCart.items);
         setLines(mapCartLines(cleanCart.items, productMap));
       } else {
@@ -320,7 +320,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!accessToken) {
       return;
     }
-    await apiRequest<{ message: string }>("/api/v1/cart/", {
+    await apiRequest<{ message: string }>("/api/v1/cart", {
       method: "DELETE",
       token: accessToken,
     });
@@ -348,7 +348,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const order = await apiRequest<{
           id: string;
           order_number: string;
-        }>("/api/v1/orders/", {
+        }>("/api/v1/orders", {
           method: "POST",
           token: accessToken,
           body: {
