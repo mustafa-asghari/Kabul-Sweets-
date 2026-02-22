@@ -4,9 +4,9 @@ export default clerkMiddleware();
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API routes
-    "/(api|trpc)(.*)",
+    // Limit Clerk middleware to Clerk-hosted auth routes.
+    // Running this globally (especially for /api/*) adds avoidable latency.
+    "/sign-in(.*)",
+    "/sign-up(.*)",
   ],
 };

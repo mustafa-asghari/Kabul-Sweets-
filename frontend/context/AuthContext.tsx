@@ -15,6 +15,7 @@ import { ApiError, apiRequest } from "@/lib/api-client";
 const ACCESS_TOKEN_KEY = "kabul_access_token";
 const REFRESH_TOKEN_KEY = "kabul_refresh_token";
 const CLERK_USER_ID_KEY = "kabul_clerk_user_id";
+const AUTH_REQUEST_TIMEOUT_MS = 12000;
 
 interface TokenResponse {
   access_token: string;
@@ -81,9 +82,32 @@ function persistTokens(tokens: { accessToken: string; refreshToken: string; cler
   window.dispatchEvent(new Event("auth-changed"));
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new ApiError(408, message));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clerkAuth = useClerkAuth();
   const clerk = useClerk();
+  const {
+    isLoaded: clerkLoaded,
+    isSignedIn: clerkSignedIn,
+    userId: clerkUserId,
+    getToken: getClerkToken,
+  } = clerkAuth;
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -92,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Track the last Clerk identity we processed so account switching is handled.
   const lastProcessedIdentity = useRef<string | undefined>(undefined);
+  const bootstrapDone = useRef(false);
 
   const clearSession = useCallback(() => {
     setUser(null);
@@ -99,27 +124,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistTokens(null);
   }, []);
 
+  // Fast bootstrap from stored backend token so UI is not blocked by Clerk loading.
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      const stored = readStoredTokens();
+      if (!stored.accessToken) {
+        bootstrapDone.current = true;
+        setInternalLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await withTimeout(
+          apiRequest<AuthUser>("/api/v1/auth/me", {
+            token: stored.accessToken,
+          }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          "Authentication is taking too long. Please refresh and try again."
+        );
+        if (cancelled) return;
+        setUser(profile);
+        setAccessToken(stored.accessToken);
+        setAuthError(null);
+      } catch {
+        if (cancelled) return;
+        clearSession();
+      } finally {
+        if (cancelled) return;
+        bootstrapDone.current = true;
+        setInternalLoading(false);
+      }
+    };
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession]);
+
   // React to Clerk auth state changes (sign-in / sign-out)
   useEffect(() => {
-    if (!clerkAuth.isLoaded) return;
+    if (!clerkLoaded) return;
 
-    const identity = clerkAuth.isSignedIn
-      ? `signed-in:${clerkAuth.userId ?? "unknown"}`
+    const identity = clerkSignedIn
+      ? `signed-in:${clerkUserId ?? "unknown"}`
       : "signed-out";
     if (lastProcessedIdentity.current === identity) return;
     lastProcessedIdentity.current = identity;
 
     const run = async () => {
-      setInternalLoading(true);
+      if (!bootstrapDone.current || (!user && !accessToken)) {
+        setInternalLoading(true);
+      }
       setAuthError(null);
 
       try {
-        if (!clerkAuth.isSignedIn) {
+        if (!clerkSignedIn) {
           clearSession();
           return;
         }
 
-        if (!clerkAuth.userId) {
+        if (!clerkUserId) {
           clearSession();
           return;
         }
@@ -130,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const storedClerkUserId = isBrowser()
           ? window.localStorage.getItem(CLERK_USER_ID_KEY)
           : null;
-        if (stored.accessToken && storedClerkUserId === clerkAuth.userId) {
+        if (stored.accessToken && storedClerkUserId === clerkUserId) {
           try {
             const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
               token: stored.accessToken,
@@ -144,22 +211,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Exchange Clerk session token for a backend JWT
-        const clerkToken = await clerkAuth.getToken();
+        const clerkToken = await withTimeout(
+          getClerkToken(),
+          AUTH_REQUEST_TIMEOUT_MS,
+          "Clerk is taking too long to respond. Please try again."
+        );
         if (!clerkToken) {
           clearSession();
           return;
         }
 
-        const tokens = await apiRequest<TokenResponse>("/api/v1/auth/clerk-exchange", {
-          method: "POST",
-          body: { session_token: clerkToken },
-        });
+        const tokens = await withTimeout(
+          apiRequest<TokenResponse>("/api/v1/auth/clerk-exchange", {
+            method: "POST",
+            body: { session_token: clerkToken },
+          }),
+          AUTH_REQUEST_TIMEOUT_MS,
+          "Sign-in verification timed out. Please try again."
+        );
 
         setAccessToken(tokens.access_token);
         persistTokens({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
-          clerkUserId: clerkAuth.userId,
+          clerkUserId,
         });
 
         const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
@@ -176,7 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     run();
-  }, [clerkAuth.isLoaded, clerkAuth.isSignedIn, clerkAuth.userId, clerkAuth.getToken, clearSession]);
+  }, [clerkLoaded, clerkSignedIn, clerkUserId, getClerkToken, clearSession, user, accessToken]);
 
   const logout = useCallback(async () => {
     try {
@@ -225,8 +300,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [accessToken]
   );
 
-  const loading = !clerkAuth.isLoaded || internalLoading;
-  const isAuthenticated = Boolean(clerkAuth.isSignedIn) && !!accessToken && !!user;
+  const loading = internalLoading;
+  const isAuthenticated = !!accessToken && !!user;
 
   const value = useMemo<AuthContextValue>(
     () => ({

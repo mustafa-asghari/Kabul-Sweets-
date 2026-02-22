@@ -35,11 +35,24 @@ export default function Navbar() {
   const clerk = useClerk();
 
   const openSignIn = useCallback(() => {
-    clerk.openSignIn({
-      afterSignInUrl: window.location.href,
-      afterSignUpUrl: window.location.href,
-    });
-  }, [clerk]);
+    const redirectUrl = window.location.href;
+    const fallbackPath = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    const maybeLoaded = (clerk as unknown as { loaded?: boolean }).loaded;
+
+    if (maybeLoaded === false) {
+      router.push(fallbackPath);
+      return;
+    }
+
+    try {
+      clerk.openSignIn({
+        afterSignInUrl: redirectUrl,
+        afterSignUpUrl: redirectUrl,
+      });
+    } catch {
+      router.push(fallbackPath);
+    }
+  }, [clerk, router]);
 
   useEffect(() => {
     const onScroll = () => {
