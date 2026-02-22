@@ -13,13 +13,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from .env file."""
 
-    model_config = SettingsConfigDict(  
+    model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
-    
+
     # ── Application ──────────────────────────────────────────────────────
     APP_NAME: str = "Kabul Sweets"
     APP_ENV: str = "development"
@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # ── Clerk Auth ───────────────────────────────────────────────────────
+    CLERK_SECRET_KEY: str = Field("", description="Clerk secret key for user info API calls")
 
     # ── Telegram Bot (Admin Alerts) ─────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = ""
@@ -78,6 +81,9 @@ class Settings(BaseSettings):
     MAILGUN_FROM_EMAIL: str = ""
     MAILGUN_FROM_NAME: str = ""
     MAILGUN_TIMEOUT_SECONDS: float = 15.0
+
+    # ── Resend ───────────────────────────────────────────────────────────
+    RESEND_API_KEY: str = ""
 
     # ── Stripe ───────────────────────────────────────────────────────────
     STRIPE_SECRET_KEY: str = ""
@@ -155,10 +161,16 @@ class Settings(BaseSettings):
                 parsed = json.loads(v)
             except json.JSONDecodeError:
                 parsed = [item.strip() for item in v.split(",") if item.strip()]
+        else:
+            parsed = v
+
+        if isinstance(parsed, (int, float)):
+            parsed = [parsed]
         elif isinstance(v, (list, tuple, set)):
             parsed = list(v)
-        else:
-            parsed = [v]
+        elif not isinstance(parsed, list):
+             # Fallback for unexpected types
+            parsed = [parsed]
 
         if not parsed:
             return []
