@@ -94,6 +94,20 @@ def _queue_telegram_order_alert(order) -> None:
         )
 
 
+def _queue_order_payment_required_email(order) -> None:
+    """Queue customer email for approved orders that now require payment."""
+    try:
+        from app.workers.email_tasks import send_order_approval_email
+
+        send_order_approval_email.delay(_order_to_email_payload(order))
+    except Exception as exc:
+        logger.warning(
+            "Failed to queue order approval email for %s: %s",
+            order.order_number,
+            str(exc),
+        )
+
+
 def _queue_telegram_order_status_alert(
     order,
     status_note: str | None = None,
@@ -362,6 +376,7 @@ async def admin_approve_order(
         order.status = OrderStatus.PENDING_APPROVAL
         await db.flush()
         await db.refresh(order)
+        _queue_order_payment_required_email(order)
         _queue_telegram_order_status_alert(
             order,
             "Approved in admin. Waiting for customer payment."

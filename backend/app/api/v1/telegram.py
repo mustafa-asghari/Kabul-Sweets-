@@ -1034,7 +1034,14 @@ async def _upsert_menu_message(
 
 
 async def _answer_callback(telegram: TelegramService, callback_id: str, text: str):
-    await run_in_threadpool(telegram.answer_callback_query, callback_id, text[:180])
+    safe_text = (text or "").strip()[:180]
+    ok = await run_in_threadpool(telegram.answer_callback_query, callback_id, safe_text)
+    if ok:
+        return
+
+    # Retry with empty text in case Telegram rejects the message body.
+    if safe_text:
+        await run_in_threadpool(telegram.answer_callback_query, callback_id, "")
 
 
 async def _clear_buttons(telegram: TelegramService, chat_id: int, message_id: int):
@@ -1452,6 +1459,15 @@ async def _queue_order_emails_after_approval(order):
         logger.warning("Failed to queue order approval emails: %s", str(exc))
 
 
+async def _queue_order_payment_required_email(order):
+    try:
+        from app.workers.email_tasks import send_order_approval_email
+
+        send_order_approval_email.delay(_order_to_email_payload(order))
+    except Exception as exc:
+        logger.warning("Failed to queue order payment-required email: %s", str(exc))
+
+
 async def _queue_order_email_after_rejection(order, reason: str):
     try:
         from app.workers.email_tasks import send_order_rejection_email
@@ -1475,6 +1491,7 @@ async def _approve_order_via_telegram(
         order.status = OrderStatus.PENDING_APPROVAL
         await db.flush()
         await db.refresh(order)
+        await _queue_order_payment_required_email(order)
         return order, f"Order {order.order_number} approved and awaiting customer payment."
 
     if order.status != OrderStatus.PENDING_APPROVAL:
@@ -1883,6 +1900,7 @@ async def telegram_webhook(
                 except ArithmeticError:
                     await _answer_callback(telegram, callback_id, "Invalid price value")
                     return {"ok": True}
+                await _answer_callback(telegram, callback_id, "Processing...")
                 acting_admin = await _resolve_acting_admin(db)
                 result_message = await _set_custom_cake_price_via_telegram(
                     target_id,
@@ -1890,7 +1908,6 @@ async def telegram_webhook(
                     final_price,
                     db,
                 )
-                await _answer_callback(telegram, callback_id, "Price updated")
                 if isinstance(chat_id, int):
                     cake = await CustomCakeService(db).get_custom_cake(target_id)
                     await _send_text(
@@ -1915,6 +1932,14 @@ async def telegram_webhook(
             if len(parts) == 3:
                 domain, action, raw_id = parts
                 target_id = uuid.UUID(raw_id)
+                is_supported_action = (
+                    (domain == "order" and action in {"approve", "reject"})
+                    or (domain == "cake" and action in {"approve", "reject"})
+                )
+                if not is_supported_action:
+                    await _answer_callback(telegram, callback_id, "Unsupported action")
+                    return {"ok": True}
+                await _answer_callback(telegram, callback_id, "Processing...")
                 acting_admin = await _resolve_acting_admin(db)
 
                 if domain == "order" and action == "approve":
@@ -1925,11 +1950,6 @@ async def telegram_webhook(
                     result_message = await _approve_custom_cake_via_telegram(target_id, acting_admin, db)
                 elif domain == "cake" and action == "reject":
                     result_message = await _reject_custom_cake_via_telegram(target_id, acting_admin, db)
-                else:
-                    await _answer_callback(telegram, callback_id, "Unsupported action")
-                    return {"ok": True}
-
-                await _answer_callback(telegram, callback_id, "Done")
                 if isinstance(chat_id, int):
                     await _send_text(telegram, chat_id, f"✅ {result_message}")
                     if isinstance(message_id, int):

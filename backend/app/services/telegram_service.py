@@ -113,9 +113,10 @@ class TelegramService:
         """Acknowledge callback button presses in Telegram."""
         payload = {
             "callback_query_id": callback_query_id,
-            "text": text,
             "show_alert": False,
         }
+        if text:
+            payload["text"] = text[:180]
         return self._post_json("answerCallbackQuery", payload)
 
     def edit_message_reply_markup(

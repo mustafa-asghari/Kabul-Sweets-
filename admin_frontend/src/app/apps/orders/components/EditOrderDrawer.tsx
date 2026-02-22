@@ -54,21 +54,9 @@ export const EditOrderDrawer = ({
 
   const handleApprove = async () => {
     if (!initialOrder?.id) return;
-    const trimmedReason = decisionReason.trim();
-    if (trimmedReason.length < 3) {
-      notifications.show({
-        title: 'Reason required',
-        message: 'Please provide an approval reason (at least 3 characters).',
-        color: 'red',
-      });
-      return;
-    }
-
     setLoading(true);
     try {
-      const res = await apiPost(`/api/orders/${initialOrder.id}/approve`, {
-        reason: trimmedReason,
-      });
+      const res = await apiPost(`/api/orders/${initialOrder.id}/approve`, {});
       if (!res.succeeded) throw new Error(res.message);
       notifications.show({ title: 'Success', message: 'Order approved', color: 'green' });
       setDecisionReason('');
@@ -154,24 +142,22 @@ export const EditOrderDrawer = ({
                 </Group>
                 <Text size="sm">
                   {orderDetails.status === 'pending'
-                    ? 'This order is waiting for admin decision. Approve or reject it with a reason.'
-                    : 'This order is authorized but payment is not captured. Approve or reject it with a reason.'}
+                    ? 'This order is waiting for admin decision. You can approve directly or reject with a reason.'
+                    : 'This order is authorized but payment is not captured. You can approve directly or reject with a reason.'}
                 </Text>
                 <Textarea
-                  label="Decision reason"
-                  placeholder="Add the reason for your approval or rejection..."
+                  label="Rejection reason (required only for reject)"
+                  placeholder="Add reason if you are rejecting this order..."
                   minRows={2}
                   autosize
                   value={decisionReason}
                   onChange={(event) => setDecisionReason(event.currentTarget.value)}
-                  required
                 />
                 <Group grow>
                   <Button
                     color="green"
                     leftSection={<IconCheck size={16} />}
                     onClick={handleApprove}
-                    disabled={decisionReason.trim().length < 3}
                   >
                     {orderDetails.status === 'pending_approval' ? 'Approve & Capture' : 'Approve Order'}
                   </Button>
