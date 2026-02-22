@@ -165,6 +165,35 @@ function mapCartLines(items: ServerCartItem[], products: Map<string, ServerProdu
   });
 }
 
+const PRODUCT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface ProductCacheEntry {
+  product: ServerProduct;
+  cachedAt: number;
+}
+
+const productCache = new Map<string, ProductCacheEntry>();
+
+function getCachedProduct(productId: string): ServerProduct | null {
+  const entry = productCache.get(productId);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() - entry.cachedAt > PRODUCT_CACHE_TTL_MS) {
+    productCache.delete(productId);
+    return null;
+  }
+  return entry.product;
+}
+
+function setCachedProduct(productId: string, product: ServerProduct): void {
+  productCache.set(productId, { product, cachedAt: Date.now() });
+}
+
+function evictProduct(productId: string): void {
+  productCache.delete(productId);
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, isAuthenticated, user, loading: authLoading } = useAuth();
   const [rawItems, setRawItems] = useState<ServerCartItem[]>([]);
