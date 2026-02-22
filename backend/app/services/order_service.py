@@ -230,9 +230,13 @@ class OrderService:
                 variant.stock_quantity = max(0, variant.stock_quantity - item_data.quantity)
                 variant.is_in_stock = variant.stock_quantity > 0
 
-        # Calculate totals
-        tax_amount = (subtotal * GST_RATE).quantize(Decimal("0.01"))
-        total = subtotal + tax_amount
+        # Calculate totals.
+        # Prices are GST-inclusive (Australian standard), so extract the GST
+        # component already embedded in the price rather than adding it on top.
+        # tax_amount = subtotal - (subtotal / 1.10)  →  the GST portion included.
+        # total = subtotal  →  unchanged, no extra charge added.
+        tax_amount = (subtotal - (subtotal / (Decimal("1") + GST_RATE))).quantize(Decimal("0.01"))
+        total = subtotal
 
         # Create order
         admin_notes = None

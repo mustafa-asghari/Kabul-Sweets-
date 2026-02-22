@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     S3_PRESIGNED_URL_TTL: int = 86400   # 24 h — public product images
     S3_ADMIN_URL_TTL: int = 3600        # 1 h  — admin-only originals
 
+    # ── Clerk Auth ───────────────────────────────────────────────────────
+    CLERK_SECRET_KEY: str = Field("", description="Clerk secret key for user info API calls")
+
     # ── Rate Limiting ────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60          # default for most endpoints
     RATE_LIMIT_AUTH_PER_MINUTE: int = 10     # login / register / password-reset

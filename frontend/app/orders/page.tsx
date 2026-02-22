@@ -15,6 +15,9 @@ interface OrderSummary {
   customer_name: string;
   status: string;
   has_cake: boolean;
+  subtotal: string | number;
+  tax_amount: string | number;
+  discount_amount: string | number;
   total: string | number;
   pickup_date: string | null;
   pickup_time_slot: string | null;
@@ -471,10 +474,15 @@ function OrdersPageContent() {
                         </span>
                       </div>
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-gray-600">
-                        <p>
-                          <span className="font-semibold text-black">Total:</span>{" "}
-                          {formatPrice(toNumber(order.total))}
-                        </p>
+                        <div>
+                          <p>
+                            <span className="font-semibold text-black">Total:</span>{" "}
+                            {formatPrice(toNumber(order.total))}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            GST (10%) included: {formatPrice(toNumber(order.tax_amount))}
+                          </p>
+                        </div>
                         <p>
                           <span className="font-semibold text-black">Cake Order:</span>{" "}
                           {order.has_cake ? "Yes" : "No"}

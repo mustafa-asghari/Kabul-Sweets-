@@ -89,6 +89,9 @@ class OrderListResponse(BaseModel):
     customer_name: str
     status: str
     has_cake: bool
+    subtotal: Decimal
+    tax_amount: Decimal
+    discount_amount: Decimal
     total: Decimal
     pickup_date: datetime | None
     pickup_time_slot: str | None

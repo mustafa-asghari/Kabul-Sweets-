@@ -1,15 +1,20 @@
 """
-Authentication endpoints: register, login, refresh, logout.
+Authentication endpoints: register, login, refresh, logout, clerk-exchange.
 Includes login rate limiting via Redis.
 """
 
+import json
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from jose import jwt as jose_jwt
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.rate_limiter import check_rate_limit
@@ -22,7 +27,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.api.deps import get_current_user
 from app.schemas.user import (
     ForgotPasswordRequest,
@@ -94,7 +99,7 @@ async def login(
     result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(login_data.password, user.hashed_password):
+    if user is None or not user.hashed_password or not verify_password(login_data.password, user.hashed_password):
         # Track failed attempts in Redis
         try:
             redis = await get_redis()
@@ -317,3 +322,210 @@ async def logout(
 
     logger.info("User logged out: %s", current_user.email)
     return MessageResponse(message="Successfully logged out")
+
+
+# ── Clerk Token Exchange ──────────────────────────────────────────────────────
+
+class ClerkExchangeRequest(BaseModel):
+    session_token: str
+
+
+async def _get_clerk_jwks(iss: str) -> dict:
+    """Fetch and cache Clerk JWKS for the given issuer."""
+    redis = await get_redis()
+    cache_key = f"clerk:jwks:{iss}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    jwks_url = f"{iss}/.well-known/jwks.json"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(jwks_url)
+        resp.raise_for_status()
+        jwks = resp.json()
+
+    await redis.setex(cache_key, 3600, json.dumps(jwks))
+    return jwks
+
+
+@router.post("/clerk-exchange", response_model=Token)
+async def clerk_exchange(
+    body: ClerkExchangeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exchange a Clerk session token for backend JWT tokens.
+
+    Flow:
+    1. Decode Clerk JWT → get issuer (iss)
+    2. Fetch JWKS from {iss}/.well-known/jwks.json (cached 1h in Redis)
+    3. Verify signature → extract clerk_user_id (sub)
+    4. Fetch full user profile from Clerk API
+    5. Find existing user by clerk_user_id → email → phone, or create new
+    6. Return standard backend access + refresh tokens
+    """
+    settings = get_settings()
+    if not settings.CLERK_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Clerk authentication is not configured",
+        )
+
+    await check_rate_limit(request, limit=10, window=60)
+
+    # Step 1 — decode without verification to get issuer
+    try:
+        unverified_claims = jose_jwt.get_unverified_claims(body.session_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Clerk session token",
+        )
+
+    iss = unverified_claims.get("iss", "")
+    if not iss:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Clerk token: missing issuer",
+        )
+
+    # Step 2 — fetch JWKS
+    try:
+        jwks = await _get_clerk_jwks(iss)
+    except Exception as exc:
+        logger.error("Failed to fetch Clerk JWKS from %s: %s", iss, exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not verify Clerk token (JWKS fetch failed)",
+        )
+
+    # Step 3 — verify signature
+    verified_claims = None
+    for key_data in jwks.get("keys", []):
+        try:
+            verified_claims = jose_jwt.decode(
+                body.session_token,
+                key_data,
+                algorithms=["RS256"],
+                options={"verify_aud": False},
+            )
+            break
+        except Exception:
+            continue
+
+    if not verified_claims:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired Clerk session token",
+        )
+
+    clerk_user_id: str = verified_claims.get("sub", "")
+    if not clerk_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Clerk token: missing subject",
+        )
+
+    # Step 4 — fetch Clerk user profile
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://api.clerk.com/v1/users/{clerk_user_id}",
+                headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"},
+            )
+            resp.raise_for_status()
+            clerk_profile = resp.json()
+    except Exception as exc:
+        logger.error("Failed to fetch Clerk user %s: %s", clerk_user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not retrieve Clerk user profile",
+        )
+
+    # Extract email, phone, name
+    primary_email_id = clerk_profile.get("primary_email_address_id")
+    email: str | None = None
+    for addr in clerk_profile.get("email_addresses", []):
+        if addr.get("id") == primary_email_id:
+            email = addr.get("email_address")
+            break
+    if email is None:
+        addresses = clerk_profile.get("email_addresses", [])
+        if addresses:
+            email = addresses[0].get("email_address")
+
+    phone_numbers = clerk_profile.get("phone_numbers", [])
+    phone: str | None = phone_numbers[0].get("phone_number") if phone_numbers else None
+
+    first_name = clerk_profile.get("first_name") or ""
+    last_name = clerk_profile.get("last_name") or ""
+    full_name = (first_name + " " + last_name).strip() or "Customer"
+
+    # Phone-only accounts: use placeholder email
+    if not email and phone:
+        email = f"{phone}@phone.kabulsweets.internal"
+    elif not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No email or phone number found on this Clerk account",
+        )
+
+    normalized_email = email.strip().lower()
+
+    # Step 5 — lookup by clerk_user_id → email → phone
+    user: User | None = None
+
+    result = await db.execute(select(User).where(User.clerk_user_id == clerk_user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        result = await db.execute(
+            select(User).where(func.lower(User.email) == normalized_email)
+        )
+        user = result.scalar_one_or_none()
+
+    if user is None and phone:
+        result = await db.execute(select(User).where(User.phone == phone))
+        user = result.scalar_one_or_none()
+
+    if user is not None:
+        # Link clerk_user_id if not already set
+        if not user.clerk_user_id:
+            user.clerk_user_id = clerk_user_id
+        user.is_verified = True
+        user.last_login = datetime.now(timezone.utc)
+    else:
+        # Create new user (no password — Clerk-only)
+        user = User(
+            email=normalized_email,
+            hashed_password=None,
+            full_name=full_name,
+            phone=phone,
+            clerk_user_id=clerk_user_id,
+            is_verified=True,
+            role=UserRole.CUSTOMER,
+        )
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated",
+        )
+
+    # Step 6 — issue backend tokens
+    token_data = {"sub": str(user.id), "role": user.role.value}
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+
+    try:
+        redis = await get_redis()
+        await redis.setex(f"refresh_token:{str(user.id)}", 86400 * 7, refresh_token)
+    except Exception as exc:
+        logger.warning("Could not store refresh token in Redis: %s", exc)
+
+    logger.info("Clerk exchange: user %s signed in (clerk_id=%s)", user.email, clerk_user_id)
+    return Token(access_token=access_token, refresh_token=refresh_token)

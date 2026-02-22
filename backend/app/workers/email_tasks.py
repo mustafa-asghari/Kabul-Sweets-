@@ -357,7 +357,7 @@ def send_payment_receipt(self, order_data: dict):
                     <tbody>{items_html}</tbody>
                 </table>
                 <div style="border-top: 2px solid #1a1a2e; padding-top: 12px; margin-top: 10px;">
-                    <p style="margin: 4px 0;"><strong>Subtotal:</strong> ${order_data.get('subtotal', '0.00')}</p>
+                    <p style="margin: 4px 0;"><strong>Subtotal (exc. GST):</strong> ${ '{:.2f}'.format(float(order_data.get('total', 0)) - float(order_data.get('tax_amount', 0))) }</p>
                     <p style="margin: 4px 0;"><strong>GST (10%):</strong> ${order_data.get('tax_amount', '0.00')}</p>
                     <p style="margin: 4px 0; font-size: 18px;"><strong>Total Paid:</strong> ${order_data.get('total', '0.00')} AUD</p>
                 </div>

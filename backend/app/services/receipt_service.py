@@ -146,13 +146,14 @@ def generate_receipt_pdf(order_data: dict) -> bytes:
     elements.append(Spacer(1, 5 * mm))
 
     # Totals
-    subtotal = order_data.get("subtotal", "0.00")
+    # Prices are GST-inclusive. Show the ex-GST subtotal and extracted GST component.
     tax_amount = order_data.get("tax_amount", "0.00")
     discount = order_data.get("discount_amount", "0.00")
     total = order_data.get("total", "0.00")
+    ex_gst = (Decimal(str(total)) - Decimal(str(tax_amount))).quantize(Decimal("0.01"))
 
     totals_data = [
-        ["", "", "Subtotal:", f"${subtotal}"],
+        ["", "", "Subtotal (exc. GST):", f"${ex_gst}"],
         ["", "", "GST (10%):", f"${tax_amount}"],
     ]
     if discount and Decimal(str(discount)) > 0:
