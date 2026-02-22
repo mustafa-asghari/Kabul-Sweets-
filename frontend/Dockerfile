@@ -1,18 +1,31 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
+# ── Dependencies ──────────────────────────────────────────────────────────────
+FROM base AS deps
 WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# ── Builder ───────────────────────────────────────────────────────────────────
+FROM base AS builder
+WORKDIR /app
+
+# NEXT_PUBLIC_* vars must be available at build time — they get baked into
+# the client bundle by Next.js. Pass them as build args from docker-compose.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY package.json package-lock.json ./
-RUN npm ci
-
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
 
-# ── Production stage ─────────────────────────────────────────────────────────
-FROM node:20-alpine
+RUN pnpm run build
 
+# ── Production stage ──────────────────────────────────────────────────────────
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
