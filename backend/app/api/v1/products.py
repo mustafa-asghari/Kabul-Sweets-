@@ -3,6 +3,8 @@ Product management endpoints.
 Public: browse products. Admin: full CRUD + inventory management.
 """
 
+import asyncio
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -139,6 +141,32 @@ async def get_low_stock(
     return await service.get_low_stock_products()
 
 
+async def _invalidate_and_notify(product_id: str | None = None):
+    """
+    1. Bust the backend Redis product cache.
+    2. Tell the storefront Next.js to drop its 'products' cache tag.
+    Both are fire-and-forget.
+    """
+    await CacheService.invalidate_product(product_id)
+
+    storefront_url = os.getenv("STOREFRONT_URL", "").rstrip("/")
+    secret = os.getenv("REVALIDATION_SECRET", "")
+    if storefront_url:
+        try:
+            import httpx
+            headers = {"Content-Type": "application/json"}
+            if secret:
+                headers["Authorization"] = f"Bearer {secret}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{storefront_url}/api/revalidate",
+                    json={"tags": ["products"]},
+                    headers=headers,
+                )
+        except Exception:
+            pass  # Non-critical — storefront will revalidate on next TTL expiry
+
+
 # ── Admin CRUD ───────────────────────────────────────────────────────────────
 @router.post(
     "/",
@@ -152,7 +180,9 @@ async def create_product(
 ):
     """[Admin] Create a new product with optional variants."""
     service = ProductService(db)
-    return await service.create_product(data)
+    product = await service.create_product(data)
+    asyncio.create_task(_invalidate_and_notify(str(product.id)))
+    return product
 
 
 @router.patch("/{product_id}", response_model=ProductResponse)
@@ -167,6 +197,7 @@ async def update_product(
     product = await service.update_product(product_id, data)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+    asyncio.create_task(_invalidate_and_notify(str(product_id)))
     return product
 
 
@@ -180,6 +211,7 @@ async def delete_product(
     service = ProductService(db)
     if not await service.delete_product(product_id):
         raise HTTPException(status_code=404, detail="Product not found")
+    asyncio.create_task(_invalidate_and_notify(str(product_id)))
     return MessageResponse(message="Product deleted")
 
 
