@@ -4,7 +4,7 @@ Cart API endpoints — shopping cart CRUD and abandoned cart recovery stats.
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,11 +31,14 @@ class CartItemUpdate(BaseModel):
 
 @router.get("/")
 async def get_cart(
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the current user's active cart."""
     service = CartService(db)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
     return await service.get_cart(current_user.id)
 
 
@@ -101,10 +104,12 @@ async def clear_cart(
     dependencies=[Depends(require_admin)],
 )
 async def get_recovery_stats(
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """[Admin] Get cart recovery statistics."""
     service = CartService(db)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return await service.get_recovery_stats()
 
 
@@ -113,9 +118,11 @@ async def get_recovery_stats(
     dependencies=[Depends(require_admin)],
 )
 async def get_abandoned_carts(
+    response: Response,
     min_age_hours: int = 1,
     db: AsyncSession = Depends(get_db),
 ):
     """[Admin] List currently abandoned carts."""
     service = CartService(db)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return await service.find_abandoned_carts(min_age_hours)
