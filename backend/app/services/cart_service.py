@@ -37,7 +37,7 @@ class CartService:
             select(Cart).where(
                 Cart.customer_id == customer_id,
                 Cart.status == CartStatus.ACTIVE,
-            )
+            ).limit(1)
         )
         cart = result.scalar_one_or_none()
 
@@ -159,7 +159,7 @@ class CartService:
             select(Cart).where(
                 Cart.customer_id == customer_id,
                 Cart.status == CartStatus.ACTIVE,
-            )
+            ).limit(1)
         )
         cart = result.scalar_one_or_none()
         if cart:
