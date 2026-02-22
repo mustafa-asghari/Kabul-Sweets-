@@ -275,12 +275,15 @@ class CartService:
         }
 
     async def _cart_to_dict(self, cart: Cart) -> dict:
-        """Convert cart to dictionary, skipping orphaned items (deleted products)."""
+        """Convert cart to dictionary, skipping orphaned items (deleted or inactive products)."""
         from app.models.product import Product  # local import to avoid circular
         result = await self.db.execute(
             select(CartItem)
             .join(Product, Product.id == CartItem.product_id)
-            .where(CartItem.cart_id == cart.id)
+            .where(
+                CartItem.cart_id == cart.id,
+                Product.is_active == True,
+            )
         )
         items = result.scalars().all()
 
