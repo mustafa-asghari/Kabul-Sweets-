@@ -14,6 +14,7 @@ import { ApiError, apiRequest } from "@/lib/api-client";
 
 const ACCESS_TOKEN_KEY = "kabul_access_token";
 const REFRESH_TOKEN_KEY = "kabul_refresh_token";
+const CLERK_USER_ID_KEY = "kabul_clerk_user_id";
 
 interface TokenResponse {
   access_token: string;
@@ -59,18 +60,24 @@ function readStoredTokens() {
   };
 }
 
-function persistTokens(tokens: { accessToken: string; refreshToken: string } | null) {
+function persistTokens(tokens: { accessToken: string; refreshToken: string; clerkUserId?: string } | null) {
   if (!isBrowser()) return;
 
   if (!tokens) {
     window.localStorage.removeItem(ACCESS_TOKEN_KEY);
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+    window.localStorage.removeItem(CLERK_USER_ID_KEY);
     window.dispatchEvent(new Event("auth-changed"));
     return;
   }
 
   window.localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
   window.localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+  if (tokens.clerkUserId) {
+    window.localStorage.setItem(CLERK_USER_ID_KEY, tokens.clerkUserId);
+  } else {
+    window.localStorage.removeItem(CLERK_USER_ID_KEY);
+  }
   window.dispatchEvent(new Event("auth-changed"));
 }
 
@@ -83,8 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [internalLoading, setInternalLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Track the last Clerk sign-in state we processed to avoid redundant exchanges
-  const lastClerkSignedIn = useRef<boolean | undefined>(undefined);
+  // Track the last Clerk identity we processed so account switching is handled.
+  const lastProcessedIdentity = useRef<string | undefined>(undefined);
 
   const clearSession = useCallback(() => {
     setUser(null);
@@ -96,9 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!clerkAuth.isLoaded) return;
 
-    // Skip if the sign-in state hasn't changed since last run
-    if (lastClerkSignedIn.current === clerkAuth.isSignedIn) return;
-    lastClerkSignedIn.current = clerkAuth.isSignedIn;
+    const identity = clerkAuth.isSignedIn
+      ? `signed-in:${clerkAuth.userId ?? "unknown"}`
+      : "signed-out";
+    if (lastProcessedIdentity.current === identity) return;
+    lastProcessedIdentity.current = identity;
 
     const run = async () => {
       setInternalLoading(true);
@@ -110,9 +119,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Try stored backend token first (avoids a round-trip on page reload)
+        if (!clerkAuth.userId) {
+          clearSession();
+          return;
+        }
+
+        // Try stored backend token first (avoids a round-trip on page reload),
+        // but only if it belongs to the same Clerk user.
         const stored = readStoredTokens();
-        if (stored.accessToken) {
+        const storedClerkUserId = isBrowser()
+          ? window.localStorage.getItem(CLERK_USER_ID_KEY)
+          : null;
+        if (stored.accessToken && storedClerkUserId === clerkAuth.userId) {
           try {
             const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
               token: stored.accessToken,
@@ -141,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         persistTokens({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
+          clerkUserId: clerkAuth.userId,
         });
 
         const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
@@ -157,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     run();
-  }, [clerkAuth.isLoaded, clerkAuth.isSignedIn, clerkAuth.getToken, clearSession]);
+  }, [clerkAuth.isLoaded, clerkAuth.isSignedIn, clerkAuth.userId, clerkAuth.getToken, clearSession]);
 
   const logout = useCallback(async () => {
     try {

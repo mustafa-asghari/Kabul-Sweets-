@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconEdit, IconEye, IconSearch } from '@tabler/icons-react';
+import { IconCheck, IconEdit, IconEye, IconSearch, IconX } from '@tabler/icons-react';
 import sortBy from 'lodash/sortBy';
 import {
   DataTable,
@@ -26,6 +26,7 @@ import type { OrderListItem, OrderStatus } from '@/types';
 const STATUS_COLORS: Record<string, MantineColor> = {
   draft: 'gray',
   pending: 'yellow',
+  pending_approval: 'orange',
   paid: 'blue',
   confirmed: 'indigo',
   preparing: 'orange',
@@ -62,6 +63,8 @@ type OrdersTableProps = {
   loading?: boolean;
   onEdit?: (order: OrderListItem) => void;
   onView?: (order: OrderListItem) => void;
+  onApprove?: (order: OrderListItem) => void;
+  onReject?: (order: OrderListItem) => void;
 };
 
 const OrdersTable = ({
@@ -70,6 +73,8 @@ const OrdersTable = ({
   error,
   onEdit,
   onView,
+  onApprove,
+  onReject,
 }: OrdersTableProps) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
@@ -177,6 +182,28 @@ const OrdersTable = ({
       textAlign: 'right',
       render: (item: OrderListItem) => (
         <Group gap="xs" justify="flex-end">
+          {(item.status === 'pending' || item.status === 'pending_approval') && onApprove && (
+            <Tooltip label="Approve">
+              <ActionIcon
+                variant="subtle"
+                color="green"
+                onClick={() => onApprove(item)}
+              >
+                <IconCheck size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+          {(item.status === 'pending' || item.status === 'pending_approval') && onReject && (
+            <Tooltip label="Reject">
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                onClick={() => onReject(item)}
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
           {onView && (
             <Tooltip label="View">
               <ActionIcon
