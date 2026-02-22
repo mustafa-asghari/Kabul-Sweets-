@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ApiError, apiRequest } from "@/lib/api-client";
@@ -165,6 +166,37 @@ function mapCartLines(items: ServerCartItem[], products: Map<string, ServerProdu
   });
 }
 
+// ── Module-level product cache ────────────────────────────────────────────────
+// Persists across renders so repeated cart opens don't re-fetch unchanged products.
+const PRODUCT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface ProductCacheEntry {
+  product: ServerProduct;
+  cachedAt: number;
+}
+
+const productCache = new Map<string, ProductCacheEntry>();
+
+function getCachedProduct(id: string): ServerProduct | null {
+  const entry = productCache.get(id);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > PRODUCT_CACHE_TTL_MS) {
+    productCache.delete(id);
+    return null;
+  }
+  return entry.product;
+}
+
+function setCachedProduct(id: string, product: ServerProduct): void {
+  productCache.set(id, { product, cachedAt: Date.now() });
+}
+
+function evictProduct(id: string): void {
+  productCache.delete(id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, isAuthenticated, user, loading: authLoading } = useAuth();
   const [rawItems, setRawItems] = useState<ServerCartItem[]>([]);
@@ -172,6 +204,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
+  // Tracks whether we've completed at least one successful load.
+  // Subsequent refreshes run silently in the background without showing a spinner.
+  const hasLoadedRef = useRef(false);
 
   const refreshCart = useCallback(async () => {
     if (!accessToken || !isAuthenticated) {
@@ -179,10 +214,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setLines([]);
       setCartError(null);
       setLoading(false);
+      hasLoadedRef.current = false;
       return;
     }
 
-    setLoading(true);
+    // First load: show spinner. Subsequent refreshes run silently in the background
+    // so the cart drawer shows the previous state instantly while fresh data loads.
+    if (!hasLoadedRef.current) {
+      setLoading(true);
+    }
     setCartError(null);
 
     try {
@@ -192,18 +232,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setRawItems(cart.items);
 
       const uniqueProductIds = [...new Set(cart.items.map((item) => item.product_id))];
-      const products = await Promise.all(
-        uniqueProductIds.map(async (productId) => {
+
+      // Only hit the network for products that aren't already cached.
+      const uncachedIds = uniqueProductIds.filter((id) => !getCachedProduct(id));
+      await Promise.all(
+        uncachedIds.map(async (productId) => {
           try {
-            const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}?_t=${Date.now()}`);
-            return [productId, product] as const;
+            const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}`);
+            setCachedProduct(productId, product);
           } catch {
-            return [productId, null] as const;
+            // 404 = product deleted — evict any stale cache entry so the
+            // auto-remove logic below picks it up and strips it from the cart.
+            evictProduct(productId);
           }
         })
       );
+
       const productMap = new Map(
-        products
+        uniqueProductIds
+          .map((id) => [id, getCachedProduct(id)] as const)
           .filter((entry): entry is readonly [string, ServerProduct] => entry[1] !== null)
       );
 
@@ -229,6 +276,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setLines(mapCartLines(cart.items, productMap));
       }
 
+      hasLoadedRef.current = true;
     } catch (error) {
       if (error instanceof ApiError) {
         setCartError(error.detail);
