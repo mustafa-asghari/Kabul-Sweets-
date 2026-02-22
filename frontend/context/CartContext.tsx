@@ -221,18 +221,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setRawItems(cart.items);
 
       const uniqueProductIds = [...new Set(cart.items.map((item) => item.product_id))];
-      const products = await Promise.all(
-        uniqueProductIds.map(async (productId) => {
+      const uncachedIds = uniqueProductIds.filter((id) => !getCachedProduct(id));
+
+      await Promise.all(
+        uncachedIds.map(async (productId) => {
           try {
             const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}`);
-            return [productId, product] as const;
+            setCachedProduct(productId, product);
           } catch {
-            return [productId, null] as const;
+            evictProduct(productId);
           }
         })
       );
+
       const productMap = new Map(
-        products
+        uniqueProductIds
+          .map((id) => [id, getCachedProduct(id)] as const)
           .filter((entry): entry is readonly [string, ServerProduct] => entry[1] !== null)
       );
       setLines(mapCartLines(cart.items, productMap));
