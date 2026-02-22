@@ -37,9 +37,15 @@ class User(Base):
         nullable=False,
         index=True,
     )
-    hashed_password: Mapped[str] = mapped_column(
+    clerk_user_id: Mapped[str | None] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+    hashed_password: Mapped[str | None] = mapped_column(
         Text,
-        nullable=False,
+        nullable=True,
     )
     full_name: Mapped[str] = mapped_column(
         String(255),
