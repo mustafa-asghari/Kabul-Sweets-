@@ -2,16 +2,19 @@ import { NextResponse } from 'next/server';
 import { apiClient } from '@/lib/api-client';
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const body = (await request.json().catch(() => ({}))) as { reason?: string };
+  const reason = (body.reason || '').trim();
+  const payload = reason ? { reason } : {};
 
   const result = await apiClient<{ message: string; detail?: string }>(
     `/payments/admin/orders/${id}/approve`,
     {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     }
   );
 

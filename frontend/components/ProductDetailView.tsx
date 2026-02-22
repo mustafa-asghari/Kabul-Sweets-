@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import ScrollReveal from "@/components/ScrollReveal";
 import { ApiError } from "@/lib/api-client";
@@ -44,6 +44,8 @@ export default function ProductDetailView({
   );
   const [activeAccordion, setActiveAccordion] = useState(0);
   const [cartMessage, setCartMessage] = useState<string | null>(null);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const addRequestInFlightRef = useRef(false);
   const activeVariant =
     (activeVariantId && product.variants.find((variant) => variant.id === activeVariantId)) ||
     product.variants[0];
@@ -52,10 +54,17 @@ export default function ProductDetailView({
   const { addItem } = useCart();
 
   const handleAddToCart = async () => {
+    if (addRequestInFlightRef.current) {
+      return;
+    }
+    addRequestInFlightRef.current = true;
+    setAddingToCart(true);
     setCartMessage(null);
     if (!isAuthenticated) {
       window.dispatchEvent(new Event("open-auth-modal"));
       setCartMessage("Please login first to add items.");
+      setAddingToCart(false);
+      addRequestInFlightRef.current = false;
       return;
     }
 
@@ -73,6 +82,9 @@ export default function ProductDetailView({
       } else {
         setCartMessage("Unable to add item to cart.");
       }
+    } finally {
+      setAddingToCart(false);
+      addRequestInFlightRef.current = false;
     }
   };
 
@@ -172,16 +184,18 @@ export default function ProductDetailView({
               <button
                 type="button"
                 onClick={handleAddToCart}
+                disabled={addingToCart}
                 className="w-full rounded-full bg-black py-4 text-base font-semibold text-white hover:bg-[#222] transition"
               >
-                Add to Cart
+                {addingToCart ? "Adding..." : "Add to Cart"}
               </button>
               <button
                 type="button"
                 onClick={handleAddToCart}
+                disabled={addingToCart}
                 className="w-full rounded-full bg-cream-dark py-4 text-base font-semibold text-black hover:bg-[#eadbc4] transition"
               >
-                Add & Checkout
+                {addingToCart ? "Adding..." : "Add & Checkout"}
               </button>
               {cartMessage ? <p className="text-sm text-gray-600">{cartMessage}</p> : null}
             </div>

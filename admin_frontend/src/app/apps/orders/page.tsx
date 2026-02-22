@@ -66,6 +66,16 @@ function Orders() {
     editOrderOpen();
   };
 
+  const handleApproveOrder = (order: OrderListItem) => {
+    setSelectedOrder(order);
+    editOrderOpen();
+  };
+
+  const handleRejectOrder = (order: OrderListItem) => {
+    setSelectedOrder(order);
+    editOrderOpen();
+  };
+
   const renderContent = () => {
     if (ordersLoading) {
       return (
@@ -112,6 +122,8 @@ function Orders() {
           loading={false}
           onEdit={handleEditOrder}
           onView={handleViewOrder}
+          onApprove={handleApproveOrder}
+          onReject={handleRejectOrder}
         />
       </Surface>
     );

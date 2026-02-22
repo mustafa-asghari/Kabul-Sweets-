@@ -39,6 +39,10 @@ class AdminOrderDecisionRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
+class AdminOrderApproveRequest(BaseModel):
+    reason: str | None = Field(None, min_length=3, max_length=500)
+
+
 class ConfirmCustomCakePaymentRequest(BaseModel):
     custom_cake_id: uuid.UUID
     session_id: str = Field(..., min_length=1, max_length=255)
@@ -333,6 +337,7 @@ async def get_deposit_status(
 @router.post("/admin/orders/{order_id}/approve", response_model=MessageResponse)
 async def admin_approve_order(
     order_id: uuid.UUID,
+    data: AdminOrderApproveRequest | None = None,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -344,13 +349,23 @@ async def admin_approve_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    approval_reason = (data.reason or "").strip() if data else ""
+    if approval_reason:
+        existing_notes = (order.admin_notes or "").strip()
+        order.admin_notes = (
+            f"{existing_notes}\nApproved: {approval_reason}".strip()
+            if existing_notes
+            else f"Approved: {approval_reason}"
+        )
+
     if order.status == OrderStatus.PENDING:
         order.status = OrderStatus.PENDING_APPROVAL
         await db.flush()
         await db.refresh(order)
         _queue_telegram_order_status_alert(
             order,
-            "Approved in admin. Waiting for customer payment.",
+            "Approved in admin. Waiting for customer payment."
+            + (f" Reason: {approval_reason}" if approval_reason else ""),
         )
         return MessageResponse(
             message="Order approved. Customer can now pay from the Orders page.",
@@ -370,7 +385,8 @@ async def admin_approve_order(
     if not payment_intent_id:
         _queue_telegram_order_status_alert(
             order,
-            "Approved in admin. Waiting for customer payment.",
+            "Approved in admin. Waiting for customer payment."
+            + (f" Reason: {approval_reason}" if approval_reason else ""),
         )
         return MessageResponse(
             message="Order is approved and awaiting customer payment.",
@@ -393,7 +409,8 @@ async def admin_approve_order(
         raise HTTPException(status_code=404, detail="Order not found after update")
     _queue_telegram_order_status_alert(
         updated_order,
-        "Payment captured by admin approval.",
+        "Payment captured by admin approval."
+        + (f" Reason: {approval_reason}" if approval_reason else ""),
     )
 
     try:

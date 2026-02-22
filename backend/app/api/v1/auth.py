@@ -485,6 +485,8 @@ async def clerk_exchange(
     normalized_email = email.strip().lower()
 
     # Step 5 — lookup by clerk_user_id → email → phone (link existing accounts)
+    # IMPORTANT: never auto-link to an existing account already bound to
+    # a different Clerk identity.
     user: User | None = None
 
     result = await db.execute(select(User).where(User.clerk_user_id == clerk_user_id))
@@ -495,10 +497,35 @@ async def clerk_exchange(
             select(User).where(func.lower(User.email) == normalized_email)
         )
         user = result.scalar_one_or_none()
+        if user is not None and user.clerk_user_id and user.clerk_user_id != clerk_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This email is linked to another account identity.",
+            )
 
     if user is None and phone:
-        result = await db.execute(select(User).where(User.phone == phone))
-        user = result.scalar_one_or_none()
+        # Phone fallback is limited to customer accounts to prevent accidental
+        # privilege escalation into staff/admin users.
+        result = await db.execute(
+            select(User).where(
+                User.phone == phone,
+                User.role == UserRole.CUSTOMER,
+            )
+        )
+        phone_matches = list(result.scalars().all())
+        if len(phone_matches) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Multiple customer accounts use this phone number. Contact support.",
+            )
+        if phone_matches:
+            candidate = phone_matches[0]
+            if candidate.clerk_user_id and candidate.clerk_user_id != clerk_user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This phone number is linked to another account identity.",
+                )
+            user = candidate
 
     if user is not None:
         # Link clerk_user_id on first Clerk sign-in for an existing account

@@ -3,6 +3,7 @@
 import { ReactNode } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Permission } from '@/types/roles';
+import { useAuth } from '@/contexts/auth/AuthContext';
 
 interface RestrictedProps {
     children: ReactNode;
@@ -28,16 +29,29 @@ interface RoleGuardProps {
     children: ReactNode;
     allowedRoles: string[];
     fallback?: ReactNode;
+    loadingFallback?: ReactNode;
 }
 
 /**
  * Component that restricts content based on user roles
  * Usage: <RoleGuard allowedRoles={['admin']}>Admin only content</RoleGuard>
  */
-export function RoleGuard({ children, allowedRoles, fallback = null }: RoleGuardProps) {
-    const { user } = usePermissions() as any;
+export function RoleGuard({
+    children,
+    allowedRoles,
+    fallback = null,
+    loadingFallback = null,
+}: RoleGuardProps) {
+    const { user, isLoading } = useAuth();
 
-    if (!user || !allowedRoles.includes(user.role)) {
+    if (isLoading) {
+        return <>{loadingFallback}</>;
+    }
+
+    const normalizedRole = (user?.role || '').toLowerCase().trim();
+    const normalizedAllowedRoles = allowedRoles.map((role) => role.toLowerCase().trim());
+
+    if (!normalizedRole || !normalizedAllowedRoles.includes(normalizedRole)) {
         return <>{fallback}</>;
     }
 

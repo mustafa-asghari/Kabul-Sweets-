@@ -166,9 +166,7 @@ function mapCartLines(items: ServerCartItem[], products: Map<string, ServerProdu
   });
 }
 
-// ── Module-level product cache ────────────────────────────────────────────────
-// Persists across renders so repeated cart opens don't re-fetch unchanged products.
-const PRODUCT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PRODUCT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface ProductCacheEntry {
   product: ServerProduct;
@@ -177,26 +175,25 @@ interface ProductCacheEntry {
 
 const productCache = new Map<string, ProductCacheEntry>();
 
-function getCachedProduct(id: string): ServerProduct | null {
-  const entry = productCache.get(id);
-  if (!entry) return null;
+function getCachedProduct(productId: string): ServerProduct | null {
+  const entry = productCache.get(productId);
+  if (!entry) {
+    return null;
+  }
   if (Date.now() - entry.cachedAt > PRODUCT_CACHE_TTL_MS) {
-    productCache.delete(id);
+    productCache.delete(productId);
     return null;
   }
   return entry.product;
 }
 
-function setCachedProduct(id: string, product: ServerProduct): void {
-  productCache.set(id, { product, cachedAt: Date.now() });
+function setCachedProduct(productId: string, product: ServerProduct): void {
+  productCache.set(productId, { product, cachedAt: Date.now() });
 }
 
-function evictProduct(id: string): void {
-  productCache.delete(id);
+function evictProduct(productId: string): void {
+  productCache.delete(productId);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, isAuthenticated, user, loading: authLoading } = useAuth();
   const [rawItems, setRawItems] = useState<ServerCartItem[]>([]);
@@ -232,8 +229,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setRawItems(cart.items);
 
       const uniqueProductIds = [...new Set(cart.items.map((item) => item.product_id))];
-
-      // Only hit the network for products that aren't already cached.
       const uncachedIds = uniqueProductIds.filter((id) => !getCachedProduct(id));
       await Promise.all(
         uncachedIds.map(async (productId) => {
@@ -241,8 +236,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}`);
             setCachedProduct(productId, product);
           } catch {
-            // 404 = product deleted — evict any stale cache entry so the
-            // auto-remove logic below picks it up and strips it from the cart.
             evictProduct(productId);
           }
         })
@@ -311,7 +304,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new ApiError(401, "Please log in before adding items to cart.");
       }
 
-      await apiRequest<ServerCartResponse>("/api/v1/cart/items", {
+      const updatedCart = await apiRequest<ServerCartResponse>("/api/v1/cart/items", {
         method: "POST",
         token: accessToken,
         body: {
@@ -320,7 +313,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           quantity,
         },
       });
-      await refreshCart();
+
+      // Fast UI response: update item counts immediately from POST response.
+      setRawItems(updatedCart.items);
+
+      // If all products are already cached, update lines immediately too.
+      const uniqueProductIds = [...new Set(updatedCart.items.map((item) => item.product_id))];
+      const allProductsCached = uniqueProductIds.every((id) => getCachedProduct(id) !== null);
+      if (allProductsCached) {
+        const productMap = new Map(
+          uniqueProductIds
+            .map((id) => [id, getCachedProduct(id)] as const)
+            .filter((entry): entry is readonly [string, ServerProduct] => entry[1] !== null)
+        );
+        setLines(mapCartLines(updatedCart.items, productMap));
+      }
+
+      // Run full sync in background (non-blocking) to avoid slow add-to-cart UX.
+      void refreshCart();
     },
     [accessToken, refreshCart]
   );
@@ -430,8 +440,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const cartCount = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity, 0),
-    [lines]
+    () => rawItems.reduce((sum, item) => sum + item.quantity, 0),
+    [rawItems]
   );
   const subtotal = useMemo(
     () => lines.reduce((sum, line) => sum + line.price * line.quantity, 0),

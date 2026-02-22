@@ -13,6 +13,7 @@ import {
   List,
   LoadingOverlay,
   Stack,
+  Textarea,
   Text,
   ThemeIcon,
   Title,
@@ -34,6 +35,7 @@ export const EditOrderDrawer = ({
   ...drawerProps
 }: EditOrderDrawerProps) => {
   const [loading, setLoading] = useState(false);
+  const [decisionReason, setDecisionReason] = useState('');
 
   // Fetch full order details
   const { data: fullOrderData, refetch } = useOrder(initialOrder?.id || '');
@@ -46,13 +48,30 @@ export const EditOrderDrawer = ({
 
   const risk = riskData?.data;
 
+  useEffect(() => {
+    setDecisionReason('');
+  }, [initialOrder?.id]);
+
   const handleApprove = async () => {
     if (!initialOrder?.id) return;
+    const trimmedReason = decisionReason.trim();
+    if (trimmedReason.length < 3) {
+      notifications.show({
+        title: 'Reason required',
+        message: 'Please provide an approval reason (at least 3 characters).',
+        color: 'red',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await apiPost(`/api/orders/${initialOrder.id}/approve`, {});
+      const res = await apiPost(`/api/orders/${initialOrder.id}/approve`, {
+        reason: trimmedReason,
+      });
       if (!res.succeeded) throw new Error(res.message);
       notifications.show({ title: 'Success', message: 'Order approved', color: 'green' });
+      setDecisionReason('');
       onOrderUpdated?.();
       refetch();
       drawerProps.onClose?.();
@@ -65,14 +84,24 @@ export const EditOrderDrawer = ({
 
   const handleReject = async () => {
     if (!initialOrder?.id) return;
-    const reason = window.prompt('Enter rejection reason:');
-    if (reason === null) return; // cancelled
+    const trimmedReason = decisionReason.trim();
+    if (trimmedReason.length < 3) {
+      notifications.show({
+        title: 'Reason required',
+        message: 'Please provide a rejection reason (at least 3 characters).',
+        color: 'red',
+      });
+      return;
+    }
 
     setLoading(true);
     try {
-      const res = await apiPost(`/api/orders/${initialOrder.id}/reject?reason=${encodeURIComponent(reason)}`, {});
+      const res = await apiPost(`/api/orders/${initialOrder.id}/reject`, {
+        reason: trimmedReason,
+      });
       if (!res.succeeded) throw new Error(res.message);
       notifications.show({ title: 'Rejected', message: 'Order rejected', color: 'blue' });
+      setDecisionReason('');
       onOrderUpdated?.();
       refetch();
       drawerProps.onClose?.();
@@ -116,20 +145,44 @@ export const EditOrderDrawer = ({
           </Group>
 
           {/* Approve / Reject Actions */}
-          {orderDetails.status === 'pending_approval' && (
+          {(orderDetails.status === 'pending' || orderDetails.status === 'pending_approval') && (
             <Card withBorder radius="md" padding="md" bg="var(--mantine-color-orange-light)">
               <Stack gap="xs">
                 <Group>
                   <ThemeIcon color="orange" variant="light"><IconAlertTriangle /></ThemeIcon>
                   <Text fw={600}>Action Required: Review Order</Text>
                 </Group>
-                <Text size="sm">This order is authorized but payment is not captured. Please review and approve.</Text>
+                <Text size="sm">
+                  {orderDetails.status === 'pending'
+                    ? 'This order is waiting for admin decision. Approve or reject it with a reason.'
+                    : 'This order is authorized but payment is not captured. Approve or reject it with a reason.'}
+                </Text>
+                <Textarea
+                  label="Decision reason"
+                  placeholder="Add the reason for your approval or rejection..."
+                  minRows={2}
+                  autosize
+                  value={decisionReason}
+                  onChange={(event) => setDecisionReason(event.currentTarget.value)}
+                  required
+                />
                 <Group grow>
-                  <Button color="green" leftSection={<IconCheck size={16} />} onClick={handleApprove}>
-                    Approve & Capture
+                  <Button
+                    color="green"
+                    leftSection={<IconCheck size={16} />}
+                    onClick={handleApprove}
+                    disabled={decisionReason.trim().length < 3}
+                  >
+                    {orderDetails.status === 'pending_approval' ? 'Approve & Capture' : 'Approve Order'}
                   </Button>
-                  <Button color="red" variant="outline" leftSection={<IconX size={16} />} onClick={handleReject}>
-                    Reject & Cancel
+                  <Button
+                    color="red"
+                    variant="outline"
+                    leftSection={<IconX size={16} />}
+                    onClick={handleReject}
+                    disabled={decisionReason.trim().length < 3}
+                  >
+                    Reject Order
                   </Button>
                 </Group>
               </Stack>
