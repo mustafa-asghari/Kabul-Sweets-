@@ -241,7 +241,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         throw new ApiError(401, "Please log in before adding items to cart.");
       }
 
-      await apiRequest<ServerCartResponse>("/api/v1/cart/items", {
+      const updatedCart = await apiRequest<ServerCartResponse>("/api/v1/cart/items", {
         method: "POST",
         token: accessToken,
         body: {
@@ -250,7 +250,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           quantity,
         },
       });
-      await refreshCart();
+
+      // Fast UI response: update item counts immediately from POST response.
+      setRawItems(updatedCart.items);
+
+      // If all products are already cached, update lines immediately too.
+      const uniqueProductIds = [...new Set(updatedCart.items.map((item) => item.product_id))];
+      const allProductsCached = uniqueProductIds.every((id) => getCachedProduct(id) !== null);
+      if (allProductsCached) {
+        const productMap = new Map(
+          uniqueProductIds
+            .map((id) => [id, getCachedProduct(id)] as const)
+            .filter((entry): entry is readonly [string, ServerProduct] => entry[1] !== null)
+        );
+        setLines(mapCartLines(updatedCart.items, productMap));
+      }
+
+      // Run full sync in background (non-blocking) to avoid slow add-to-cart UX.
+      void refreshCart();
     },
     [accessToken, refreshCart]
   );
@@ -350,8 +367,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const cartCount = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity, 0),
-    [lines]
+    () => rawItems.reduce((sum, item) => sum + item.quantity, 0),
+    [rawItems]
   );
   const subtotal = useMemo(
     () => lines.reduce((sum, line) => sum + line.price * line.quantity, 0),
