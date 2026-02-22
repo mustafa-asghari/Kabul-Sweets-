@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, log_admin_action, require_admin
 from app.core.database import get_db
+from app.core.logging import get_logger
 from app.models.user import User
 from app.schemas.product import (
     ProductCreate,
@@ -29,6 +30,7 @@ from app.services.cache_service import CacheService, CACHE_TTL
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products"])
+logger = get_logger("products")
 
 
 async def _sanitize_negative_stock(product, db: AsyncSession) -> None:
@@ -160,22 +162,24 @@ async def _invalidate_and_notify(product_id: str | None = None):
             if secret:
                 headers["Authorization"] = f"Bearer {secret}"
             async with httpx.AsyncClient(timeout=3.0) as client:
-                await client.post(
+                resp = await client.post(
                     f"{storefront_url}/api/revalidate",
                     json={"tags": ["products"]},
                     headers=headers,
                 )
-        except Exception:
-            pass
+            logger.info("Next.js revalidate: %s %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("Next.js revalidate failed: %s", e)
 
     async def _purge_cloudflare():
         zone_id = os.getenv("CLOUDFLARE_ZONE_ID", "")
         api_token = os.getenv("CLOUDFLARE_API_TOKEN", "")
         if not zone_id or not api_token:
-            return  # Not configured — skip silently
+            logger.info("Cloudflare purge skipped — CLOUDFLARE_ZONE_ID or CLOUDFLARE_API_TOKEN not set")
+            return
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
+                resp = await client.post(
                     f"https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache",
                     json={"purge_everything": True},
                     headers={
@@ -183,8 +187,9 @@ async def _invalidate_and_notify(product_id: str | None = None):
                         "Content-Type": "application/json",
                     },
                 )
-        except Exception:
-            pass
+            logger.info("Cloudflare purge: %s %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("Cloudflare purge failed: %s", e)
 
     await asyncio.gather(_ping_nextjs(), _purge_cloudflare())
 
