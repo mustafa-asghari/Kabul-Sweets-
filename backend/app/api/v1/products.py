@@ -144,26 +144,49 @@ async def get_low_stock(
 async def _invalidate_and_notify(product_id: str | None = None):
     """
     1. Bust the backend Redis cache.
-    2. Ping the Next.js storefront to drop its 'products' cache tag instantly.
-    Both are fire-and-forget — admin response is never delayed.
+    2. Ping Next.js to drop its 'products' cache tag instantly.
+    3. Purge Cloudflare edge cache so CDN serves fresh HTML immediately.
+    All three run concurrently, fire-and-forget — admin response is never delayed.
     """
     await CacheService.invalidate_product(product_id)
 
-    storefront_url = os.getenv("STOREFRONT_URL", "http://localhost:3000").rstrip("/")
-    secret = os.getenv("REVALIDATION_SECRET", "")
-    try:
-        import httpx
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if secret:
-            headers["Authorization"] = f"Bearer {secret}"
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            await client.post(
-                f"{storefront_url}/api/revalidate",
-                json={"tags": ["products"]},
-                headers=headers,
-            )
-    except Exception:
-        pass  # Non-critical — 1-hour ISR fallback still applies
+    import httpx
+
+    async def _ping_nextjs():
+        storefront_url = os.getenv("STOREFRONT_URL", "http://localhost:3000").rstrip("/")
+        secret = os.getenv("REVALIDATION_SECRET", "")
+        try:
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if secret:
+                headers["Authorization"] = f"Bearer {secret}"
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.post(
+                    f"{storefront_url}/api/revalidate",
+                    json={"tags": ["products"]},
+                    headers=headers,
+                )
+        except Exception:
+            pass
+
+    async def _purge_cloudflare():
+        zone_id = os.getenv("CLOUDFLARE_ZONE_ID", "")
+        api_token = os.getenv("CLOUDFLARE_API_TOKEN", "")
+        if not zone_id or not api_token:
+            return  # Not configured — skip silently
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache",
+                    json={"purge_everything": True},
+                    headers={
+                        "Authorization": f"Bearer {api_token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+        except Exception:
+            pass
+
+    await asyncio.gather(_ping_nextjs(), _purge_cloudflare())
 
 
 # ── Admin CRUD ───────────────────────────────────────────────────────────────
