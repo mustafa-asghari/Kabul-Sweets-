@@ -81,10 +81,17 @@ async function proxy(
         cache: "no-store",
       });
       const responseBody = await upstream.arrayBuffer();
+      const responseHeaders = copyResponseHeaders(upstream.headers);
+      // Never let Cloudflare or any CDN cache API responses — they are
+      // user-specific and dynamic. Without this, Cloudflare "Cache Everything"
+      // would cache the cart and block deletes/updates.
+      responseHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      responseHeaders.set("Pragma", "no-cache");
       return new NextResponse(responseBody, {
         status: upstream.status,
-        headers: copyResponseHeaders(upstream.headers),
+        headers: responseHeaders,
       });
+
     } catch {
       // Try next candidate
       continue;
