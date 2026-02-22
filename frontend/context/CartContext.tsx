@@ -297,10 +297,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!accessToken) {
         throw new ApiError(401, "Please log in first.");
       }
-      await apiRequest<{ message: string }>(`/api/v1/cart/items/${itemId}`, {
-        method: "DELETE",
-        token: accessToken,
-      });
+      try {
+        await apiRequest<{ message: string }>(`/api/v1/cart/items/${itemId}`, {
+          method: "DELETE",
+          token: accessToken,
+        });
+      } catch (err) {
+        // 404 = item already gone from backend (e.g. stale cached cart ID).
+        // Still refresh so the UI syncs with the real cart state.
+        if (err instanceof ApiError && err.status === 404) {
+          await refreshCart();
+          return;
+        }
+        throw err;
+      }
       await refreshCart();
     },
     [accessToken, refreshCart]
