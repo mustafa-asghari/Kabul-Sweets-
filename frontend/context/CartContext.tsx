@@ -206,7 +206,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         products
           .filter((entry): entry is readonly [string, ServerProduct] => entry[1] !== null)
       );
-      setLines(mapCartLines(cart.items, productMap));
+
+      // Auto-remove cart items whose products no longer exist (deleted from admin).
+      const deletedItemIds = cart.items
+        .filter((item) => !productMap.has(item.product_id))
+        .map((item) => item.id);
+
+      if (deletedItemIds.length > 0) {
+        await Promise.allSettled(
+          deletedItemIds.map((itemId) =>
+            apiRequest(`/api/v1/cart/items/${itemId}`, {
+              method: "DELETE",
+              token: accessToken,
+            })
+          )
+        );
+        // Re-fetch the cleaned cart
+        const cleanCart = await apiRequest<ServerCartResponse>("/api/v1/cart/", { token: accessToken });
+        setRawItems(cleanCart.items);
+        setLines(mapCartLines(cleanCart.items, productMap));
+      } else {
+        setLines(mapCartLines(cart.items, productMap));
+      }
+
     } catch (error) {
       if (error instanceof ApiError) {
         setCartError(error.detail);
