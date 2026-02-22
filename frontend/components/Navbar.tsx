@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useClerk } from "@clerk/nextjs";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 
@@ -32,27 +31,12 @@ export default function Navbar() {
 
   const { user, isAuthenticated, logout, loading } = useAuth();
   const { cartCount } = useCart();
-  const clerk = useClerk();
-
   const openSignIn = useCallback(() => {
     const redirectUrl = window.location.href;
-    const fallbackPath = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
-    const maybeLoaded = (clerk as unknown as { loaded?: boolean }).loaded;
-
-    if (maybeLoaded === false) {
-      router.push(fallbackPath);
-      return;
-    }
-
-    try {
-      clerk.openSignIn({
-        afterSignInUrl: redirectUrl,
-        afterSignUpUrl: redirectUrl,
-      });
-    } catch {
-      router.push(fallbackPath);
-    }
-  }, [clerk, router]);
+    const fallbackPath = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}&ts=${Date.now()}`;
+    // Always use dedicated sign-in route to avoid stale modal Server Action state.
+    window.location.assign(fallbackPath);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {

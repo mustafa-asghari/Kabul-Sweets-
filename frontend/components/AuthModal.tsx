@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useClerk } from "@clerk/nextjs";
 
 interface AuthModalProps {
   open: boolean;
@@ -15,19 +14,18 @@ interface AuthModalProps {
  * close behaviour internally.
  */
 export default function AuthModal({ open, onClose }: AuthModalProps) {
-  const clerk = useClerk();
-
   useEffect(() => {
     if (!open) return;
 
-    clerk.openSignIn({
-      afterSignInUrl: window.location.href,
-      afterSignUpUrl: window.location.href,
-    });
+    const redirectUrl = window.location.href;
+    const fallbackPath = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}&ts=${Date.now()}`;
+
+    // Use dedicated sign-in route instead of Clerk modal to avoid stale Server Action IDs.
+    window.location.assign(fallbackPath);
 
     // Reset the caller's open state so re-opening works correctly next time
     onClose();
-  }, [open, clerk, onClose]);
+  }, [open, onClose]);
 
   return null;
 }

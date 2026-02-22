@@ -23,8 +23,8 @@ from app.core.config import get_settings
 
 def set_webhook(backend_url: str):
     settings = get_settings()
-    token = settings.TELEGRAM_BOT_TOKEN
-    secret = settings.TELEGRAM_WEBHOOK_SECRET
+    token = settings.TELEGRAM_BOT_TOKEN.strip()
+    secret = settings.TELEGRAM_WEBHOOK_SECRET.strip()
     
     if not token or not secret:
         print("❌ Error: TELEGRAM_BOT_TOKEN or TELEGRAM_WEBHOOK_SECRET is not set in environment.")
@@ -32,14 +32,22 @@ def set_webhook(backend_url: str):
         
     # Standardize backend URL (remove trailing slash)
     base_url = backend_url.rstrip("/")
-    webhook_url = f"{base_url}/api/v1/telegram/webhook/{secret}"
+    # Use Telegram secret header token instead of exposing secret in URL.
+    webhook_url = f"{base_url}/api/v1/telegram/webhook"
     
     print(f"Setting webhook URL to: {webhook_url}")
     
     api_url = f"https://api.telegram.org/bot{token}/setWebhook"
     
     try:
-        response = httpx.post(api_url, data={"url": webhook_url})
+        response = httpx.post(
+            api_url,
+            data={
+                "url": webhook_url,
+                "secret_token": secret,
+                "drop_pending_updates": "true",
+            },
+        )
         response.raise_for_status()
         result = response.json()
         

@@ -13,6 +13,8 @@ from app.services.telegram_service import TelegramService
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("check_notifications")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 def check_email(target_email):
     print(f"\n📧 Checking Email Configuration for {target_email}")
@@ -64,8 +66,14 @@ def check_telegram():
         print("   Sending test message to all admin chats...")
         for chat_id in telegram.admin_chat_ids:
             try:
-                telegram.send_text(chat_id, "🔔 <b>Test Notification</b>\nThis message confirms your Telegram bot is working correctly.")
-                print(f"✅ Sent test message to chat_id: {chat_id}")
+                ok = telegram.send_text(
+                    chat_id,
+                    "🔔 <b>Test Notification</b>\nThis message confirms your Telegram bot is working correctly.",
+                )
+                if ok:
+                    print(f"✅ Sent test message to chat_id: {chat_id}")
+                else:
+                    print(f"❌ Telegram rejected test message for chat_id: {chat_id}. Check bot token/webhook config.")
             except Exception as e:
                 print(f"❌ Failed to send to {chat_id}: {e}")
 

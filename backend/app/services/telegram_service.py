@@ -40,6 +40,13 @@ class TelegramService:
         """Return True when bot token and admin chats are configured."""
         return bool(self.api_base and self.admin_chat_ids)
 
+    def _mask_sensitive(self, message: str) -> str:
+        if not message:
+            return message
+        if self.bot_token:
+            return message.replace(self.bot_token, "***")
+        return message
+
     def send_text(
         self,
         chat_id: int,
@@ -185,7 +192,7 @@ class TelegramService:
                 return False
             return True
         except Exception as exc:
-            logger.warning("Telegram API %s request failed: %s", method, str(exc))
+            logger.warning("Telegram API %s request failed: %s", method, self._mask_sensitive(str(exc)))
             return False
 
     def _post_multipart(
@@ -209,7 +216,7 @@ class TelegramService:
                 return False
             return True
         except Exception as exc:
-            logger.warning("Telegram API %s multipart request failed: %s", method, str(exc))
+            logger.warning("Telegram API %s multipart request failed: %s", method, self._mask_sensitive(str(exc)))
             return False
 
     @staticmethod

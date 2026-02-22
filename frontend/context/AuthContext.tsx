@@ -124,13 +124,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistTokens(null);
   }, []);
 
-  // Fast bootstrap from stored backend token so UI is not blocked by Clerk loading.
+  // Bootstrap from stored backend token only when it matches the active Clerk identity.
   useEffect(() => {
+    if (!clerkLoaded) return;
     let cancelled = false;
 
     const bootstrap = async () => {
       const stored = readStoredTokens();
-      if (!stored.accessToken) {
+      const storedClerkUserId = isBrowser()
+        ? window.localStorage.getItem(CLERK_USER_ID_KEY)
+        : null;
+
+      const hasHydratableStoredSession =
+        !!stored.accessToken &&
+        !!storedClerkUserId &&
+        !!clerkSignedIn &&
+        !!clerkUserId &&
+        storedClerkUserId === clerkUserId;
+
+      if (!hasHydratableStoredSession) {
+        if (stored.accessToken || stored.refreshToken || storedClerkUserId) {
+          clearSession();
+        }
+        bootstrapDone.current = true;
+        setInternalLoading(false);
+        return;
+      }
+
+      const storedAccessToken = stored.accessToken;
+      if (!storedAccessToken) {
         bootstrapDone.current = true;
         setInternalLoading(false);
         return;
@@ -139,14 +161,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const profile = await withTimeout(
           apiRequest<AuthUser>("/api/v1/auth/me", {
-            token: stored.accessToken,
+            token: storedAccessToken,
           }),
           AUTH_REQUEST_TIMEOUT_MS,
           "Authentication is taking too long. Please refresh and try again."
         );
         if (cancelled) return;
         setUser(profile);
-        setAccessToken(stored.accessToken);
+        setAccessToken(storedAccessToken);
         setAuthError(null);
       } catch {
         if (cancelled) return;
@@ -162,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clearSession]);
+  }, [clerkLoaded, clerkSignedIn, clerkUserId, clearSession]);
 
   // React to Clerk auth state changes (sign-in / sign-out)
   useEffect(() => {

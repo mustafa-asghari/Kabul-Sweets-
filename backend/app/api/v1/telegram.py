@@ -2,6 +2,7 @@
 Telegram bot webhook endpoints for admin workflows.
 """
 
+import asyncio
 import uuid
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
@@ -108,6 +109,34 @@ def _is_authorized_chat(chat_id: int | None) -> bool:
     if chat_id is None:
         return False
     return chat_id in settings.TELEGRAM_ADMIN_CHAT_IDS
+
+
+def _webhook_secret_is_valid(path_secret: str | None, request: Request) -> bool:
+    expected_secret = (settings.TELEGRAM_WEBHOOK_SECRET or "").strip()
+    if not expected_secret:
+        return False
+
+    header_secret = (request.headers.get("x-telegram-bot-api-secret-token") or "").strip()
+
+    if path_secret and path_secret == expected_secret:
+        return True
+    if header_secret and header_secret == expected_secret:
+        return True
+    return False
+
+
+async def _send_unauthorized_chat_notice(telegram: TelegramService, chat_id: int | None) -> None:
+    if not isinstance(chat_id, int):
+        return
+    await _send_text(
+        telegram,
+        chat_id,
+        (
+            "⚠️ This chat is not authorized for admin actions.\n"
+            f"Your chat id is: <code>{chat_id}</code>\n"
+            "Add it to <code>TELEGRAM_ADMIN_CHAT_IDS</code> and restart backend."
+        ),
+    )
 
 
 def _order_markup(order_id: uuid.UUID) -> dict:
@@ -1658,6 +1687,17 @@ async def _reject_custom_cake_via_telegram(
     return f"Custom cake {cake_id} rejected."
 
 
+@router.post("/webhook")
+async def telegram_webhook_with_header_secret(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Telegram webhook receiver using Telegram's X-Telegram-Bot-Api-Secret-Token header.
+    """
+    return await telegram_webhook(secret="", request=request, db=db)
+
+
 @router.post("/webhook/{secret}")
 async def telegram_webhook(
     secret: str,
@@ -1672,12 +1712,16 @@ async def telegram_webhook(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Telegram bot is not configured",
         )
-    if secret != settings.TELEGRAM_WEBHOOK_SECRET:
+    if not _webhook_secret_is_valid(secret, request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
 
     update = await request.json()
     telegram = TelegramService()
-    await run_in_threadpool(telegram.ensure_default_commands)
+    # Keep webhook response path fast. Command sync is best-effort in background.
+    try:
+        asyncio.create_task(run_in_threadpool(telegram.ensure_default_commands))
+    except Exception as exc:
+        logger.debug("Skipping Telegram command sync task: %s", str(exc))
 
     callback = update.get("callback_query")
     if callback:
@@ -1690,6 +1734,7 @@ async def telegram_webhook(
         if not _is_authorized_chat(chat_id):
             if callback_id:
                 await _answer_callback(telegram, callback_id, "Unauthorized chat")
+            await _send_unauthorized_chat_notice(telegram, chat_id)
             return {"ok": True}
 
         if not callback_id:
@@ -1978,6 +2023,7 @@ async def telegram_webhook(
     chat = message.get("chat", {}) or {}
     chat_id = chat.get("id")
     if not _is_authorized_chat(chat_id):
+        await _send_unauthorized_chat_notice(telegram, chat_id)
         return {"ok": True}
 
     text = (message.get("text", "") or "").strip()
