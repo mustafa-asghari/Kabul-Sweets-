@@ -6,8 +6,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { useAuth as useClerkAuth, useClerk } from "@clerk/nextjs";
 import { ApiError, apiRequest } from "@/lib/api-client";
 
 const ACCESS_TOKEN_KEY = "kabul_access_token";
@@ -30,27 +32,15 @@ export interface AuthUser {
   last_login: string | null;
 }
 
-interface RegisterPayload {
-  email: string;
-  password: string;
-  fullName: string;
-  phone?: string;
-}
-
-interface AuthContextValue {
+export interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   loading: boolean;
   accessToken: string | null;
   authError: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<string>;
-  resetPassword: (payload: { token: string; newPassword: string }) => Promise<string>;
   updateProfile: (payload: { full_name?: string; phone?: string }) => Promise<void>;
-  changePassword: (payload: { current_password: string; new_password: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -70,9 +60,7 @@ function readStoredTokens() {
 }
 
 function persistTokens(tokens: { accessToken: string; refreshToken: string } | null) {
-  if (!isBrowser()) {
-    return;
-  }
+  if (!isBrowser()) return;
 
   if (!tokens) {
     window.localStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -87,147 +75,89 @@ function persistTokens(tokens: { accessToken: string; refreshToken: string } | n
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const clerkAuth = useClerkAuth();
+  const clerk = useClerk();
+
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [internalLoading, setInternalLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Track the last Clerk sign-in state we processed to avoid redundant exchanges
+  const lastClerkSignedIn = useRef<boolean | undefined>(undefined);
 
   const clearSession = useCallback(() => {
     setUser(null);
     setAccessToken(null);
-    setRefreshToken(null);
     persistTokens(null);
   }, []);
 
-  const fetchUserWithToken = useCallback(
-    async (token: string) => {
-      const profile = await apiRequest<AuthUser>("/api/v1/auth/me", { token });
-      setUser(profile);
-      return profile;
-    },
-    []
-  );
+  // React to Clerk auth state changes (sign-in / sign-out)
+  useEffect(() => {
+    if (!clerkAuth.isLoaded) return;
 
-  const refreshWithRefreshToken = useCallback(async () => {
-    if (!refreshToken) {
-      return null;
-    }
+    // Skip if the sign-in state hasn't changed since last run
+    if (lastClerkSignedIn.current === clerkAuth.isSignedIn) return;
+    lastClerkSignedIn.current = clerkAuth.isSignedIn;
 
-    try {
-      const nextTokens = await apiRequest<TokenResponse>("/api/v1/auth/refresh", {
-        method: "POST",
-        body: { refresh_token: refreshToken },
-      });
-      setAccessToken(nextTokens.access_token);
-      setRefreshToken(nextTokens.refresh_token);
-      persistTokens({
-        accessToken: nextTokens.access_token,
-        refreshToken: nextTokens.refresh_token,
-      });
-      return nextTokens.access_token;
-    } catch {
-      clearSession();
-      return null;
-    }
-  }, [clearSession, refreshToken]);
-
-  const refreshUser = useCallback(async () => {
-    if (!accessToken) {
-      setUser(null);
-      return;
-    }
-
-    try {
-      await fetchUserWithToken(accessToken);
+    const run = async () => {
+      setInternalLoading(true);
       setAuthError(null);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        const refreshedToken = await refreshWithRefreshToken();
-        if (refreshedToken) {
-          await fetchUserWithToken(refreshedToken);
-          setAuthError(null);
+
+      try {
+        if (!clerkAuth.isSignedIn) {
+          clearSession();
           return;
         }
-      }
-      clearSession();
-      setAuthError("Your session has expired. Please log in again.");
-    }
-  }, [accessToken, clearSession, fetchUserWithToken, refreshWithRefreshToken]);
 
-  useEffect(() => {
-    const stored = readStoredTokens();
-    setAccessToken(stored.accessToken);
-    setRefreshToken(stored.refreshToken);
-
-    if (!stored.accessToken) {
-      setLoading(false);
-      return;
-    }
-
-    fetchUserWithToken(stored.accessToken)
-      .catch(async (error) => {
-        if (error instanceof ApiError && error.status === 401 && stored.refreshToken) {
+        // Try stored backend token first (avoids a round-trip on page reload)
+        const stored = readStoredTokens();
+        if (stored.accessToken) {
           try {
-            const nextTokens = await apiRequest<TokenResponse>("/api/v1/auth/refresh", {
-              method: "POST",
-              body: { refresh_token: stored.refreshToken },
+            const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
+              token: stored.accessToken,
             });
-            setAccessToken(nextTokens.access_token);
-            setRefreshToken(nextTokens.refresh_token);
-            persistTokens({
-              accessToken: nextTokens.access_token,
-              refreshToken: nextTokens.refresh_token,
-            });
-            await fetchUserWithToken(nextTokens.access_token);
+            setUser(profile);
+            setAccessToken(stored.accessToken);
             return;
           } catch {
-            clearSession();
+            // Token expired or invalid — fall through to Clerk exchange
           }
-        } else {
-          clearSession();
         }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [clearSession, fetchUserWithToken]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      setAuthError(null);
-      const tokens = await apiRequest<TokenResponse>("/api/v1/auth/login", {
-        method: "POST",
-        body: { email, password },
-      });
+        // Exchange Clerk session token for a backend JWT
+        const clerkToken = await clerkAuth.getToken();
+        if (!clerkToken) {
+          clearSession();
+          return;
+        }
 
-      setAccessToken(tokens.access_token);
-      setRefreshToken(tokens.refresh_token);
-      persistTokens({
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-      });
-      await fetchUserWithToken(tokens.access_token);
-    },
-    [fetchUserWithToken]
-  );
+        const tokens = await apiRequest<TokenResponse>("/api/v1/auth/clerk-exchange", {
+          method: "POST",
+          body: { session_token: clerkToken },
+        });
 
-  const register = useCallback(
-    async (payload: RegisterPayload) => {
-      setAuthError(null);
-      await apiRequest<AuthUser>("/api/v1/auth/register", {
-        method: "POST",
-        body: {
-          email: payload.email,
-          password: payload.password,
-          full_name: payload.fullName,
-          phone: payload.phone || null,
-        },
-      });
-      await login(payload.email, payload.password);
-    },
-    [login]
-  );
+        setAccessToken(tokens.access_token);
+        persistTokens({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        });
+
+        const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
+          token: tokens.access_token,
+        });
+        setUser(profile);
+      } catch (err) {
+        const message = err instanceof ApiError ? err.detail : "Authentication failed";
+        setAuthError(message);
+        clearSession();
+      } finally {
+        setInternalLoading(false);
+      }
+    };
+
+    run();
+  }, [clerkAuth.isLoaded, clerkAuth.isSignedIn, clerkAuth.getToken, clearSession]);
 
   const logout = useCallback(async () => {
     try {
@@ -238,11 +168,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       }
     } catch {
-      // Ignore logout transport failures and clear session anyway.
-    } finally {
-      clearSession();
+      // Ignore transport failures
     }
-  }, [accessToken, clearSession]);
+    clearSession();
+    await clerk.signOut();
+  }, [accessToken, clearSession, clerk]);
+
+  const refreshUser = useCallback(async () => {
+    if (!accessToken) {
+      setUser(null);
+      return;
+    }
+    try {
+      const profile = await apiRequest<AuthUser>("/api/v1/auth/me", { token: accessToken });
+      setUser(profile);
+      setAuthError(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession();
+        await clerk.signOut();
+      }
+    }
+  }, [accessToken, clearSession, clerk]);
 
   const updateProfile = useCallback(
     async (payload: { full_name?: string; phone?: string }) => {
@@ -259,72 +206,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [accessToken]
   );
 
-  const changePassword = useCallback(
-    async (payload: { current_password: string; new_password: string }) => {
-      if (!accessToken) {
-        throw new ApiError(401, "Login required");
-      }
-      await apiRequest<{ message: string }>("/api/v1/users/me/change-password", {
-        method: "POST",
-        token: accessToken,
-        body: payload,
-      });
-    },
-    [accessToken]
-  );
-
-  const requestPasswordReset = useCallback(async (email: string) => {
-    const response = await apiRequest<{ message: string }>("/api/v1/auth/forgot-password", {
-      method: "POST",
-      body: { email },
-    });
-    return response.message;
-  }, []);
-
-  const resetPassword = useCallback(
-    async (payload: { token: string; newPassword: string }) => {
-      const response = await apiRequest<{ message: string }>("/api/v1/auth/reset-password", {
-        method: "POST",
-        body: {
-          token: payload.token,
-          new_password: payload.newPassword,
-        },
-      });
-      return response.message;
-    },
-    []
-  );
+  const loading = !clerkAuth.isLoaded || internalLoading;
+  const isAuthenticated = Boolean(clerkAuth.isSignedIn) && !!accessToken && !!user;
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      isAuthenticated: Boolean(user && accessToken),
+      isAuthenticated,
       loading,
       accessToken,
       authError,
-      login,
-      register,
       logout,
       refreshUser,
-      requestPasswordReset,
-      resetPassword,
       updateProfile,
-      changePassword,
     }),
-    [
-      user,
-      accessToken,
-      loading,
-      authError,
-      login,
-      register,
-      logout,
-      refreshUser,
-      requestPasswordReset,
-      resetPassword,
-      updateProfile,
-      changePassword,
-    ]
+    [user, isAuthenticated, loading, accessToken, authError, logout, refreshUser, updateProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
