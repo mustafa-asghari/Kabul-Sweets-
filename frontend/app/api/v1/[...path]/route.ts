@@ -41,7 +41,11 @@ function copyResponseHeaders(source: Headers) {
   const headers = new Headers();
   source.forEach((value, key) => {
     const normalized = key.toLowerCase();
-    if (normalized === "content-encoding" || normalized === "transfer-encoding") {
+    if (
+      normalized === "content-encoding" ||
+      normalized === "transfer-encoding" ||
+      normalized === "content-length"
+    ) {
       return;
     }
     headers.set(key, value);
