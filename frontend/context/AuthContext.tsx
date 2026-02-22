@@ -14,6 +14,7 @@ import { ApiError, apiRequest } from "@/lib/api-client";
 
 const ACCESS_TOKEN_KEY = "kabul_access_token";
 const REFRESH_TOKEN_KEY = "kabul_refresh_token";
+const CLERK_USER_ID_KEY = "kabul_clerk_user_id";
 
 interface TokenResponse {
   access_token: string;
@@ -59,18 +60,22 @@ function readStoredTokens() {
   };
 }
 
-function persistTokens(tokens: { accessToken: string; refreshToken: string } | null) {
+function persistTokens(tokens: { accessToken: string; refreshToken: string; clerkUserId?: string } | null) {
   if (!isBrowser()) return;
 
   if (!tokens) {
     window.localStorage.removeItem(ACCESS_TOKEN_KEY);
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+    window.localStorage.removeItem(CLERK_USER_ID_KEY);
     window.dispatchEvent(new Event("auth-changed"));
     return;
   }
 
   window.localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
   window.localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+  if (tokens.clerkUserId) {
+    window.localStorage.setItem(CLERK_USER_ID_KEY, tokens.clerkUserId);
+  }
   window.dispatchEvent(new Event("auth-changed"));
 }
 
@@ -110,9 +115,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Try stored backend token first (avoids a round-trip on page reload)
+        // Try stored backend token first (avoids a round-trip on page reload),
+        // but ONLY if it was issued for the same Clerk user that is currently signed in.
         const stored = readStoredTokens();
-        if (stored.accessToken) {
+        const storedClerkUserId = isBrowser()
+          ? window.localStorage.getItem(CLERK_USER_ID_KEY)
+          : null;
+        if (stored.accessToken && storedClerkUserId === clerkAuth.userId) {
           try {
             const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
               token: stored.accessToken,
@@ -141,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         persistTokens({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
+          clerkUserId: clerkAuth.userId ?? undefined,
         });
 
         const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
