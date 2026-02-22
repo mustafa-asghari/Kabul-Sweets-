@@ -186,7 +186,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCartError(null);
 
     try {
-      const cart = await apiRequest<ServerCartResponse>("/api/v1/cart/", {
+      const cart = await apiRequest<ServerCartResponse>(`/api/v1/cart/?_t=${Date.now()}`, {
         token: accessToken,
       });
       setRawItems(cart.items);
@@ -222,7 +222,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           )
         );
         // Re-fetch the cleaned cart
-        const cleanCart = await apiRequest<ServerCartResponse>("/api/v1/cart/", { token: accessToken });
+        const cleanCart = await apiRequest<ServerCartResponse>(`/api/v1/cart/?_t=${Date.now()}`, { token: accessToken });
         setRawItems(cleanCart.items);
         setLines(mapCartLines(cleanCart.items, productMap));
       } else {
