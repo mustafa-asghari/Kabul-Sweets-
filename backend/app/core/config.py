@@ -13,13 +13,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from .env file."""
 
-    model_config = SettingsConfigDict(  
+    model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
-    
+
     # ── Application ──────────────────────────────────────────────────────
     APP_NAME: str = "Kabul Sweets"
     APP_ENV: str = "development"
@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # ── Clerk Auth ───────────────────────────────────────────────────────
+    CLERK_SECRET_KEY: str = Field("", description="Clerk secret key for user info API calls")
 
     # ── Telegram Bot (Admin Alerts) ─────────────────────────────────────
     TELEGRAM_BOT_TOKEN: str = ""

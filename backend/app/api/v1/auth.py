@@ -99,6 +99,7 @@ async def login(
     result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     user = result.scalar_one_or_none()
 
+    # Clerk-only users have no hashed_password — reject password login for them
     if user is None or not user.hashed_password or not verify_password(login_data.password, user.hashed_password):
         # Track failed attempts in Redis
         try:
@@ -331,7 +332,7 @@ class ClerkExchangeRequest(BaseModel):
 
 
 async def _get_clerk_jwks(iss: str) -> dict:
-    """Fetch and cache Clerk JWKS for the given issuer."""
+    """Fetch and cache Clerk JWKS for the given issuer (1h TTL)."""
     redis = await get_redis()
     cache_key = f"clerk:jwks:{iss}"
     cached = await redis.get(cache_key)
@@ -360,8 +361,8 @@ async def clerk_exchange(
     Flow:
     1. Decode Clerk JWT → get issuer (iss)
     2. Fetch JWKS from {iss}/.well-known/jwks.json (cached 1h in Redis)
-    3. Verify signature → extract clerk_user_id (sub)
-    4. Fetch full user profile from Clerk API
+    3. Verify RS256 signature → extract clerk_user_id (sub)
+    4. Fetch full user profile from Clerk API using CLERK_SECRET_KEY
     5. Find existing user by clerk_user_id → email → phone, or create new
     6. Return standard backend access + refresh tokens
     """
@@ -374,7 +375,7 @@ async def clerk_exchange(
 
     await check_rate_limit(request, limit=10, window=60)
 
-    # Step 1 — decode without verification to get issuer
+    # Step 1 — decode without verification to get the issuer claim
     try:
         unverified_claims = jose_jwt.get_unverified_claims(body.session_token)
     except Exception:
@@ -390,7 +391,7 @@ async def clerk_exchange(
             detail="Invalid Clerk token: missing issuer",
         )
 
-    # Step 2 — fetch JWKS
+    # Step 2 — fetch JWKS (Redis-cached)
     try:
         jwks = await _get_clerk_jwks(iss)
     except Exception as exc:
@@ -400,7 +401,7 @@ async def clerk_exchange(
             detail="Could not verify Clerk token (JWKS fetch failed)",
         )
 
-    # Step 3 — verify signature
+    # Step 3 — verify JWT signature against each key in the JWKS
     verified_claims = None
     for key_data in jwks.get("keys", []):
         try:
@@ -443,7 +444,7 @@ async def clerk_exchange(
             detail="Could not retrieve Clerk user profile",
         )
 
-    # Extract email, phone, name
+    # Extract email
     primary_email_id = clerk_profile.get("primary_email_address_id")
     email: str | None = None
     for addr in clerk_profile.get("email_addresses", []):
@@ -455,14 +456,16 @@ async def clerk_exchange(
         if addresses:
             email = addresses[0].get("email_address")
 
+    # Extract phone
     phone_numbers = clerk_profile.get("phone_numbers", [])
     phone: str | None = phone_numbers[0].get("phone_number") if phone_numbers else None
 
+    # Extract display name
     first_name = clerk_profile.get("first_name") or ""
     last_name = clerk_profile.get("last_name") or ""
     full_name = (first_name + " " + last_name).strip() or "Customer"
 
-    # Phone-only accounts: use placeholder email
+    # Phone-only accounts: use a placeholder email so the DB unique constraint is satisfied
     if not email and phone:
         email = f"{phone}@phone.kabulsweets.internal"
     elif not email:
@@ -473,7 +476,7 @@ async def clerk_exchange(
 
     normalized_email = email.strip().lower()
 
-    # Step 5 — lookup by clerk_user_id → email → phone
+    # Step 5 — lookup by clerk_user_id → email → phone (link existing accounts)
     user: User | None = None
 
     result = await db.execute(select(User).where(User.clerk_user_id == clerk_user_id))
@@ -490,13 +493,13 @@ async def clerk_exchange(
         user = result.scalar_one_or_none()
 
     if user is not None:
-        # Link clerk_user_id if not already set
+        # Link clerk_user_id on first Clerk sign-in for an existing account
         if not user.clerk_user_id:
             user.clerk_user_id = clerk_user_id
         user.is_verified = True
         user.last_login = datetime.now(timezone.utc)
     else:
-        # Create new user (no password — Clerk-only)
+        # Create a new Clerk-only user (no password)
         user = User(
             email=normalized_email,
             hashed_password=None,
@@ -516,7 +519,7 @@ async def clerk_exchange(
             detail="Account is deactivated",
         )
 
-    # Step 6 — issue backend tokens
+    # Step 6 — issue backend tokens (same format as the existing login endpoint)
     token_data = {"sub": str(user.id), "role": user.role.value}
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)

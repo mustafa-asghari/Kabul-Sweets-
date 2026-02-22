@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
+import { useClerk } from "@clerk/nextjs";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
-import AuthModal from "@/components/AuthModal";
 
 const CartDrawer = dynamic(() => import("@/components/CartDrawer"), {
   ssr: false,
@@ -24,7 +24,6 @@ export default function Navbar() {
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -33,6 +32,14 @@ export default function Navbar() {
 
   const { user, isAuthenticated, logout, loading } = useAuth();
   const { cartCount } = useCart();
+  const clerk = useClerk();
+
+  const openSignIn = useCallback(() => {
+    clerk.openSignIn({
+      afterSignInUrl: window.location.href,
+      afterSignUpUrl: window.location.href,
+    });
+  }, [clerk]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -56,7 +63,6 @@ export default function Navbar() {
       if (event.key === "Escape") {
         setSearchOpen(false);
         setCartOpen(false);
-        setAuthOpen(false);
         setProfileOpen(false);
         setMobileMenuOpen(false);
       }
@@ -68,18 +74,17 @@ export default function Navbar() {
     };
   }, []);
 
+  // Allow other components (e.g. orders page) to trigger the sign-in modal
   useEffect(() => {
-    const openAuth = () => setAuthOpen(true);
-    window.addEventListener("open-auth-modal", openAuth);
+    const handler = () => openSignIn();
+    window.addEventListener("open-auth-modal", handler);
     return () => {
-      window.removeEventListener("open-auth-modal", openAuth);
+      window.removeEventListener("open-auth-modal", handler);
     };
-  }, []);
+  }, [openSignIn]);
 
   useEffect(() => {
-    if (!searchOpen && !cartOpen && !authOpen) {
-      return;
-    }
+    if (!searchOpen && !cartOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const timeoutId = searchOpen
@@ -90,11 +95,9 @@ export default function Navbar() {
 
     return () => {
       document.body.style.overflow = previousOverflow;
-      if (timeoutId) {
-        window.clearTimeout(timeoutId);
-      }
+      if (timeoutId) window.clearTimeout(timeoutId);
     };
-  }, [searchOpen, cartOpen, authOpen]);
+  }, [searchOpen, cartOpen]);
 
   const closeSearch = () => {
     setSearchOpen(false);
@@ -138,7 +141,7 @@ export default function Navbar() {
 
   const handleAuthClick = () => {
     if (!isAuthenticated) {
-      setAuthOpen(true);
+      openSignIn();
       return;
     }
     setProfileOpen((current) => !current);
@@ -261,7 +264,7 @@ export default function Navbar() {
             {!loading && !isAuthenticated ? (
               <button
                 type="button"
-                onClick={() => setAuthOpen(true)}
+                onClick={openSignIn}
                 className="hidden md:inline-flex rounded-full bg-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#222] transition"
               >
                 Login
@@ -362,7 +365,7 @@ export default function Navbar() {
                   type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    setAuthOpen(true);
+                    openSignIn();
                   }}
                   className="w-full rounded-full bg-black py-3 text-sm font-semibold text-white hover:bg-[#222] transition"
                 >
@@ -403,7 +406,6 @@ export default function Navbar() {
         </div>
       ) : null}
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <CartDrawer open={cartOpen} onClose={closeCart} />
     </>
   );
