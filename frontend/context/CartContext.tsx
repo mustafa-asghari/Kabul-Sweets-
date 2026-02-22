@@ -195,7 +195,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const products = await Promise.all(
         uniqueProductIds.map(async (productId) => {
           try {
-            const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}`);
+            const product = await apiRequest<ServerProduct>(`/api/v1/products/${productId}?_t=${Date.now()}`);
             return [productId, product] as const;
           } catch {
             return [productId, null] as const;
