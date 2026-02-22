@@ -125,6 +125,17 @@ def _webhook_secret_is_valid(path_secret: str | None, request: Request) -> bool:
     return False
 
 
+def _log_invalid_webhook_secret(path_secret: str | None, request: Request) -> None:
+    header_secret = (request.headers.get("x-telegram-bot-api-secret-token") or "").strip()
+    logger.warning(
+        "Telegram webhook rejected: invalid secret (path_present=%s header_present=%s path_len=%d header_len=%d)",
+        bool(path_secret),
+        bool(header_secret),
+        len(path_secret or ""),
+        len(header_secret),
+    )
+
+
 async def _send_unauthorized_chat_notice(telegram: TelegramService, chat_id: int | None) -> None:
     if not isinstance(chat_id, int):
         return
@@ -1698,6 +1709,17 @@ async def telegram_webhook_with_header_secret(
     return await telegram_webhook(secret="", request=request, db=db)
 
 
+@router.post("/webhook/")
+async def telegram_webhook_with_header_secret_trailing(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Same as /webhook, but accepts trailing slash to avoid 307 redirect edge-cases.
+    """
+    return await telegram_webhook(secret="", request=request, db=db)
+
+
 @router.post("/webhook/{secret}")
 async def telegram_webhook(
     secret: str,
@@ -1713,6 +1735,7 @@ async def telegram_webhook(
             detail="Telegram bot is not configured",
         )
     if not _webhook_secret_is_valid(secret, request):
+        _log_invalid_webhook_secret(secret, request)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
 
     update = await request.json()
@@ -2086,3 +2109,15 @@ async def telegram_webhook(
 
     await _send_text(telegram, int(chat_id), "Use /menu, /order, /cake, or /cakeprice.")
     return {"ok": True}
+
+
+@router.post("/webhook/{secret}/")
+async def telegram_webhook_trailing_secret(
+    secret: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Same as /webhook/{secret}, but accepts trailing slash to avoid redirect edge-cases.
+    """
+    return await telegram_webhook(secret=secret, request=request, db=db)
