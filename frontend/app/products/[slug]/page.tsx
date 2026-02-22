@@ -8,7 +8,7 @@ import {
   fetchStoreProductBySlug,
 } from "@/lib/storefront-api";
 
-export const revalidate = 3600;
+export const revalidate = 86400;
 
 interface ProductPageProps {
   params: Promise<{

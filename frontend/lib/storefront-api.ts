@@ -262,7 +262,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
         headers: {
           Accept: "application/json",
         },
-        next: { revalidate: 3600, tags: ["products"] },
+        next: { revalidate: 86400, tags: ["products"] },
       });
       if (!response.ok) {
         continue;
