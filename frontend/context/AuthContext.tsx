@@ -117,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Track the last Clerk identity we processed so account switching is handled.
   const lastProcessedIdentity = useRef<string | undefined>(undefined);
   const bootstrapDone = useRef(false);
+  const clerkLoadTimeoutHandled = useRef(false);
 
   const clearSession = useCallback(() => {
     setUser(null);
@@ -124,66 +125,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistTokens(null);
   }, []);
 
-  // Bootstrap from stored backend token only when it matches the active Clerk identity.
+  // Fail closed if Clerk never finishes loading: do not leave stale session identity active.
   useEffect(() => {
-    if (!clerkLoaded) return;
-    let cancelled = false;
+    if (clerkLoaded) {
+      clerkLoadTimeoutHandled.current = false;
+      return;
+    }
 
-    const bootstrap = async () => {
+    if (clerkLoadTimeoutHandled.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (clerkLoadTimeoutHandled.current || clerkLoaded) {
+        return;
+      }
+      clerkLoadTimeoutHandled.current = true;
+
       const stored = readStoredTokens();
       const storedClerkUserId = isBrowser()
         ? window.localStorage.getItem(CLERK_USER_ID_KEY)
         : null;
+      const hasSessionHints =
+        !!stored.accessToken ||
+        !!stored.refreshToken ||
+        !!storedClerkUserId ||
+        !!user ||
+        !!accessToken;
 
-      const hasHydratableStoredSession =
-        !!stored.accessToken &&
-        !!storedClerkUserId &&
-        !!clerkSignedIn &&
-        !!clerkUserId &&
-        storedClerkUserId === clerkUserId;
-
-      if (!hasHydratableStoredSession) {
-        if (stored.accessToken || stored.refreshToken || storedClerkUserId) {
-          clearSession();
-        }
-        bootstrapDone.current = true;
-        setInternalLoading(false);
-        return;
-      }
-
-      const storedAccessToken = stored.accessToken;
-      if (!storedAccessToken) {
-        bootstrapDone.current = true;
-        setInternalLoading(false);
-        return;
-      }
-
-      try {
-        const profile = await withTimeout(
-          apiRequest<AuthUser>("/api/v1/auth/me", {
-            token: storedAccessToken,
-          }),
-          AUTH_REQUEST_TIMEOUT_MS,
-          "Authentication is taking too long. Please refresh and try again."
-        );
-        if (cancelled) return;
-        setUser(profile);
-        setAccessToken(storedAccessToken);
-        setAuthError(null);
-      } catch {
-        if (cancelled) return;
+      if (hasSessionHints) {
         clearSession();
-      } finally {
-        if (cancelled) return;
-        bootstrapDone.current = true;
-        setInternalLoading(false);
+        setAuthError("Authentication provider did not load. Please refresh and sign in again.");
       }
-    };
+      bootstrapDone.current = true;
+      setInternalLoading(false);
+    }, AUTH_REQUEST_TIMEOUT_MS);
 
-    bootstrap();
     return () => {
-      cancelled = true;
+      window.clearTimeout(timeoutId);
     };
+  }, [clerkLoaded, clearSession, user, accessToken]);
+
+  // Bootstrap marker: wait for Clerk, clear stale local auth hints, then let Clerk-driven auth flow run.
+  useEffect(() => {
+    if (!clerkLoaded) return;
+    const stored = readStoredTokens();
+    const storedClerkUserId = isBrowser()
+      ? window.localStorage.getItem(CLERK_USER_ID_KEY)
+      : null;
+    const isSameClerkIdentity = !!clerkSignedIn && !!clerkUserId && storedClerkUserId === clerkUserId;
+
+    // Never trust stored backend JWTs for auth restore.
+    // Keep them only until Clerk identity is known; then clear unless identity matches.
+    if (!isSameClerkIdentity && (stored.accessToken || stored.refreshToken || storedClerkUserId)) {
+      clearSession();
+    }
+
+    bootstrapDone.current = true;
+    if (!clerkSignedIn) {
+      setInternalLoading(false);
+    }
   }, [clerkLoaded, clerkSignedIn, clerkUserId, clearSession]);
 
   // React to Clerk auth state changes (sign-in / sign-out)
@@ -211,25 +212,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!clerkUserId) {
           clearSession();
           return;
-        }
-
-        // Try stored backend token first (avoids a round-trip on page reload),
-        // but only if it belongs to the same Clerk user.
-        const stored = readStoredTokens();
-        const storedClerkUserId = isBrowser()
-          ? window.localStorage.getItem(CLERK_USER_ID_KEY)
-          : null;
-        if (stored.accessToken && storedClerkUserId === clerkUserId) {
-          try {
-            const profile = await apiRequest<AuthUser>("/api/v1/auth/me", {
-              token: stored.accessToken,
-            });
-            setUser(profile);
-            setAccessToken(stored.accessToken);
-            return;
-          } catch {
-            // Token expired or invalid — fall through to Clerk exchange
-          }
         }
 
         // Exchange Clerk session token for a backend JWT

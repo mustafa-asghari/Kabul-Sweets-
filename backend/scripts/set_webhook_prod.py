@@ -29,6 +29,8 @@ def set_webhook():
                 "url": webhook_url,
                 "secret_token": TELEGRAM_WEBHOOK_SECRET,
                 "drop_pending_updates": "true",
+                # Force callback updates so inline keyboard buttons always work.
+                "allowed_updates": '["message","callback_query"]',
             },
         )
         response.raise_for_status()

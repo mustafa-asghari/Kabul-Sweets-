@@ -91,6 +91,7 @@ CAKE_STATUS_OPTIONS: tuple[tuple[str, str], ...] = (
     ("Rejected", "rejected"),
     ("Cancelled", "cancelled"),
 )
+_missing_webhook_secret_logged = False
 
 
 def _as_money(value: Decimal | int | float | str | None) -> str:
@@ -114,26 +115,43 @@ def _is_authorized_chat(chat_id: int | None) -> bool:
 def _webhook_secret_is_valid(path_secret: str | None, request: Request) -> bool:
     expected_secret = (settings.TELEGRAM_WEBHOOK_SECRET or "").strip()
     if not expected_secret:
-        return False
+        return True
 
+    path_secret = (path_secret or "").strip()
     header_secret = (request.headers.get("x-telegram-bot-api-secret-token") or "").strip()
+    query_secret = (request.query_params.get("secret") or "").strip()
 
     if path_secret and path_secret == expected_secret:
         return True
     if header_secret and header_secret == expected_secret:
+        return True
+    if query_secret and query_secret == expected_secret:
         return True
     return False
 
 
 def _log_invalid_webhook_secret(path_secret: str | None, request: Request) -> None:
     header_secret = (request.headers.get("x-telegram-bot-api-secret-token") or "").strip()
+    query_secret = (request.query_params.get("secret") or "").strip()
     logger.warning(
-        "Telegram webhook rejected: invalid secret (path_present=%s header_present=%s path_len=%d header_len=%d)",
+        "Telegram webhook rejected: invalid secret (path_present=%s header_present=%s query_present=%s path_len=%d header_len=%d query_len=%d)",
         bool(path_secret),
         bool(header_secret),
+        bool(query_secret),
         len(path_secret or ""),
         len(header_secret),
+        len(query_secret),
     )
+
+
+def _log_missing_webhook_secret_once() -> None:
+    global _missing_webhook_secret_logged
+    if _missing_webhook_secret_logged:
+        return
+    logger.warning(
+        "TELEGRAM_WEBHOOK_SECRET is not set. Webhook requests are accepted without secret verification."
+    )
+    _missing_webhook_secret_logged = True
 
 
 async def _send_unauthorized_chat_notice(telegram: TelegramService, chat_id: int | None) -> None:
@@ -1729,11 +1747,13 @@ async def telegram_webhook(
     """
     Telegram webhook receiver for admin commands and callbacks.
     """
-    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_WEBHOOK_SECRET:
+    if not settings.TELEGRAM_BOT_TOKEN:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Telegram bot is not configured",
         )
+    if not settings.TELEGRAM_WEBHOOK_SECRET:
+        _log_missing_webhook_secret_once()
     if not _webhook_secret_is_valid(secret, request):
         _log_invalid_webhook_secret(secret, request)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
@@ -1752,7 +1772,11 @@ async def telegram_webhook(
         data = callback.get("data", "")
         message = callback.get("message", {}) or {}
         chat_id = (message.get("chat", {}) or {}).get("id")
+        if chat_id is None:
+            chat_id = (callback.get("from", {}) or {}).get("id")
         message_id = message.get("message_id")
+        if data:
+            logger.info("Telegram callback received (chat_id=%s action=%s)", chat_id, data.split(":", 1)[0])
 
         if not _is_authorized_chat(chat_id):
             if callback_id:

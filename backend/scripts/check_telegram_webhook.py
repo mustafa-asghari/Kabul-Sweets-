@@ -56,6 +56,7 @@ def main() -> int:
     print("✅ Telegram webhook info")
     print(f"   URL: {info.get('url') or '(not set)'}")
     print(f"   Pending updates: {info.get('pending_update_count', 0)}")
+    print(f"   Allowed updates: {info.get('allowed_updates') or 'default(all)'}")
     print(f"   Last error date (UTC): {_fmt_unix_ts(info.get('last_error_date'))}")
     print(f"   Last error message: {info.get('last_error_message') or 'None'}")
     print(f"   Last sync error date (UTC): {_fmt_unix_ts(info.get('last_synchronization_error_date'))}")

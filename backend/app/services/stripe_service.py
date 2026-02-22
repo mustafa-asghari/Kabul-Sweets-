@@ -26,23 +26,79 @@ STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "").strip()
 STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "").strip()
 
 
+def _strip_www(hostname: str) -> str:
+    return hostname[4:] if hostname.startswith("www.") else hostname
+
+
+def _canonical_frontend_base() -> str:
+    if not FRONTEND_URL:
+        return ""
+
+    parsed = urlparse(FRONTEND_URL)
+    if not parsed.scheme or not parsed.netloc:
+        return FRONTEND_URL.rstrip("/")
+
+    host = _strip_www((parsed.hostname or "").strip())
+    if not host:
+        return FRONTEND_URL.rstrip("/")
+
+    netloc = f"{host}:{parsed.port}" if parsed.port else host
+    return urlunparse(parsed._replace(netloc=netloc, path="", params="", query="", fragment="")).rstrip("/")
+
+
+def _canonicalize_checkout_url(url: str, canonical_frontend: str) -> str:
+    raw = (url or "").strip()
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return raw
+
+    if canonical_frontend:
+        frontend = urlparse(canonical_frontend)
+        if frontend.scheme and frontend.netloc:
+            normalized = urlunparse(parsed._replace(scheme=frontend.scheme, netloc=frontend.netloc))
+            if normalized != raw:
+                logger.info(
+                    "Normalized Stripe redirect URL host from %s to %s",
+                    parsed.netloc,
+                    frontend.netloc,
+                )
+            return normalized
+
+    host = _strip_www(parsed.hostname or "")
+    if not host:
+        return raw
+    netloc = f"{host}:{parsed.port}" if parsed.port else host
+    normalized = urlunparse(parsed._replace(netloc=netloc))
+    if normalized != raw:
+        logger.info(
+            "Normalized Stripe redirect URL host from %s to %s",
+            parsed.netloc,
+            netloc,
+        )
+    return normalized
+
+
 def _resolve_checkout_urls(
     success_url: str | None = None,
     cancel_url: str | None = None,
 ) -> tuple[str, str]:
+    canonical_frontend = _canonical_frontend_base()
     resolved_success = success_url or STRIPE_SUCCESS_URL
     resolved_cancel = cancel_url or STRIPE_CANCEL_URL
 
-    if not resolved_success and FRONTEND_URL:
-        resolved_success = f"{FRONTEND_URL}/order/success?session_id={{CHECKOUT_SESSION_ID}}"
-    if not resolved_cancel and FRONTEND_URL:
-        resolved_cancel = f"{FRONTEND_URL}/order/cancel"
+    if not resolved_success and canonical_frontend:
+        resolved_success = f"{canonical_frontend}/order/success?session_id={{CHECKOUT_SESSION_ID}}"
+    if not resolved_cancel and canonical_frontend:
+        resolved_cancel = f"{canonical_frontend}/order/cancel"
 
     if not resolved_success or not resolved_cancel:
         raise ValueError(
             "Stripe checkout URLs are not configured. "
             "Set STRIPE_SUCCESS_URL/STRIPE_CANCEL_URL or FRONTEND_URL."
         )
+
+    resolved_success = _canonicalize_checkout_url(resolved_success, canonical_frontend)
+    resolved_cancel = _canonicalize_checkout_url(resolved_cancel, canonical_frontend)
 
     return resolved_success, resolved_cancel
 

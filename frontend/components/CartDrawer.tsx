@@ -458,6 +458,8 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
   const [pickupTimeSlot, setPickupTimeSlot] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [customCakePayError, setCustomCakePayError] = useState<string | null>(null);
+  const [payingCustomCakeId, setPayingCustomCakeId] = useState<string | null>(null);
   const [customCakes, setCustomCakes] = useState<CustomCakeCartSummary[]>([]);
   const [loadingCustomCakes, setLoadingCustomCakes] = useState(false);
   const lastCustomCakesFetchRef = useRef<number>(0);
@@ -588,6 +590,34 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
       } else {
         setCheckoutError("Order submission failed. Please try again.");
       }
+    }
+  };
+
+  const handlePayCustomCake = async (cakeId: string) => {
+    if (!accessToken) {
+      return;
+    }
+
+    setCustomCakePayError(null);
+    setPayingCustomCakeId(cakeId);
+
+    try {
+      const result = await apiRequest<{ checkout_url: string }>(`/api/v1/custom-cakes/${cakeId}/checkout`, {
+        method: "POST",
+        token: accessToken,
+      });
+      if (!result.checkout_url) {
+        throw new ApiError(400, "No checkout URL returned for this request.");
+      }
+      window.location.href = result.checkout_url;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setCustomCakePayError(error.detail);
+      } else {
+        setCustomCakePayError("Unable to open checkout.");
+      }
+    } finally {
+      setPayingCustomCakeId(null);
     }
   };
 
@@ -790,7 +820,7 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                       <div className="space-y-2">
                         {customCakes.slice(0, 3).map((cake) => {
                           const price = cake.final_price ?? cake.predicted_price;
-                          const payable = cake.status === "approved_awaiting_payment" && Boolean(cake.checkout_url);
+                          const payable = cake.status === "approved_awaiting_payment";
 
                           return (
                             <article key={cake.id} className="rounded-xl border border-[#ece0cf] p-3">
@@ -801,18 +831,21 @@ export default function CartDrawer({ open, onClose }: CartDrawerProps) {
                                 {cakeStatusLabel(cake.status)} - {formatPrice(toNumber(price))}
                               </p>
                               {payable ? (
-                                <a
-                                  href={cake.checkout_url || "#"}
-                                  className="mt-2 inline-flex rounded-full bg-black px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#222] transition"
+                                <button
+                                  type="button"
+                                  onClick={() => handlePayCustomCake(cake.id)}
+                                  disabled={payingCustomCakeId === cake.id}
+                                  className="mt-2 inline-flex rounded-full bg-black px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#222] transition disabled:opacity-60"
                                 >
-                                  Pay custom cake
-                                </a>
+                                  {payingCustomCakeId === cake.id ? "Opening..." : "Pay custom cake"}
+                                </button>
                               ) : null}
                             </article>
                           );
                         })}
                       </div>
                     )}
+                    {customCakePayError ? <p className="text-xs text-red-600">{customCakePayError}</p> : null}
                   </div>
                 ) : null}
 

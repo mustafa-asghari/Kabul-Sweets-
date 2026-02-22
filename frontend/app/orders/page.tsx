@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
@@ -55,6 +55,11 @@ interface OrderDetailResponse {
 
 interface ProductLookupResponse {
   slug: string;
+}
+
+interface OrderWithSlugs {
+  order: OrderSummary;
+  slugPairs: Array<readonly [string, string]>;
 }
 
 function statusLabel(status: string | null | undefined) {
@@ -139,15 +144,20 @@ function OrdersPageContent() {
   const [payingCakeId, setPayingCakeId] = useState<string | null>(null);
   const [deletingCakeId, setDeletingCakeId] = useState<string | null>(null);
   const [cakeActionErrors, setCakeActionErrors] = useState<Record<string, string>>({});
+  const latestFetchRequestRef = useRef(0);
   const submittedOrderNumber = searchParams.get("order");
   const showSubmittedBanner = searchParams.get("submitted") === "1";
 
   const fetchOrders = useCallback(async (background = false) => {
+    const requestId = ++latestFetchRequestRef.current;
+
     if (!accessToken || !isAuthenticated) {
-      setOrders([]);
-      setCustomCakes([]);
-      setProductSlugById({});
-      setLoading(false);
+      if (requestId === latestFetchRequestRef.current) {
+        setOrders([]);
+        setCustomCakes([]);
+        setProductSlugById({});
+        setLoading(false);
+      }
       return;
     }
 
@@ -190,7 +200,7 @@ function OrdersPageContent() {
       // Fetch order details and product slugs in one combined pass.
       // Each order's slug fetches start as soon as that order's details arrive,
       // not after ALL orders' details are done (eliminates the 3-phase waterfall).
-      const orderResults = await Promise.all(
+      const orderResults: Array<OrderWithSlugs | null> = await Promise.all(
         ordersData.map(async (order) => {
           let items: OrderItemSummary[] = [];
           try {
@@ -199,8 +209,12 @@ function OrdersPageContent() {
               { token: accessToken }
             );
             items = detail.items || [];
-          } catch {
-            // keep items empty on error
+          } catch (detailError) {
+            // If order disappeared between list + detail fetch, suppress it.
+            if (detailError instanceof ApiError && detailError.status === 404) {
+              return null;
+            }
+            // keep items empty on non-404 errors
           }
 
           const productIds = [
@@ -228,19 +242,22 @@ function OrdersPageContent() {
         })
       );
 
-      const ordersWithItems = orderResults.map((r) => r.order);
+      const filteredOrderResults = orderResults.filter((result): result is OrderWithSlugs => result !== null);
+      const ordersWithItems = filteredOrderResults.map((r) => r.order);
       const nextProductSlugById: Record<string, string> = {};
-      for (const { slugPairs } of orderResults) {
+      for (const { slugPairs } of filteredOrderResults) {
         for (const [productId, slug] of slugPairs) {
           if (slug) nextProductSlugById[productId] = slug;
         }
       }
 
-      setOrders(ordersWithItems);
-      setCustomCakes(visibleCakes);
-      setProductSlugById(nextProductSlugById);
+      if (requestId === latestFetchRequestRef.current) {
+        setOrders(ordersWithItems);
+        setCustomCakes(visibleCakes);
+        setProductSlugById(nextProductSlugById);
+      }
     } catch (fetchError) {
-      if (!background) {
+      if (!background && requestId === latestFetchRequestRef.current) {
         if (fetchError instanceof ApiError) {
           setError(fetchError.detail);
         } else if (fetchError instanceof Error) {
@@ -253,7 +270,7 @@ function OrdersPageContent() {
         setProductSlugById({});
       }
     } finally {
-      if (!background) {
+      if (!background && requestId === latestFetchRequestRef.current) {
         setLoading(false);
       }
     }
@@ -335,6 +352,7 @@ function OrdersPageContent() {
           token: accessToken,
         });
         setOrders((prev) => prev.filter((order) => order.id !== orderId));
+        await fetchOrders(true);
       } catch (actionError) {
         const detail =
           actionError instanceof ApiError ? actionError.detail : "Unable to delete this order.";
@@ -343,7 +361,7 @@ function OrdersPageContent() {
         setDeletingOrderId(null);
       }
     },
-    [accessToken]
+    [accessToken, fetchOrders]
   );
 
   const handlePayNow = useCallback(async (cakeId: string) => {
