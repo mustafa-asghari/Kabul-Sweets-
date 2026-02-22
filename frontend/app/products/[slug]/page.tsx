@@ -8,7 +8,7 @@ import {
   fetchStoreProductBySlug,
 } from "@/lib/storefront-api";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 10;
 
 interface ProductPageProps {
   params: Promise<{

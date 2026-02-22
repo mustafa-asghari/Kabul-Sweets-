@@ -262,7 +262,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
         headers: {
           Accept: "application/json",
         },
-        cache: "no-store",
+        next: { revalidate: 10, tags: ["products"] },
       });
       if (!response.ok) {
         continue;
